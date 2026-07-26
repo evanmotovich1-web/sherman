@@ -70,10 +70,15 @@ Split into two plans, risk front-loaded:
   thread retention and no orphan, and an escape test showing writes outside the
   vault and all network egress denied. Answers as Sherman Abrams through the
   headless path, confirming the Phase 1 adapter loads.
-- `04-02` ⚪ **Shell UI + wire-up.** Ink app (banner header, chat pane with
-  scrollback, status bar: engine · model · user · vault · tokens), Ctrl+C
-  interrupt semantics, `bin/sherman`'s final `exec` swapped to the shell,
-  `sherman --raw` for debugging, `smoke.sh` +3 checks.
+- `04-02` 🟡 **Shell UI + wire-up** (planned 2026-07-26). Ink 7 app: banner header
+  in house colours, chat pane over the terminal's own scrollback, status bar
+  (engine · model · user · vault · tokens), two-stage Ctrl+C, `bin/sherman`'s final
+  `exec` swapped to the shell, `sherman --raw` for debugging, `smoke.sh` +3 checks.
+  **Includes the activity indicator with elapsed time** — Evan made this
+  non-deferrable: given D8 there are no token deltas, and the first turn is the
+  slowest one a user sees, so without it the shell reads as hung on first
+  impression. Ends in a human-verify checkpoint, because "does the wait feel alive"
+  is not scriptable.
 
 Exit condition: typing `sherman` lands in a branded Sherman screen — no OpenAI
 or Anthropic chrome — holding a real streaming conversation with the engine
