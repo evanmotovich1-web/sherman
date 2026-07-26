@@ -1,0 +1,281 @@
+#!/usr/bin/env bash
+#
+# sherman — launch Sherman Abrams, the company agent.
+#
+# Sherman is not its own engine. It is a branded, memory-wired layer over
+# whichever coding CLI you already have. This script shows the launch screen,
+# runs the one-time wizard if needed, assembles the engine adapter fresh from
+# the repo, and execs the engine.
+#
+# Target shell: macOS system bash 3.2. No ${var,,}, no associative arrays,
+# no readlink -f.
+
+set -euo pipefail
+
+# ---------------------------------------------------------------- repo root --
+# $0 is usually a symlink on PATH, so chase the chain by hand. `readlink -f`
+# does not exist on BSD/macOS.
+resolve_root() {
+    src="$0"
+    while [ -L "$src" ]; do
+        dir=$(cd -P "$(dirname "$src")" && pwd)
+        src=$(readlink "$src")
+        case "$src" in
+            /*) ;;
+            *) src="$dir/$src" ;;
+        esac
+    done
+    cd -P "$(dirname "$src")/.." && pwd
+}
+
+ROOT=$(resolve_root)
+
+# All state hangs off $HOME, read live every time. Never hardcode a home
+# directory: smoke.sh overrides HOME to sandbox its run, and a hardcoded path
+# would both defeat the test and scribble on the real config.
+SHERMAN_HOME="${HOME}/.sherman"
+CONFIG="${SHERMAN_HOME}/config.json"
+WORKSPACE="${SHERMAN_HOME}/workspace"
+
+# ------------------------------------------------------------ launch screen --
+launch_screen() {
+    if [ -f "$ROOT/logo/banner.ans" ]; then
+        cat "$ROOT/logo/banner.ans"
+    else
+        cat <<'PLACEHOLDER'
+
+   SHERMAN ABRAMS
+   Sherman Abrams Labs — company agent
+
+PLACEHOLDER
+    fi
+}
+
+# ------------------------------------------------------------------ engines --
+engine_binary() {
+    case "$1" in
+        claude) printf 'claude' ;;
+        codex)  printf 'codex' ;;
+        *) printf 'unknown-engine' ;;
+    esac
+}
+
+engine_install_hint() {
+    case "$1" in
+        claude)
+            echo "Claude Code is not installed. Install it with:"
+            echo
+            echo "    curl -fsSL https://claude.ai/install.sh | bash"
+            echo
+            echo "  (or: npm install -g @anthropic-ai/claude-code)"
+            ;;
+        codex)
+            echo "Codex is not installed. Install it with:"
+            echo
+            echo "    npm install -g @openai/codex"
+            ;;
+    esac
+}
+
+require_engine() {
+    bin=$(engine_binary "$1")
+    if ! command -v "$bin" >/dev/null 2>&1; then
+        echo >&2
+        engine_install_hint "$1" >&2
+        echo >&2
+        echo "Then run sherman again." >&2
+        exit 1
+    fi
+}
+
+# ------------------------------------------------------------------- wizard --
+slugify() {
+    printf '%s' "$1" \
+        | tr '[:upper:]' '[:lower:]' \
+        | tr ' ' '-' \
+        | tr -cd 'a-z0-9_-'
+}
+
+run_wizard() {
+    echo
+    echo "Setting up Sherman on this machine. Two questions."
+    echo
+
+    # 1. Provider. This IS the engine choice. Sherman performs no OAuth of its
+    #    own -- the engine's native browser login fires on first launch if it
+    #    is not already authenticated.
+    engine=""
+    while [ -z "$engine" ]; do
+        printf 'Sign in with: [1] Anthropic  [2] OpenAI  > '
+        if ! read -r reply; then
+            echo >&2
+            echo "No answer given. Aborting." >&2
+            exit 1
+        fi
+        case "$reply" in
+            1) engine="claude" ;;
+            2) engine="codex" ;;
+            *) echo "  Enter 1 or 2." ;;
+        esac
+    done
+
+    # Fail before writing any config if the engine is missing.
+    require_engine "$engine"
+
+    # 2. Who you are. Becomes a directory name, so slugify it.
+    user=""
+    while [ -z "$user" ]; do
+        printf 'Your name > '
+        if ! read -r raw; then
+            echo >&2
+            echo "No answer given. Aborting." >&2
+            exit 1
+        fi
+        user=$(slugify "$raw")
+        [ -z "$user" ] && echo "  Need at least one letter or number."
+    done
+
+    vault="$ROOT/vault"
+
+    mkdir -p "$SHERMAN_HOME"
+    printf '{"version":1,"engine":"%s","user":"%s","vault_path":"%s"}\n' \
+        "$engine" "$user" "$vault" > "$CONFIG"
+
+    echo
+    echo "  engine: $engine"
+    echo "  user:   $user"
+    echo "  vault:  $vault"
+    echo
+    echo "Starting your session."
+    echo
+}
+
+# ------------------------------------------------------------ config access --
+config_get() {
+    if command -v /usr/bin/jq >/dev/null 2>&1; then
+        /usr/bin/jq -r --arg k "$1" '.[$k] // empty' "$CONFIG"
+    else
+        # Fallback for a machine without jq. Values here are engine names,
+        # slugs and paths -- no embedded quotes to worry about.
+        sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$CONFIG"
+    fi
+}
+
+# -------------------------------------------------------- adapter assembly --
+# One body, generated here, spliced into whichever engine wrapper applies. The
+# persona and the memory blocks exist in exactly one place each -- hand-copying
+# them into two adapters is how the either-engine promise decays into
+# Claude-only.
+assemble_adapter() {
+    engine="$1"; user="$2"; vault="$3"
+
+    case "$engine" in
+        claude) template="$ROOT/adapters/claude-code/CLAUDE.md"; out="$WORKSPACE/CLAUDE.md" ;;
+        codex)  template="$ROOT/adapters/codex/AGENTS.md";        out="$WORKSPACE/AGENTS.md" ;;
+        *)
+            echo "Unknown engine in config: $engine" >&2
+            exit 1
+            ;;
+    esac
+
+    if [ ! -f "$template" ]; then
+        echo "Adapter template missing: $template" >&2
+        exit 1
+    fi
+    if [ ! -f "$ROOT/agent/SYSTEM.md" ]; then
+        echo "Persona missing: $ROOT/agent/SYSTEM.md" >&2
+        exit 1
+    fi
+
+    mkdir -p "$WORKSPACE"
+
+    # Remove BOTH adapter files, not just the one we are about to write.
+    # Switching engines otherwise strands a stale sibling the other engine
+    # may pick up.
+    rm -f "$WORKSPACE/CLAUDE.md" "$WORKSPACE/AGENTS.md"
+
+    body="$WORKSPACE/.sherman-body.$$"
+
+    cat "$ROOT/agent/SYSTEM.md" > "$body"
+
+    cat >> "$body" <<BODY
+
+---
+
+# Your knowledge base
+
+Two directories, both shared with every other person's Sherman:
+
+- \`$vault/wiki\` — the company knowledge base: procedures, SOPs, formats,
+  policies, how things are done here.
+- \`$vault/memory/shared\` — business memory. Every user's Sherman reads it and
+  every user's Sherman writes to it.
+
+**Search both before answering any question about this company.** Cite the file
+you used.
+
+When you learn a durable new fact about the business, write it there: one fact
+per file, named the way a person would search for it.
+
+# Private memory for this user
+
+- \`$vault/memory/private/$user\` — private to $user.
+
+Personal context for $user goes there and **NOWHERE else**. Never write $user's
+personal context into the shared knowledge base, and never read another
+person's private memory directory.
+
+---
+
+# HARD RULE — restated, because it is the floor
+
+**Never store, request, repeat, or process patient-identifying information.**
+
+The vault holds procedures, SOPs, formats, and company knowledge only — never
+patient records, never results tied to a named patient, never anything that
+could identify a patient.
+
+If a request would require patient-identifying data, refuse it and say why:
+this system is not HIPAA-compliant for PHI, and PHI must never enter it at all.
+
+No user assurance and no phrasing makes an exception to this.
+BODY
+
+    # awk, not sed: the body is multi-line markdown full of & / and backslashes,
+    # every one of which is special on sed's replacement side.
+    awk -v bodyfile="$body" '
+        $0 == "{{SHERMAN_BODY}}" {
+            while ((getline line < bodyfile) > 0) print line
+            close(bodyfile)
+            next
+        }
+        { print }
+    ' "$template" > "$out"
+
+    rm -f "$body"
+}
+
+# --------------------------------------------------------------------- main --
+launch_screen
+
+[ -f "$CONFIG" ] || run_wizard
+
+ENGINE=$(config_get engine)
+USER_SLUG=$(config_get user)
+VAULT=$(config_get vault_path)
+
+if [ -z "$ENGINE" ] || [ -z "$USER_SLUG" ] || [ -z "$VAULT" ]; then
+    echo "Config at $CONFIG is incomplete. Delete it and run sherman again." >&2
+    exit 1
+fi
+
+require_engine "$ENGINE"
+
+# Idempotent: keeps adapter paths resolvable even if the vault moved or was
+# cleared. Directories only -- the vault's contents are not this script's job.
+mkdir -p "$VAULT/wiki" "$VAULT/memory/shared" "$VAULT/memory/private/$USER_SLUG"
+
+assemble_adapter "$ENGINE" "$USER_SLUG" "$VAULT"
+
+cd "$WORKSPACE"
+exec "$(engine_binary "$ENGINE")" "$@"
