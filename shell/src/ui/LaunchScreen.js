@@ -196,7 +196,9 @@ export function LaunchScreen({ info, stats, columns }) {
                 marginTop: 1,
                 width: panel,
                 borderStyle: 'round',
-                borderColor: color.accent,
+                // Deep red, not the accent: the wordmark and mark carry the
+                // colour on this screen, and the frame must not compete.
+                borderColor: color.frame,
                 paddingX: 1,
                 flexDirection: 'column',
             },

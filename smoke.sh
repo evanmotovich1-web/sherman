@@ -273,10 +273,74 @@ for cols in 80 200; do
     fi
 done
 
+# ------------------------------------------------------------------ check 9 --
+# Colours must actually reach the terminal. Ink silently ignores colour strings
+# it does not recognise -- a bare 256-colour index like '196' renders as plain
+# default-coloured text with no error anywhere, which is exactly how the v2
+# launch screen shipped all-white. This asserts the four signature colours
+# (wordmark red, then the mark's pink, purple and blue) are present as real
+# ANSI sequences in the rendered output.
+#
+# FORCE_COLOR=3 because chalk sees the pipe as colourless and would strip every
+# escape, which would turn this check into a tautology.
+
+COLOR_JS=$(cat <<'JS'
+import React from 'react';
+import { renderToString } from 'ink';
+import { LaunchScreen } from './src/ui/LaunchScreen.js';
+
+const info = {
+    engine: 'codex',
+    model: 'smoke-model',
+    user: 'smoke-tester',
+    vaultPath: '/tmp/smoke/sherman/vault',
+    threadId: null,
+};
+const stats = { wiki: 2, shared: 1, private: 0, inbox: 3, ok: true };
+
+const out = renderToString(
+    React.createElement(LaunchScreen, { info, stats, columns: 80 }),
+    { columns: 80 }
+);
+
+const need = {
+    'wordmark red (196)': '38;5;196m',
+    'mark pink (205)': '38;5;205m',
+    'mark purple (135)': '38;5;135m',
+    'mark blue (39)': '38;5;39m',
+};
+const missing = Object.keys(need).filter((name) => !out.includes(need[name]));
+
+if (missing.length > 0) {
+    console.error('missing colour(s): ' + missing.join(', '));
+    process.exit(1);
+}
+process.exit(0);
+JS
+)
+
+echo
+echo "9. launch screen colours reach the terminal"
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot render the launch screen"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    pass "skipped -- shell/node_modules absent, run install.sh"
+else
+    color_err=$(cd shell && env FORCE_COLOR=3 node --input-type=module -e "$COLOR_JS" 2>&1)
+    color_status=$?
+
+    if [ "$color_status" -eq 0 ]; then
+        pass "wordmark red and all three mark colours are emitted"
+    else
+        fail "$(printf '%s' "$color_err" | head -3)"
+    fi
+fi
+
 # -------------------------------------------------------------------- result --
 echo
 if [ "$FAILURES" -eq 0 ]; then
-    echo "8 checks, all green."
+    echo "9 checks, all green."
     echo
     exit 0
 fi
