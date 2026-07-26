@@ -1,0 +1,229 @@
+# The Sherman Shell
+
+Sherman's own terminal UI. Our screen on top, the engine running headless
+underneath.
+
+Before this existed, `bin/sherman` ended in `exec codex` and you landed in
+OpenAI's chrome — Sherman was branded up to the banner and unbranded after it.
+Design doc §3c: like Hermes, Sherman owns the screen.
+
+## What phase 04-01 delivered
+
+The **engine layer only**. No UI yet.
+
+- `src/engine/session.js` — the `EngineSession` contract and the normalized
+  event stream. Engine-agnostic by rule.
+- `src/engine/codex.js` — the real backend, driving Codex headless.
+- `src/engine/claude.js` — a stub. Implements the full contract, reports that it
+  is not built yet, points at `sherman --raw`.
+- `src/engine/index.js` — backend selection from the config's `engine` field.
+- `src/config.js` — reads `~/.sherman/config.json` (read-only; the wizard owns it).
+- `bin/sherman-shell.js` — `--version`, `--help`, `--probe`.
+
+The Ink UI (banner header, chat pane, status bar), the `bin/sherman` wire-up and
+`sherman --raw` land in **04-02**. The board view is a later phase still.
+
+No npm dependencies. Nothing to install.
+
+## Running it
+
+```
+node shell/bin/sherman-shell.js --probe "Reply with exactly: PONG"
+```
+
+Several turns in one session, to exercise conversation memory:
+
+```
+node shell/bin/sherman-shell.js --probe "Remember the word BANANA." "What word did I ask you to remember?"
+```
+
+`--probe` is the engine-layer harness: no UI, normalized events printed as they
+arrive. It stays after 04-02 on purpose — when the shell misbehaves, `--probe`
+tells you whether the engine layer or the renderer is at fault.
+
+Ctrl+C aborts the in-flight turn. A second Ctrl+C exits.
+
+## Transport: `codex exec --json`, not the app-server protocol
+
+Two headless routes into Codex exist. We drive the CLI:
+
+- Turn 1: `codex exec --json "<prompt>"`
+- Every later turn: `codex exec resume <thread_id> --json "<prompt>"`
+
+**The event stream** (real output, codex-cli 0.145.0):
+
+```json
+{"type":"thread.started","thread_id":"019f9ce8-af8b-71b3-bc72-41b2ca2d2bcb"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"PONG"}}
+{"type":"turn.completed","usage":{"input_tokens":39245,"cached_input_tokens":19200,"cache_write_input_tokens":0,"output_tokens":128,"reasoning_output_tokens":79}}
+```
+
+Multi-turn genuinely works: resuming a thread and asking for a word established
+in the previous turn returns it, with `cached_input_tokens: 19200` confirming the
+prompt is being reused rather than resent cold. `turn.completed.usage` is where
+the status bar's token count comes from — free, no extra accounting.
+
+### The cost we accepted
+
+**There is no token-level streaming on this transport.** A 128-token answer
+arrived as one `item.completed`, roughly 5.5 seconds after `turn.started`. There
+were no incremental deltas.
+
+Streaming is therefore *item*-level, not *token*-level. In practice a multi-step
+turn still fills the pane progressively, because reasoning summaries, tool calls
+and messages each arrive as they complete. It is a single short answer that lands
+all at once after a pause.
+
+### Why not app-server, which does stream
+
+`codex app-server` exposes a v2 JSON-RPC protocol that includes exactly what we
+gave up:
+
+```
+AgentMessageDeltaNotification { delta, itemId, threadId, turnId }
+```
+
+That is true typewriter output. We did not take it because:
+
+- It is marked `[experimental]`. The protocol can change on any `codex update`,
+  and a v1 built on it means the whole shell breaks when it does.
+- It carries 39+ message types and needs a JSON-RPC handshake that was never
+  verified working, against a CLI surface that was verified working in minutes.
+- Stability matters more than polish for a tool the company is meant to depend on.
+
+**This is not a lock-in.** Swapping transports touches `src/engine/codex.js` and
+no UI code — that is what `EngineSession` is for. If the missing typewriter
+effect turns out to bother us more than the experimental risk, the swap is a
+contained change.
+
+Until then, 04-02's UI carries the perceived-responsiveness load: an activity
+indicator and an elapsed timer, so a wait never reads as a dead screen.
+
+## Permissions: the engine is sealed inside the vault
+
+This is the §4 company-data boundary enforced at the engine, and it is the same
+posture for every user.
+
+Every invocation — turn 1 and every resume, built by one function so they cannot
+drift — carries:
+
+```
+--json
+--skip-git-repo-check
+-c sandbox_mode="workspace-write"
+-c sandbox_workspace_write.writable_roots=["<vault path>"]
+-c approval_policy="never"
+```
+
+`--dangerously-bypass-approvals-and-sandbox` and
+`--dangerously-bypass-hook-trust` are never passed. Adding either defeats
+everything below.
+
+### Why the OS sandbox instead of removing the shell tool
+
+The instinct is to disable Codex's shell tool outright. That does not work, and
+it is worth knowing why before someone tries it again.
+
+On Codex, file read, search and write are delivered *through* the shell and
+`apply_patch` tools. `shell_tool` is a real feature flag and can be turned off —
+but doing so strips the capability Sherman actually needs, leaving an agent that
+cannot read the vault at all. The requirement to allow file access inside the
+vault and the requirement to forbid shell execution are, on this engine, in
+direct conflict.
+
+So the boundary is implemented where it is genuinely enforceable: the macOS
+seatbelt sandbox. Shell commands may run, but the kernel denies every read and
+write outside the permitted roots and blocks network egress. That is a *stronger*
+boundary than an allow-list of tool names, because the model cannot talk its way
+past the kernel — no prompt injection, no clever rephrasing, no "the user said it
+was fine."
+
+### What was actually proven
+
+Not asserted — tested, with the real engine:
+
+| Test | Result |
+|---|---|
+| Write a file **inside** the vault | Succeeded |
+| Write a file **outside** the vault and workspace (`$HOME`) | **Denied** — "outside the permitted writable project roots" |
+| `curl https://example.com` | **Denied** — exit 6, DNS could not resolve |
+
+The engine did run `/bin/zsh -lc` during the first test. That is the point: shell
+ran, and the write outside the roots was still refused.
+
+Re-run these if you change any flag above. A posture claim that has not been
+tested since the last change is not a posture claim.
+
+## Two traps, both hit while building this
+
+Documented so nobody rediscovers them the slow way.
+
+**1. stdin must be ignored.** `codex exec` reads stdin whenever stdin is not a
+TTY, and will sit there forever printing `Reading additional input from
+stdin...`. From Node that means `stdio: ['ignore', 'pipe', 'pipe']`. Get this
+wrong and you get a hung shell with no error message.
+
+**2. `codex exec resume` takes a narrower flag set than `codex exec`.** It
+rejects `-s/--sandbox`, `-C/--cd`, `--add-dir` and `-p/--profile`. It accepts
+`-c`, `--enable/--disable`, `-m`, `--json`, `--skip-git-repo-check`.
+
+The consequence is not cosmetic: pass the sandbox as `-s` and your posture is
+correct on the first turn and **silently absent on every turn after it**. So all
+posture travels as `-c` overrides, and the working directory comes from Node's
+spawn `cwd` option rather than `-C`.
+
+Validate any new `-c` key with `--strict-config`, which rejects unknown fields.
+A bad key name fails immediately; a bad *value* also fails immediately and names
+the valid options, which is a cheap way to check a key exists without spending a
+model call.
+
+**A related constraint:** cwd stays `~/.sherman/workspace`, because Codex reads
+`AGENTS.md` from its cwd and that file is Sherman's assembled system prompt.
+Pointing cwd at the vault would seal the sandbox correctly and orphan the
+persona. The vault becomes writable through `writable_roots` instead.
+
+## The contract 04-02 builds against
+
+`EngineSession`:
+
+| Member | Purpose |
+|---|---|
+| `get info()` | `{engine, model, user, vaultPath, threadId}` — the status bar |
+| `send(text)` | one user turn; async-iterates normalized events |
+| `interrupt()` | abort the in-flight turn; the session stays usable |
+| `get usage()` | cumulative session token totals |
+| `dispose()` | release resources; safe to call twice |
+
+Normalized events — the only shapes a UI ever sees:
+
+| Event | Meaning |
+|---|---|
+| `{kind:'turn-start'}` | the engine began working |
+| `{kind:'reasoning', text}` | thinking summary |
+| `{kind:'message', text}` | assistant prose |
+| `{kind:'tool', label}` | one line of tool activity, for progress |
+| `{kind:'turn-end', usage}` | turn finished; `{input, cachedInput, output, reasoning, total}` |
+| `{kind:'interrupted'}` | the turn was aborted by the user |
+| `{kind:'error', message}` | something failed; message is written to be shown |
+
+A UI written against this list must be unable to tell which engine answered. If
+you find yourself wanting to leak an engine detail through, that detail belongs
+in the backend.
+
+Two deliberate robustness rules in the Codex backend, worth preserving:
+unrecognized event types are ignored rather than thrown on, and malformed JSON
+lines are skipped. The codex event set will grow; an unknown `type` must never
+take the shell down.
+
+`model` is a **display hint only**, read best-effort from Codex's own config so
+the status bar shows the model you actually chose. The backend deliberately does
+not pass `-m` to force one — hijacking a user's model choice to make a label
+easier is not a trade worth making.
+
+## Interrupts
+
+Interrupting is just killing the turn's process. The thread survives, because
+Codex persists it — so the next `send()` resumes the same conversation. That
+falls out of the one-process-per-turn model for free, and it is the main
+consolation for not having the app-server's protocol-level interrupt.

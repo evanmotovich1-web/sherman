@@ -1,0 +1,13 @@
+{
+  "name": "sherman-shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sherman Abrams' own terminal UI. Our screen on top, the engine headless underneath.",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "sherman-shell": "./bin/sherman-shell.js"
+  }
+}
