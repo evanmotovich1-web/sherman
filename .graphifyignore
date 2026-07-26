@@ -1,0 +1,10 @@
+# Generated output and repository metadata are not source material.
+.git/
+graphify-out/
+
+# Dependencies and Obsidian application state are third-party/local noise.
+shell/node_modules/
+vault/.obsidian/
+
+# Private user memory must never enter a repo-wide development graph.
+vault/memory/private/
