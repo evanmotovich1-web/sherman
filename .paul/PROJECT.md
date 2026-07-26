@@ -107,11 +107,24 @@ No `${var,,}`, no associative arrays, no `readlink -f`. Verified 2026-07-26.
   agent/SYSTEM.md         # the persona — one definition of who Sherman is
   adapters/claude-code/CLAUDE.md   # engine wrapper template
   adapters/codex/AGENTS.md         # engine wrapper template
+  shell/                  # the Sherman Shell — our UI, engine headless underneath
+    bin/sherman-shell.js  #   entry: --version, --help, --probe (Ink app at 04-02)
+    src/config.js         #   reads ~/.sherman/config.json (read-only)
+    src/engine/session.js #   EngineSession contract + normalized events — the seam
+    src/engine/codex.js   #   the ONLY file that knows Codex exists
+    src/engine/claude.js  #   stub until the Claude backend phase
+    README.md             #   transport decision, permissions posture, traps
   smoke.sh                # 3 checks, no framework
   logo/                   # ANSI banner            [PARALLEL TRACK — Codex owns]
   vault/                  # company knowledge base [PARALLEL TRACK — Codex owns]
   skills/                 # company skills         [later slice]
 ```
+
+**The engine seam.** `shell/src/engine/session.js` is where the either-engine
+promise lives at the UI layer, exactly as `agent/SYSTEM.md` + adapters holds it at
+the persona layer. Nothing engine-specific belongs in it. A UI written against its
+event union must be unable to tell which engine answered — if a vendor detail wants
+to leak through, it belongs in the backend instead.
 
 ### Runtime state (outside the repo)
 

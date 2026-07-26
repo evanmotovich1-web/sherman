@@ -50,7 +50,7 @@ matters most (design doc §7 Q1): the 3–5 tasks employees burn the most hours
 on. Candidate shapes: SOP answerer, intake/report drafting, customer comms
 drafts, daily digest.
 
-### Phase 4 — Sherman Shell 🟡 Planning (added 2026-07-26)
+### Phase 4 — Sherman Shell 🟡 In progress, 1 of 2 plans (added 2026-07-26)
 
 Sherman owns the screen. Design doc §3c, added after Evan's first live run:
 launching into raw Codex chrome is not Sherman. Our UI on top, the engine
@@ -62,10 +62,14 @@ promise from the chrome seam to the UI seam.
 
 Split into two plans, risk front-loaded:
 
-- `04-01` 🟡 **Engine layer, no UI.** `EngineSession` contract, real Codex backend
-  over `codex exec --json` + `exec resume`, Claude stub, vault-confined
-  permissions posture, transport decision documented. Verified with a plain
-  `--probe` harness — dependency-free, no Ink.
+- `04-01` ✅ **Engine layer, no UI** (2026-07-26, commit `1f75e0a`).
+  `EngineSession` contract, real Codex backend over `codex exec --json` +
+  `exec resume`, Claude stub, vault-confined permissions posture, transport
+  decision documented. Zero npm dependencies. 8/8 ACs Pass.
+  Verified against real Codex: multi-turn recall on one thread, interrupt with
+  thread retention and no orphan, and an escape test showing writes outside the
+  vault and all network egress denied. Answers as Sherman Abrams through the
+  headless path, confirming the Phase 1 adapter loads.
 - `04-02` ⚪ **Shell UI + wire-up.** Ink app (banner header, chat pane with
   scrollback, status bar: engine · model · user · vault · tokens), Ctrl+C
   interrupt semantics, `bin/sherman`'s final `exec` swapped to the shell,

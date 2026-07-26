@@ -3,56 +3,59 @@
 ## Current Position
 
 Milestone: v0.1 Evan-only local prototype — 🟡 In progress (1 of 4 phases)
-Phase: 4 (Sherman Shell) — APPLY complete for 04-01
-Plan: 04-01 executed. 3/3 tasks DONE, all qualified PASS. AC-1..AC-8 Pass. Commit `1f75e0a`.
-Status: APPLY complete, ready for UNIFY
-Last activity: 2026-07-26 — APPLY of 04-01 (engine layer) complete
+Phase: 4 (Sherman Shell) — 🟡 In progress (1 of 2 plans)
+Plan: 04-01 ✅ loop closed (PLAN→APPLY→UNIFY). 3/3 tasks PASS, AC-1..AC-8 Pass.
+Status: Ready for PLAN of 04-02 (Ink UI + launcher wire-up)
+Last activity: 2026-07-26 — UNIFY closed 04-01
 
 Progress:
 - Milestone v0.1: [██░░░░░░░░] 1/4 phases (chassis done; shell engine layer built, UI next)
 - Phase 1: [██████████] 100% (1/1 plan)
-- Phase 4: [█████░░░░░] 50% (1/2 plans — 04-01 built, 04-02 is the UI)
+- Phase 4: [█████░░░░░] 50% (1/2 plans — 04-01 done, 04-02 is the UI)
 
 ## Loop Position
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ○     [04-01 applied, awaiting UNIFY]
+  ✓        ✓        ✓     [04-01 loop complete — Phase 4 continues with 04-02]
 ```
 
 Phase 1 loop (`01-01`) closed cleanly: 3/3 tasks PASS, AC-1..AC-7 Pass,
 commits `2f59775`, `a1c10a4`.
 
-### 04-01 execution record (for UNIFY)
+**Phase 4 is NOT complete.** The plan/summary file count is 1:1, which a naive
+check reads as a finished phase — but ROADMAP defines Phase 4 as two plans and
+04-02 has not been authored yet. No phase transition was run. ROADMAP is the
+authority on phase scope, not the file count.
 
-| Task | Status | Qualify |
-|---|---|---|
-| 1 — skeleton, config, contract, Claude stub | DONE | PASS |
-| 2 — Codex backend, posture, interrupt | DONE | PASS |
-| 3 — prove boundary, document | DONE | PASS |
+### 04-01 result
 
-**Deviation 1:** `shell/src/engine/codex.js` was created as a skeleton during
-Task 1, though the plan listed it only under Task 2. `selectBackend` imports it,
-so Task 1's own verify could not resolve without it. Task 2 replaced the skeleton
-with the real implementation. No scope change.
+3/3 tasks DONE, all qualified PASS. AC-1..AC-8 Pass. Two mechanical deviations,
+both recorded in `04-01-SUMMARY.md`: a task-ordering artifact (`codex.js` skeleton
+needed in Task 1 for Task 1's own verify to resolve), and an imprecise
+`grep "dangerously"` check in the plan replaced with a precise argv assertion.
 
-**Deviation 2:** Task 2's verify said `grep -rn "dangerously" shell/` must return
-nothing. It returns two hits — both inside the comment that forbids those flags.
-The check was imprecise, not the code. Replaced with a precise one: no
-`--dangerously` outside comments, and the built argv for both turn 1 and resume
-asserted clean. AC-6's actual requirement (no invocation passes the flags) holds.
-
-**Verified empirically, not asserted:** single turn, multi-turn recall on one
-thread (19,200 cached input tokens), interrupt with thread retention and no
-orphan process, and the full boundary test — vault write allowed, `$HOME` write
-denied, network egress denied (curl exit 6).
+Full detail: `.paul/phases/04-sherman-shell/04-01-SUMMARY.md`
 
 ## What works right now
 
 `sherman` is on PATH at `~/.local/bin/sherman`. First run asks two questions
 (provider, name), writes `~/.sherman/config.json`, and opens a session. Every
-run rebuilds `~/.sherman/workspace/CLAUDE.md` from `agent/SYSTEM.md` plus the
-memory blocks and the no-PHI rule, then execs the engine there.
+run rebuilds the adapter in `~/.sherman/workspace/` from `agent/SYSTEM.md` plus
+the memory blocks and the no-PHI rule, then execs the engine there.
+
+**New in 04-01 — a headless Sherman you can talk to:**
+
+```
+node shell/bin/sherman-shell.js --probe "who are you?"
+```
+
+Answers as Sherman Abrams and names its own vault paths. Multi-turn works
+(`--probe "a" "b"`), token counts are reported, Ctrl+C aborts a turn without
+ending the session, and the engine cannot write outside the vault or reach the
+network.
+
+Not yet wired to the `sherman` command — that is 04-02.
 
 `./smoke.sh` — 3 checks, 12 assertions, green.
 
@@ -106,11 +109,25 @@ protected file. Zero conflicts, same as last phase.
 ## Session Continuity
 
 Last session: 2026-07-26
-Stopped at: APPLY complete for 04-01 (Sherman Shell engine layer)
-Next action: Run `/paul:unify .paul/phases/04-sherman-shell/04-01-PLAN.md` to close the loop, then plan 04-02 (Ink UI + launcher wire-up)
-Resume file: `.paul/phases/04-sherman-shell/04-01-PLAN.md`
+Stopped at: 04-01 loop closed — Sherman Shell engine layer built and verified
+Next action: `/paul:plan` for 04-02 — Ink UI (banner header, chat pane, status bar), Ctrl+C semantics, `bin/sherman` exec swap, `sherman --raw`, `smoke.sh` +3 checks
+Resume file: `.paul/phases/04-sherman-shell/04-01-SUMMARY.md`
 
 Try it now: `node shell/bin/sherman-shell.js --probe "who are you?"`
+
+### What 04-02 needs to know
+
+- Build the UI against `shell/README.md`'s event table, not against `codex.js`.
+- Inputs for the status bar already exist: `session.info` gives engine, model,
+  user, vaultPath, threadId; `session.usage.total` gives the token count.
+- First Ctrl+C → `session.interrupt()`; second → clean exit. The session survives
+  an interrupt and resumes the same thread.
+- Render `tool` and `reasoning` events — real turns emit both, and they are the
+  only progressive feedback available given D8.
+- Ship an activity indicator + elapsed timer. Without it the shell feels slower
+  than raw Codex despite being no slower (see Concerns).
+- `bin/sherman` is bash 3.2 (C4): no `${var,,}`, no associative arrays, no
+  `readlink -f`.
 
 ### Engine facts probed at plan time (codex 0.145.0, node v22.23.1)
 
