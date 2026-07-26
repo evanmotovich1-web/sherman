@@ -9,6 +9,7 @@
 // fault, without a UI in the way.
 
 import { readFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,6 +18,26 @@ import { selectBackend } from '../src/engine/index.js';
 import { emptyUsage } from '../src/engine/session.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+// The launcher mints the session id and passes it down, so the id on the launch
+// panel, in the adapter's attribution rule, and on the session log are all the
+// SAME id. The fallback mint (same format) is for running this entry point
+// directly, where there is no launcher and nothing upstream to agree with.
+const SESSION_ID_PATTERN = /^[0-9]{8}_[0-9]{6}_[0-9a-f]{6}$/;
+
+function resolveSessionId() {
+    const fromEnv = process.env.SHERMAN_SESSION_ID;
+    if (typeof fromEnv === 'string' && SESSION_ID_PATTERN.test(fromEnv)) {
+        return fromEnv;
+    }
+
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    const stamp =
+        `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
+        `_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    return `${stamp}_${randomBytes(3).toString('hex')}`;
+}
 
 function version() {
     const pkg = JSON.parse(readFileSync(join(HERE, '..', 'package.json'), 'utf8'));
@@ -160,9 +181,12 @@ async function startShell() {
 
     // exitOnCtrlC:false is what makes the two-stage interrupt possible: Ink would
     // otherwise quit on the first press, before the app could abort the turn.
-    const { waitUntilExit } = render(React.createElement(App, { session }), {
-        exitOnCtrlC: false,
-    });
+    const { waitUntilExit } = render(
+        React.createElement(App, { session, sessionId: resolveSessionId() }),
+        {
+            exitOnCtrlC: false,
+        }
+    );
 
     await waitUntilExit();
     session.dispose();

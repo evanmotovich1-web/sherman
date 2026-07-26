@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — eight checks, no framework.
+# smoke.sh — ten checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
 #      under an overridden HOME, writes a valid config.json.
-#   3. The assembled adapter carries the vault path, the user name, and the
-#      no-PHI rule.
+#   3. The assembled adapter carries the vault path, the user name, the no-PHI
+#      rule, and the session-id memory-attribution rule.
 #   4. The shell entry point launches and exits clean on --version.
 #   5. Backend selection follows config.json's engine field.
 #   6. The --raw path still execs the engine.
 #   7. The launch screen renders at 80 columns without overflowing.
 #   8. The launch screen renders at 200 columns without overflowing.
+#   9. The launch screen's colours are emitted as real ANSI sequences.
+#  10. `sherman update` exits honestly in this repo's state.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -130,6 +132,16 @@ else
         && pass "contains the no-PHI rule" \
         || fail "no-PHI rule missing from adapter"
 
+    # The attribution rule and its session id. The id must be the launcher's
+    # (format YYYYMMDD_HHMMSS_ + 6 hex), not a placeholder.
+    grep -qE '[0-9]{8}_[0-9]{6}_[0-9a-f]{6}' "$ADAPTER" \
+        && pass "contains a session id" \
+        || fail "session id missing from adapter"
+
+    grep -qE "— $SMOKE_USER · [0-9]{8}_[0-9]{6}_[0-9a-f]{6} · [0-9]{4}-[0-9]{2}-[0-9]{2}" "$ADAPTER" \
+        && pass "contains the memory-attribution line" \
+        || fail "memory-attribution line missing from adapter"
+
     grep -qF '{{SHERMAN_BODY}}' "$ADAPTER" \
         && fail "splice token still present -- template copied, not assembled" \
         || pass "splice token replaced"
@@ -234,7 +246,13 @@ const info = {
 const stats = { wiki: 2, shared: 1, private: 0, inbox: 3, ok: true };
 
 const out = renderToString(
-    React.createElement(LaunchScreen, { info, stats, columns: cols }),
+    React.createElement(LaunchScreen, {
+        info,
+        stats,
+        sessionId: '20260726_120000_abc123',
+        columns: cols,
+        rows: 24,
+    }),
     { columns: cols }
 );
 
@@ -299,7 +317,13 @@ const info = {
 const stats = { wiki: 2, shared: 1, private: 0, inbox: 3, ok: true };
 
 const out = renderToString(
-    React.createElement(LaunchScreen, { info, stats, columns: 80 }),
+    React.createElement(LaunchScreen, {
+        info,
+        stats,
+        sessionId: '20260726_120000_abc123',
+        columns: 80,
+        rows: 24,
+    }),
     { columns: 80 }
 );
 
@@ -337,10 +361,34 @@ else
     fi
 fi
 
+# ----------------------------------------------------------------- check 10 --
+# `sherman update` must exit 0 and say so plainly in this repo's real state
+# (a git checkout with no remote). When a remote exists this check starts
+# exercising the real ff-only pull; the env guard below is what keeps that
+# future run from recursing (update runs smoke, smoke calls update).
+
+echo
+echo "10. sherman update exits honestly"
+
+if [ -n "${SHERMAN_UPDATE_RUNNING:-}" ]; then
+    pass "skipped -- running under sherman update"
+else
+    update_out=$(./bin/sherman update 2>&1)
+    update_status=$?
+
+    if [ "$update_status" -ne 0 ]; then
+        fail "sherman update exited $update_status: $(printf '%s' "$update_out" | head -2)"
+    elif printf '%s' "$update_out" | grep -q "no update source configured\|Updated:\|not a git checkout"; then
+        pass "exit 0 with an honest status ($(printf '%s' "$update_out" | head -1))"
+    else
+        fail "exit 0 but unrecognised output: $(printf '%s' "$update_out" | head -2)"
+    fi
+fi
+
 # -------------------------------------------------------------------- result --
 echo
 if [ "$FAILURES" -eq 0 ]; then
-    echo "9 checks, all green."
+    echo "10 checks, all green."
     echo
     exit 0
 fi

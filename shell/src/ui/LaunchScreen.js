@@ -1,26 +1,30 @@
 // The first frame.
 //
-// Wordmark, one bordered panel, one welcome line. It answers "what is this and
-// what does it know" before the user types anything.
+// Wordmark deck, identity block, one bordered panel with the build stamped into
+// its top border, one welcome line — spaced to fill the viewport on entry. It
+// answers "what is this, whose is it, and what does it know" before the user
+// types anything.
 //
 // The governing rule is that every value on it is true. Nothing here is
 // hardcoded copy standing in for a real number: the counts come from a readdir,
-// the identity comes from session.info, and the Skills section is absent rather
-// than empty because there are no skills yet. When the panel says zero it is
-// because the answer is zero.
+// the identity comes from session.info, the session id from the launcher, the
+// version from package.json, the sha from git — and when a source is absent
+// (no git on a future employee install), its segment is OMITTED, never faked.
 //
 // Like the banner it replaces, this commits once through <Static> and scrolls
-// away (D12/D13). It is a bigger opener, not a pinned one.
+// away (D12/D13). "Fills the viewport" means vertical spacing on the primary
+// screen — never the alternate screen, which would destroy scrollback.
 
 import React from 'react';
 import { Text, Box, useWindowSize } from 'ink';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { color } from './theme.js';
-import { Wordmark } from './Wordmark.js';
-import { Mark } from './Mark.js';
+import { Wordmark, wordmarkRows } from './Wordmark.js';
+import { Mark, MARK_ROWS } from './Mark.js';
 
 // Resolved from THIS file, never process.cwd() — at runtime the cwd is the
 // engine's workspace, not the repo. Same reasoning as Header.js.
@@ -31,9 +35,14 @@ const SKILLS_DIR = join(REPO_ROOT, 'skills');
 // panel stretched across the whole screen.
 const MAX_PANEL = 76;
 
-// Holds the mark (10 wide) plus a label/value pair without crushing either.
+// Holds the mark (12 wide) plus a label/value pair without crushing either.
 const LEFT_COLUMN = 26;
 const LABEL = 9;
+
+// Rows the pinned region below the transcript occupies when idle: composer,
+// its top margin, compact header, status bar. Part of the height budget so
+// "fills the viewport" includes the chrome the user actually sees.
+const CHROME_ROWS = 4;
 
 /**
  * Keep the tail of a path, cutting only at separators.
@@ -42,10 +51,6 @@ const LABEL = 9;
  * `…de/sherman/vault` — a fragment of a directory name that reads as corruption
  * rather than as a path. Dropping whole segments gives `…/sherman/vault`, which
  * is the point of showing the tail at all.
- *
- * Local rather than shared: StatusBar is verified and out of scope for this
- * plan, and its character-exact behaviour is right for a status line that must
- * hit a total width.
  */
 function truncatePath(value, max) {
     if (typeof value !== 'string') return '';
@@ -71,6 +76,78 @@ function plural(n, singular, pluralForm) {
     return `${n} ${n === 1 ? singular : pluralForm ?? `${singular}s`}`;
 }
 
+// ------------------------------------------------------------- build stamp --
+// Read once per process: the values cannot change mid-session, and <Static>
+// children may render more than once while committing.
+let cachedBuild;
+
+function readBuildInfo() {
+    if (cachedBuild) return cachedBuild;
+
+    let version = null;
+    let sha = null;
+    let dirty = 0;
+
+    try {
+        version =
+            JSON.parse(readFileSync(join(REPO_ROOT, 'shell', 'package.json'), 'utf8'))
+                .version ?? null;
+    } catch {
+        version = null;
+    }
+
+    // Guarded: on a machine without git, or an install that is not a checkout,
+    // these throw and the segments are simply omitted (never blank separators).
+    try {
+        sha = execFileSync('git', ['-C', REPO_ROOT, 'rev-parse', '--short', 'HEAD'], {
+            stdio: ['ignore', 'pipe', 'ignore'],
+        })
+            .toString()
+            .trim();
+        if (sha) {
+            dirty = execFileSync('git', ['-C', REPO_ROOT, 'status', '--porcelain'], {
+                stdio: ['ignore', 'pipe', 'ignore'],
+            })
+                .toString()
+                .split('\n')
+                .filter(Boolean).length;
+        }
+    } catch {
+        sha = null;
+        dirty = 0;
+    }
+
+    cachedBuild = { version, sha, dirty };
+    return cachedBuild;
+}
+
+/**
+ * The panel's top border with the build stamped into it:
+ * ╭─ Sherman Abrams v0.2.0 · abc1234 · +2 ────╮
+ *
+ * Composed to exactly `width` visual columns and paired with borderTop:false
+ * on the box below, so the two read as one border (probed at plan time).
+ */
+function VersionBorder({ width }) {
+    const { version, sha, dirty } = readBuildInfo();
+
+    let label = 'Sherman Abrams';
+    if (version) label += ` v${version}`;
+    if (sha) label += ` · ${sha}`;
+    if (sha && dirty > 0) label += ` · +${dirty}`;
+
+    const text = ` ${label} `;
+    const fill = Math.max(0, width - 3 - [...text].length);
+
+    return React.createElement(
+        Text,
+        { wrap: 'truncate' },
+        React.createElement(Text, { color: color.frame }, '╭─'),
+        React.createElement(Text, { color: color.muted }, text),
+        React.createElement(Text, { color: color.frame }, '─'.repeat(fill) + '╮')
+    );
+}
+
 /** `label   value`, dimmed, on one truncated line. */
 function Field({ label, value }) {
     return React.createElement(
@@ -82,6 +159,29 @@ function Field({ label, value }) {
             React.createElement(Text, { color: color.muted }, label)
         ),
         React.createElement(Text, { color: color.muted, wrap: 'truncate' }, value)
+    );
+}
+
+/**
+ * Under the wordmark, before the panel: what is running and where. Model and
+ * company neutral-white on purpose — the wordmark above carries the colour.
+ */
+function IdentityBlock({ info, sessionId, width }) {
+    return React.createElement(
+        Box,
+        { flexDirection: 'column' },
+        React.createElement(
+            Text,
+            { wrap: 'truncate' },
+            React.createElement(Text, { color: color.user }, info.model),
+            React.createElement(Text, { color: color.muted }, ' · '),
+            React.createElement(Text, { color: color.user }, 'Sherman Abrams Labs')
+        ),
+        React.createElement(Field, {
+            label: 'folder',
+            value: truncatePath(info.vaultPath, Math.max(1, width - LABEL)),
+        }),
+        React.createElement(Field, { label: 'session', value: sessionId ?? '—' })
     );
 }
 
@@ -100,21 +200,17 @@ function Section({ title, lines }) {
     );
 }
 
-/** Left column: the mark, then who and where. */
+/** Left column: the mark, then who is signed in. Where and which session moved
+ *  up to the identity block. */
 function Identity({ info }) {
     return React.createElement(
         Box,
         { width: LEFT_COLUMN, flexShrink: 0, flexDirection: 'column' },
         React.createElement(Mark),
-        React.createElement(Box, { marginTop: 1, flexDirection: 'column' },
-            React.createElement(Field, { label: 'user', value: info.user }),
-            React.createElement(Field, {
-                label: 'vault',
-                value: truncatePath(info.vaultPath, LEFT_COLUMN - LABEL),
-            }),
-            // threadId is null until the engine reports one, so at launch this is
-            // always 'new'. That is the honest value, not a placeholder.
-            React.createElement(Field, { label: 'session', value: info.threadId ?? 'new' })
+        React.createElement(
+            Box,
+            { marginTop: 1, flexDirection: 'column' },
+            React.createElement(Field, { label: 'user', value: info.user })
         )
     );
 }
@@ -169,52 +265,87 @@ function welcome(stats) {
 }
 
 /**
- * @param {{info: object, stats: import('../vault.js').VaultStats, columns?: number}} props
- *
- * `columns` overrides the measured width. Nothing passes it live; it exists
- * because `useWindowSize()` reports a fixed 80x24 under `renderToString`, so
- * without it neither the narrow fallback nor the wide case could be tested off
- * a TTY. Resolved once here and passed down, so the wordmark and the panel can
- * never disagree about how wide the terminal is.
+ * Rows this screen occupies, derived from the same constants the components
+ * render with — never re-measured, never guessed. Drift here costs a line of
+ * filler, not a wrapped panel, so derived arithmetic is the right tool.
  */
-export function LaunchScreen({ info, stats, columns }) {
-    const measured = useWindowSize().columns;
-    const width = typeof columns === 'number' ? columns : measured;
+function estimateRows(width, hasSkills) {
+    const identity = 3;
+    const left = MARK_ROWS + 1 + 1; // mark, margin, user
+    const right = 3 + 1 + 3 + (hasSkills ? 3 : 0); // vault, gap, keys, skills
+    const inner = Math.max(left, right) + 1 + 1; // + footer margin + footer
+    const panel = 1 + inner + 1; // version border + body + bottom border
+    // wordmark, gap, identity, gap, panel, gap, welcome
+    return wordmarkRows(width) + 1 + identity + 1 + panel + 1 + 1;
+}
+
+/**
+ * @param {{info: object, stats: import('../vault.js').VaultStats, sessionId?: string, columns?: number, rows?: number}} props
+ *
+ * `columns` and `rows` override the measured size. Live, nothing passes them;
+ * they exist because `useWindowSize()` reports a fixed 80x24 under
+ * `renderToString` (D17), so neither the narrow fallback nor the height math
+ * could be tested off a TTY without injection. Resolved once here and passed
+ * down, so no two parts of the screen can disagree about the terminal.
+ */
+export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
+    const measured = useWindowSize();
+    const width = typeof columns === 'number' ? columns : measured.columns;
+    const height = typeof rows === 'number' ? rows : measured.rows;
 
     // Never a constant. A fixed width overflows the moment the terminal is
     // narrower than it, and a spilled border is the exact "wrapped garbage" this
     // screen must not produce.
     const panel = Math.min(width - 2, MAX_PANEL);
 
+    // The opener owns the first viewport: whatever the content does not use,
+    // the filler hands to the margin so the composer region sits at the bottom
+    // of the screen on entry. On small terminals this clamps to the old
+    // one-line gap and the screen simply scrolls, exactly as before.
+    const filler = Math.max(
+        1,
+        height - estimateRows(width, existsSync(SKILLS_DIR)) - CHROME_ROWS
+    );
+
     return React.createElement(
         Box,
-        { flexDirection: 'column', marginBottom: 1 },
+        { flexDirection: 'column', marginBottom: filler },
         React.createElement(Wordmark, { columns: width }),
         React.createElement(
             Box,
-            {
-                marginTop: 1,
-                width: panel,
-                borderStyle: 'round',
-                // Deep red, not the accent: the wordmark and mark carry the
-                // colour on this screen, and the frame must not compete.
-                borderColor: color.frame,
-                paddingX: 1,
-                flexDirection: 'column',
-            },
+            { marginTop: 1 },
+            React.createElement(IdentityBlock, { info, sessionId, width: panel })
+        ),
+        React.createElement(
+            Box,
+            { marginTop: 1, width: panel, flexDirection: 'column' },
+            React.createElement(VersionBorder, { width: panel }),
             React.createElement(
                 Box,
-                { flexDirection: 'row' },
-                React.createElement(Identity, { info }),
-                React.createElement(Knowledge, { stats })
-            ),
-            React.createElement(
-                Box,
-                { marginTop: 1 },
+                {
+                    width: panel,
+                    borderStyle: 'round',
+                    borderTop: false,
+                    // Deep red, not the accent: the wordmark and mark carry the
+                    // colour on this screen, and the frame must not compete.
+                    borderColor: color.frame,
+                    paddingX: 1,
+                    flexDirection: 'column',
+                },
                 React.createElement(
-                    Text,
-                    { color: color.faint, dimColor: true, wrap: 'truncate' },
-                    `${info.engine} · ${info.model} · ctrl+c to exit`
+                    Box,
+                    { flexDirection: 'row' },
+                    React.createElement(Identity, { info }),
+                    React.createElement(Knowledge, { stats })
+                ),
+                React.createElement(
+                    Box,
+                    { marginTop: 1 },
+                    React.createElement(
+                        Text,
+                        { color: color.faint, dimColor: true, wrap: 'truncate' },
+                        'ctrl+c to exit'
+                    )
                 )
             )
         ),

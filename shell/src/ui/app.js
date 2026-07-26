@@ -15,6 +15,7 @@ import { Composer } from './Composer.js';
 import { Thinking } from './Thinking.js';
 import { emptyUsage } from '../engine/session.js';
 import { readVaultStats } from '../vault.js';
+import { createSessionLog } from '../sessionlog.js';
 
 // Monotonic ids. <Static> needs a stable key per item, and array index is not
 // one — Ink would re-emit rows when the array grows.
@@ -22,10 +23,14 @@ let seq = 0;
 const nextId = () => `i${seq++}`;
 
 /**
- * @param {{session: import('../engine/session.js').EngineSession}} props
+ * @param {{session: import('../engine/session.js').EngineSession, sessionId: string}} props
  */
-export function App({ session }) {
+export function App({ session, sessionId }) {
     const { exit } = useApp();
+
+    // One log per session, created once. useState, not useRef: the initialiser
+    // contract ("runs once") is the same one the launch item already relies on.
+    const [log] = useState(() => createSessionLog(sessionId));
 
     // The launch screen rides in as the first committed item so it stays above the
     // first message and only ever prints once (D12/D13 — one <Static> for
@@ -41,6 +46,7 @@ export function App({ session }) {
             id: nextId(),
             kind: 'launch',
             info: session.info,
+            sessionId,
             stats: readVaultStats({
                 vaultPath: session.info.vaultPath,
                 user: session.info.user,
@@ -68,6 +74,7 @@ export function App({ session }) {
     const submit = useCallback(
         async (text) => {
             commit('user', text);
+            log.append('user', text);
             // Set busy BEFORE awaiting anything, so the indicator mounts on the
             // next render rather than waiting for the engine's first event. The
             // dead time at the start of a turn is exactly what it exists to cover.
@@ -82,6 +89,7 @@ export function App({ session }) {
 
                         case 'message':
                             commit('message', event.text);
+                            log.append('sherman', event.text);
                             break;
 
                         // Committed dim so the transcript shows the work that
@@ -124,7 +132,7 @@ export function App({ session }) {
                 setInfo(session.info);
             }
         },
-        [commit, session, setBusyBoth]
+        [commit, session, setBusyBoth, log]
     );
 
     // Two-stage Ctrl+C, proven in a pty at plan time. Ink is started with

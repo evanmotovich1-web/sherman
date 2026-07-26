@@ -239,13 +239,61 @@ config_get() {
     fi
 }
 
+# ------------------------------------------------------------------- update --
+shell_version() {
+    # package.json's formatting is machine-stable; sed keeps this path working
+    # on a machine with no jq at all.
+    sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        "$ROOT/shell/package.json" 2>/dev/null | head -1
+}
+
+# `sherman update` pulls this checkout forward, and says so honestly when it
+# cannot: no remote means no update source, and a diverged tree is a person's
+# merge to make, never this script's. It must work with no engine installed
+# and no config written, which is why it dispatches before everything else.
+run_update() {
+    if ! command -v git >/dev/null 2>&1 \
+        || ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+        echo "This install is not a git checkout, so it cannot self-update."
+        echo "Updates come from the installer: $ROOT/install.sh"
+        exit 0
+    fi
+
+    if [ -z "$(git -C "$ROOT" remote 2>/dev/null)" ]; then
+        echo "Sherman Abrams v$(shell_version) — no update source configured."
+        exit 0
+    fi
+
+    old_version=$(shell_version)
+    old_head=$(git -C "$ROOT" rev-parse HEAD)
+
+    if ! git -C "$ROOT" pull --ff-only; then
+        echo >&2
+        echo "manual update needed — this checkout cannot fast-forward onto its remote." >&2
+        exit 1
+    fi
+
+    # npm only when the pull actually changed the shell's manifest; anything
+    # else would re-resolve dependencies on every no-op update.
+    if ! git -C "$ROOT" diff --quiet "$old_head" HEAD -- shell/package.json; then
+        npm install --prefix "$ROOT/shell"
+    fi
+
+    # smoke calls `sherman update`, and update runs smoke after a real pull.
+    # The env guard is what keeps that pair from recursing forever.
+    SHERMAN_UPDATE_RUNNING=1 "$ROOT/smoke.sh"
+
+    echo "Updated: v$old_version -> v$(shell_version)"
+    exit 0
+}
+
 # -------------------------------------------------------- adapter assembly --
 # One body, generated here, spliced into whichever engine wrapper applies. The
 # persona and the memory blocks exist in exactly one place each -- hand-copying
 # them into two adapters is how the either-engine promise decays into
 # Claude-only.
 assemble_adapter() {
-    engine="$1"; user="$2"; vault="$3"
+    engine="$1"; user="$2"; vault="$3"; session="$4"; sdate="$5"
 
     case "$engine" in
         claude) template="$ROOT/adapters/claude-code/CLAUDE.md"; out="$WORKSPACE/CLAUDE.md" ;;
@@ -303,6 +351,13 @@ Personal context for $user goes there and **NOWHERE else**. Never write $user's
 personal context into the shared knowledge base, and never read another
 person's private memory directory.
 
+# Memory attribution
+
+Every fact file you write to shared or private memory ends with this exact
+line, so any fact can be traced to who learned it and when:
+
+— $user · $session · $sdate
+
 ---
 
 # HARD RULE — restated, because it is the floor
@@ -334,6 +389,12 @@ BODY
 }
 
 # --------------------------------------------------------------------- main --
+# `update` is a subcommand, recognised first: it needs no engine, no config and
+# no session, so it runs before any of them are checked or created.
+if [ "${1:-}" = "update" ]; then
+    run_update
+fi
+
 # --raw is recognised as the FIRST argument only, and stripped before the engine
 # sees the rest. Everything else passes straight through, unchanged.
 RAW=0
@@ -365,11 +426,19 @@ fi
 
 require_engine "$ENGINE"
 
+# One id per launch, minted HERE so the same id reaches all three places it was
+# promised: the adapter's attribution rule (assembled below), both handoffs
+# (via the environment), and the shell's launch panel and session log. Per-launch
+# state only -- it is never written to config.json.
+SESSION_ID="$(date +%Y%m%d_%H%M%S)_$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')"
+SESSION_DATE="$(date +%Y-%m-%d)"
+export SHERMAN_SESSION_ID="$SESSION_ID"
+
 # Idempotent: keeps adapter paths resolvable even if the vault moved or was
 # cleared. Directories only -- the vault's contents are not this script's job.
 mkdir -p "$VAULT/wiki" "$VAULT/memory/shared" "$VAULT/memory/private/$USER_SLUG"
 
-assemble_adapter "$ENGINE" "$USER_SLUG" "$VAULT"
+assemble_adapter "$ENGINE" "$USER_SLUG" "$VAULT" "$SESSION_ID" "$SESSION_DATE"
 
 # Either handoff runs from the workspace, so the engine's cwd is identical in
 # both modes -- that is what makes it pick up the adapter we just assembled.

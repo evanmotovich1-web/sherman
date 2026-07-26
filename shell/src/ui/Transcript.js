@@ -37,7 +37,11 @@ function Row({ label, labelColor, children, bold }) {
 function Item({ item }) {
     switch (item.kind) {
         case 'launch':
-            return React.createElement(LaunchScreen, { info: item.info, stats: item.stats });
+            return React.createElement(LaunchScreen, {
+                info: item.info,
+                stats: item.stats,
+                sessionId: item.sessionId,
+            });
 
         // Superseded by 'launch', kept deliberately. It costs one line, and it
         // means a stale or hand-constructed item kind can never blank the opener.

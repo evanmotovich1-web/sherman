@@ -1,4 +1,4 @@
-// The SHERMAN wordmark, in two sizes, generated from one glyph table.
+// The SHERMAN AGENT wordmark, in two sizes, generated from one glyph table.
 //
 // Why generated rather than read from logo/banner.ans:
 //
@@ -9,6 +9,11 @@
 //      get the fallback would be both fragile and pointless.
 //
 // The letterforms are the same shapes banner.ans uses. Only the rendering is new.
+//
+// Since Phase 6 the mark is a two-deck lockup: SHERMAN carries the lit/ramp/
+// shadow treatment, and AGENT sits beneath it as a sub-deck — small glyphs on
+// the large form, a spaced text tag on the narrow fallback — right-aligned so
+// the two decks read as one retro lockup rather than two words.
 
 import React from 'react';
 import { Text, Box, useWindowSize } from 'ink';
@@ -24,11 +29,13 @@ const LARGE = {
     M: ['█     █', '██   ██', '█ ███ █', '█     █', '█     █'],
     A: [' █████ ', '█     █', '███████', '█     █', '█     █'],
     N: ['█     █', '██    █', '█  █  █', '█    ██', '█     █'],
+    G: ['███████', '█      ', '█  ████', '█     █', '███████'],
+    T: ['███████', '   █   ', '   █   ', '   █   ', '   █   '],
 };
 
-// 5 columns per glyph: 5*7 + 6 = 41 columns. Pixel-identical to the wordmark
-// already in logo/banner.ans, so the fallback looks like a smaller Sherman
-// rather than a different one.
+// 5 columns per glyph: 5*7 + 6 = 41 columns for SHERMAN. Pixel-identical to
+// the wordmark already in logo/banner.ans, so the fallback looks like a smaller
+// Sherman rather than a different one.
 const SMALL = {
     S: ['█████', '█    ', '█████', '    █', '█████'],
     H: ['█   █', '█   █', '█████', '█   █', '█   █'],
@@ -37,9 +44,12 @@ const SMALL = {
     M: ['█   █', '██ ██', '█ █ █', '█   █', '█   █'],
     A: [' ███ ', '█   █', '█████', '█   █', '█   █'],
     N: ['█   █', '██  █', '█ █ █', '█  ██', '█   █'],
+    G: ['█████', '█    ', '█ ███', '█   █', '█████'],
+    T: ['█████', '  █  ', '  █  ', '  █  ', '  █  '],
 };
 
 const WORD = 'SHERMAN';
+const SUB = 'AGENT';
 
 // Body rows, top to bottom. Bright at the top, darkening downward — this is the
 // gradient that makes the letters read as lit from above.
@@ -49,13 +59,28 @@ const BODY = [ramp.bright, ramp.bright, ramp.mid, ramp.deep, ramp.deep];
 export const LARGE_COLUMNS = 55;
 export const SMALL_COLUMNS = 41;
 
+// AGENT in the 5-wide table: 5*5 + 4 gutters = 29 columns, right-aligned
+// under the 55-column deck above it.
+const SUB_COLUMNS = 29;
+const SUB_PAD_LARGE = LARGE_COLUMNS - SUB_COLUMNS;
+
+// The narrow tag: letters spaced out so 5 glyphs still read as a deck.
+const SUB_TAG = SUB.split('').join(' ');
+const SUB_PAD_SMALL = SMALL_COLUMNS - SUB_TAG.length;
+
+/** Rim + 5 body rows + shadow + gap + 5 AGENT rows. */
+export const LARGE_ROWS = 13;
+/** 5 body rows + the tag line. */
+export const SMALL_ROWS = 6;
+
 // 55 plus a little air. Choosing the threshold at exactly 55 would put the mark
 // flush against both edges of the terminal, which looks like an accident.
 const LARGE_MIN_COLUMNS = 58;
 
-/** One row of the word, letters joined by a one-column gutter. */
-function row(table, r) {
-    return WORD.split('')
+/** One row of a word, letters joined by a one-column gutter. */
+function row(table, word, r) {
+    return word
+        .split('')
         .map((ch) => table[ch][r])
         .join(' ');
 }
@@ -79,24 +104,33 @@ function Line({ tint, children }) {
     return React.createElement(Text, { color: tint, wrap: 'truncate' }, children);
 }
 
-/** 55 x 7. Lit rim, five body rows on the ramp, shadow. */
+/** 55 x 13. Lit rim, SHERMAN on the ramp, shadow, then the AGENT sub-deck. */
 function Large() {
-    const top = row(LARGE, 0);
-    const bottom = row(LARGE, 4);
+    const top = row(LARGE, WORD, 0);
+    const bottom = row(LARGE, WORD, 4);
+    const pad = ' '.repeat(SUB_PAD_LARGE);
 
     return React.createElement(
         Box,
         { flexDirection: 'column' },
         React.createElement(Line, { key: 'lit', tint: ramp.lit }, edge(top, '▄')),
         ...BODY.map((tint, r) =>
-            React.createElement(Line, { key: `b${r}`, tint }, row(LARGE, r))
+            React.createElement(Line, { key: `b${r}`, tint }, row(LARGE, WORD, r))
         ),
-        React.createElement(Line, { key: 'shadow', tint: ramp.shadow }, edge(bottom, '▄'))
+        React.createElement(Line, { key: 'shadow', tint: ramp.shadow }, edge(bottom, '▄')),
+        React.createElement(Text, { key: 'gap' }, ' '),
+        ...[0, 1, 2, 3, 4].map((r) =>
+            React.createElement(
+                Line,
+                { key: `a${r}`, tint: ramp.mid },
+                pad + row(SMALL, SUB, r)
+            )
+        )
     );
 }
 
 /**
- * 41 x 5, flat house red — the current mark, unchanged.
+ * 41 x 6, flat house red with the AGENT tag beneath.
  *
  * Deliberately NOT shaded. The ramp needs seven rows to read as depth; applied
  * to five it just looks like an uneven colour, which is worse than flat.
@@ -106,7 +140,12 @@ function Small() {
         Box,
         { flexDirection: 'column' },
         ...[0, 1, 2, 3, 4].map((r) =>
-            React.createElement(Line, { key: `s${r}`, tint: color.accent }, row(SMALL, r))
+            React.createElement(Line, { key: `s${r}`, tint: color.accent }, row(SMALL, WORD, r))
+        ),
+        React.createElement(
+            Line,
+            { key: 'tag', tint: ramp.mid },
+            ' '.repeat(SUB_PAD_SMALL) + SUB_TAG
         )
     );
 }
@@ -131,4 +170,9 @@ export function Wordmark({ columns }) {
     return width >= LARGE_MIN_COLUMNS
         ? React.createElement(Large)
         : React.createElement(Small);
+}
+
+/** Rows the chosen form will occupy — the launch screen's height math needs it. */
+export function wordmarkRows(width) {
+    return width >= LARGE_MIN_COLUMNS ? LARGE_ROWS : SMALL_ROWS;
 }
