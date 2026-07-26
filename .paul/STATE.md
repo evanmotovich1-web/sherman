@@ -3,25 +3,49 @@
 ## Current Position
 
 Milestone: v0.1 Evan-only local prototype — 🟡 In progress (1 of 4 phases)
-Phase: 4 (Sherman Shell) — Planning
-Plan: 04-01 created, awaiting approval
-Status: PLAN created, ready for APPLY
-Last activity: 2026-07-26 — Created `.paul/phases/04-sherman-shell/04-01-PLAN.md`
+Phase: 4 (Sherman Shell) — APPLY complete for 04-01
+Plan: 04-01 executed. 3/3 tasks DONE, all qualified PASS. AC-1..AC-8 Pass. Commit `1f75e0a`.
+Status: APPLY complete, ready for UNIFY
+Last activity: 2026-07-26 — APPLY of 04-01 (engine layer) complete
 
 Progress:
-- Milestone v0.1: [██░░░░░░░░] 1/4 phases (chassis done; shell planned, vault seed landing, skills blocked)
+- Milestone v0.1: [██░░░░░░░░] 1/4 phases (chassis done; shell engine layer built, UI next)
 - Phase 1: [██████████] 100% (1/1 plan)
-- Phase 4: [░░░░░░░░░░] 0% (0/2 plans)
+- Phase 4: [█████░░░░░] 50% (1/2 plans — 04-01 built, 04-02 is the UI)
 
 ## Loop Position
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ○        ○     [04-01 plan created, awaiting approval]
+  ✓        ✓        ○     [04-01 applied, awaiting UNIFY]
 ```
 
 Phase 1 loop (`01-01`) closed cleanly: 3/3 tasks PASS, AC-1..AC-7 Pass,
 commits `2f59775`, `a1c10a4`.
+
+### 04-01 execution record (for UNIFY)
+
+| Task | Status | Qualify |
+|---|---|---|
+| 1 — skeleton, config, contract, Claude stub | DONE | PASS |
+| 2 — Codex backend, posture, interrupt | DONE | PASS |
+| 3 — prove boundary, document | DONE | PASS |
+
+**Deviation 1:** `shell/src/engine/codex.js` was created as a skeleton during
+Task 1, though the plan listed it only under Task 2. `selectBackend` imports it,
+so Task 1's own verify could not resolve without it. Task 2 replaced the skeleton
+with the real implementation. No scope change.
+
+**Deviation 2:** Task 2's verify said `grep -rn "dangerously" shell/` must return
+nothing. It returns two hits — both inside the comment that forbids those flags.
+The check was imprecise, not the code. Replaced with a precise one: no
+`--dangerously` outside comments, and the built argv for both turn 1 and resume
+asserted clean. AC-6's actual requirement (no invocation passes the flags) holds.
+
+**Verified empirically, not asserted:** single turn, multi-turn recall on one
+thread (19,200 cached input tokens), interrupt with thread retention and no
+orphan process, and the full boundary test — vault write allowed, `$HOME` write
+denied, network egress denied (curl exit 6).
 
 ## What works right now
 
@@ -68,17 +92,25 @@ that session commits them.
 
 ## Git State
 
-Last commit: `a1c10a4`
+Last commit: `1f75e0a` (engine layer). Plan committed as `7a9b4dd`.
 Branch: `main`
 Remotes: none configured — nothing pushed, by design (Evan pushes)
-Untracked: `logo/`, `vault/` (parallel Codex session's to commit)
+Uncommitted: `logo/banner.ans`, `logo/banner.txt` (parallel Codex session is
+mid-redesign of the mark — left alone deliberately), plus untracked
+`graphify-out/` which neither track created as deliverable.
+
+The parallel Codex session committed `4e2bca4` (root AGENTS.md, DESIGN.md,
+CLAUDE.md, docs/) during this APPLY. Checked: no overlap with `shell/` or any
+protected file. Zero conflicts, same as last phase.
 
 ## Session Continuity
 
 Last session: 2026-07-26
-Stopped at: Plan 04-01 created (Sherman Shell — engine layer)
-Next action: Review and approve the plan, then run `/paul:apply .paul/phases/04-sherman-shell/04-01-PLAN.md`
+Stopped at: APPLY complete for 04-01 (Sherman Shell engine layer)
+Next action: Run `/paul:unify .paul/phases/04-sherman-shell/04-01-PLAN.md` to close the loop, then plan 04-02 (Ink UI + launcher wire-up)
 Resume file: `.paul/phases/04-sherman-shell/04-01-PLAN.md`
+
+Try it now: `node shell/bin/sherman-shell.js --probe "who are you?"`
 
 ### Engine facts probed at plan time (codex 0.145.0, node v22.23.1)
 
