@@ -18,7 +18,31 @@ echo
 # ------------------------------------------------------------ make runnable --
 chmod +x "$ROOT/bin/sherman"
 [ -f "$ROOT/smoke.sh" ] && chmod +x "$ROOT/smoke.sh"
+[ -f "$ROOT/shell/bin/sherman-shell.js" ] && chmod +x "$ROOT/shell/bin/sherman-shell.js"
 echo "  bin/sherman is executable"
+
+# --------------------------------------------------------- shell dependencies --
+# The Sherman Shell is a Node app (Ink). `npm install` is idempotent, so this
+# stays safe to re-run -- R7.
+#
+# A missing npm is a warning, not a failure: the PATH symlink below is still
+# worth creating, and `sherman --raw` works with no Node at all. Aborting here
+# would leave the user with no `sherman` command over an optional dependency.
+if [ -f "$ROOT/shell/package.json" ]; then
+    if command -v npm >/dev/null 2>&1; then
+        echo "  installing shell dependencies (npm install)"
+        if (cd "$ROOT/shell" && npm install --silent >/dev/null 2>&1); then
+            echo "  shell dependencies installed"
+        else
+            echo "  NOTE: npm install failed. The shell will not start."
+            echo "        Run it by hand:  cd $ROOT/shell && npm install"
+            echo "        Until then:      sherman --raw"
+        fi
+    else
+        echo "  NOTE: npm not found, so shell dependencies were not installed."
+        echo "        The shell needs Node 22+ and npm. Until then: sherman --raw"
+    fi
+fi
 
 # ------------------------------------------------------------- pick a PATH --
 # Priority order. First usable candidate wins.

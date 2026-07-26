@@ -3,9 +3,13 @@
 # sherman — launch Sherman Abrams, the company agent.
 #
 # Sherman is not its own engine. It is a branded, memory-wired layer over
-# whichever coding CLI you already have. This script shows the launch screen,
-# runs the one-time wizard if needed, assembles the engine adapter fresh from
-# the repo, and execs the engine.
+# whichever coding CLI you already have. This script runs the one-time wizard if
+# needed, assembles the engine adapter fresh from the repo, and hands off.
+#
+# Two ways to hand off:
+#
+#   sherman         the Sherman Shell — our UI, engine headless underneath
+#   sherman --raw   exec the engine directly, its own chrome, for debugging
 #
 # Target shell: macOS system bash 3.2. No ${var,,}, no associative arrays,
 # no readlink -f.
@@ -86,6 +90,80 @@ require_engine() {
         echo "Then run sherman again." >&2
         exit 1
     fi
+}
+
+# --------------------------------------------------------------------- node --
+# The shell is a Node app. If Node is missing or too old we say so and stop --
+# we do NOT quietly exec the engine instead. A silent fallback would drop you
+# into the engine's own chrome while you believed you were in Sherman, which is
+# the exact problem the shell exists to solve. --raw stays available; choosing
+# it should be your decision, not a surprise.
+require_node() {
+    if ! command -v node >/dev/null 2>&1; then
+        echo >&2
+        echo "The Sherman Shell needs Node.js 22 or newer, and node is not on your PATH." >&2
+        echo >&2
+        echo "Install Node 22+, then run sherman again." >&2
+        echo >&2
+        echo "To keep working without the shell in the meantime:" >&2
+        echo >&2
+        echo "    sherman --raw" >&2
+        echo >&2
+        exit 1
+    fi
+
+    # `node --version` prints like "v22.23.1". Strip the v, take the major.
+    # Cut and sed, not bash arithmetic on a string -- bash 3.2 would happily
+    # evaluate "v22" as 0 and silently pass a version check.
+    node_version=$(node --version 2>/dev/null)
+    node_major=$(printf '%s' "$node_version" | sed 's/^v//' | cut -d. -f1)
+
+    case "$node_major" in
+        ''|*[!0-9]*)
+            echo >&2
+            echo "Could not read a Node.js version from: $node_version" >&2
+            echo "The Sherman Shell needs Node 22 or newer. Try: sherman --raw" >&2
+            echo >&2
+            exit 1
+            ;;
+    esac
+
+    if [ "$node_major" -lt 22 ]; then
+        echo >&2
+        echo "The Sherman Shell needs Node.js 22 or newer. Found $node_version." >&2
+        echo >&2
+        echo "Upgrade Node, then run sherman again." >&2
+        echo >&2
+        echo "To keep working without the shell in the meantime:" >&2
+        echo >&2
+        echo "    sherman --raw" >&2
+        echo >&2
+        exit 1
+    fi
+
+    if [ ! -d "$ROOT/shell/node_modules" ]; then
+        echo >&2
+        echo "The Sherman Shell's dependencies are not installed." >&2
+        echo >&2
+        echo "Run:" >&2
+        echo >&2
+        echo "    $ROOT/install.sh" >&2
+        echo >&2
+        echo "Or work without the shell for now:" >&2
+        echo >&2
+        echo "    sherman --raw" >&2
+        echo >&2
+        exit 1
+    fi
+}
+
+# A compact stand-in for the banner. Used only when the wizard runs on the way
+# into the shell: the shell draws the full mark itself, and printing it here too
+# would show it twice on a first run.
+wizard_header() {
+    echo
+    echo "  SHERMAN ABRAMS"
+    echo "  Sherman Abrams Labs — company agent"
 }
 
 # ------------------------------------------------------------------- wizard --
@@ -256,9 +334,25 @@ BODY
 }
 
 # --------------------------------------------------------------------- main --
-launch_screen
+# --raw is recognised as the FIRST argument only, and stripped before the engine
+# sees the rest. Everything else passes straight through, unchanged.
+RAW=0
+if [ "${1:-}" = "--raw" ]; then
+    RAW=1
+    shift
+fi
 
-[ -f "$CONFIG" ] || run_wizard
+# In raw mode nothing downstream draws our brand, so the launcher does it. In
+# shell mode the shell owns the screen and renders the mark itself -- doing it
+# here as well would print the banner twice on every launch.
+if [ "$RAW" -eq 1 ]; then
+    launch_screen
+fi
+
+if [ ! -f "$CONFIG" ]; then
+    [ "$RAW" -eq 1 ] || wizard_header
+    run_wizard
+fi
 
 ENGINE=$(config_get engine)
 USER_SLUG=$(config_get user)
@@ -277,5 +371,13 @@ mkdir -p "$VAULT/wiki" "$VAULT/memory/shared" "$VAULT/memory/private/$USER_SLUG"
 
 assemble_adapter "$ENGINE" "$USER_SLUG" "$VAULT"
 
+# Either handoff runs from the workspace, so the engine's cwd is identical in
+# both modes -- that is what makes it pick up the adapter we just assembled.
 cd "$WORKSPACE"
-exec "$(engine_binary "$ENGINE")" "$@"
+
+if [ "$RAW" -eq 1 ]; then
+    exec "$(engine_binary "$ENGINE")" "$@"
+fi
+
+require_node
+exec node "$ROOT/shell/bin/sherman-shell.js" "$@"

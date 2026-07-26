@@ -26,11 +26,13 @@ function version() {
 const HELP = `sherman-shell — Sherman Abrams' own terminal UI
 
 Usage:
-  sherman-shell                     start the shell (Ink UI — phase 04-02)
+  sherman-shell                     start the shell
   sherman-shell --probe "<text>"    send one turn headlessly and print events
   sherman-shell --probe "<a>" "<b>" send several turns in one session
   sherman-shell --version
   sherman-shell --help
+
+In the shell, Ctrl+C interrupts the turn in flight; press it again to exit.
 
 --probe is the engine-layer harness: no UI, normalized events printed as they
 arrive. Use it to tell an engine problem from a rendering problem.`;
@@ -126,10 +128,45 @@ async function main(argv) {
         return probe(prompts);
     }
 
-    // The Ink app lands here in 04-02.
-    console.error('The Sherman Shell UI is not built yet (phase 04-02).');
-    console.error('Use --probe "<text>" to talk to the engine layer, or --help.');
-    return 2;
+    return startShell();
+}
+
+/**
+ * Launch the Ink UI.
+ *
+ * Imported lazily so --version, --help and --probe never pay for loading React
+ * and Ink, and so a broken UI dependency cannot take down the diagnostic that
+ * exists to debug it.
+ */
+async function startShell() {
+    // Ink throws "Raw mode is not supported on the current process.stdin" when
+    // stdin is not a TTY. Guarding here turns that stack trace into a sentence,
+    // and it is also what stops a piped run (smoke, CI, `echo x | sherman`) from
+    // hanging on a UI that can never accept input.
+    if (!process.stdin.isTTY) {
+        console.error('The Sherman Shell needs an interactive terminal.');
+        console.error('Piping input? Use --probe "<text>" instead, or sherman --raw.');
+        return 2;
+    }
+
+    const config = loadConfig();
+    const session = selectBackend(config);
+
+    const [{ default: React }, { render }, { App }] = await Promise.all([
+        import('react'),
+        import('ink'),
+        import('../src/ui/app.js'),
+    ]);
+
+    // exitOnCtrlC:false is what makes the two-stage interrupt possible: Ink would
+    // otherwise quit on the first press, before the app could abort the turn.
+    const { waitUntilExit } = render(React.createElement(App, { session }), {
+        exitOnCtrlC: false,
+    });
+
+    await waitUntilExit();
+    session.dispose();
+    return 0;
 }
 
 main(process.argv.slice(2))

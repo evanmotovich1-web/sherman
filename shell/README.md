@@ -7,9 +7,24 @@ Before this existed, `bin/sherman` ended in `exec codex` and you landed in
 OpenAI's chrome — Sherman was branded up to the banner and unbranded after it.
 Design doc §3c: like Hermes, Sherman owns the screen.
 
+## Running it
+
+```
+sherman           the Sherman Shell — our UI, engine headless underneath
+sherman --raw     exec the engine directly, its own chrome, for debugging
+```
+
+Inside the shell: type, Enter to send. **Ctrl+C interrupts the turn in flight;
+press it again to exit.** The conversation lives in your terminal's own
+scrollback, so the mouse wheel works normally.
+
+Needs Node 22 or newer, and `./install.sh` to have installed the shell's
+dependencies. If either is missing, `sherman` says so and stops — it does not
+quietly fall back to the engine (see the UI decisions below).
+
 ## What phase 04-01 delivered
 
-The **engine layer only**. No UI yet.
+The **engine layer**, which 04-02's UI is built on.
 
 - `src/engine/session.js` — the `EngineSession` contract and the normalized
   event stream. Engine-agnostic by rule.
@@ -20,12 +35,25 @@ The **engine layer only**. No UI yet.
 - `src/config.js` — reads `~/.sherman/config.json` (read-only; the wizard owns it).
 - `bin/sherman-shell.js` — `--version`, `--help`, `--probe`.
 
-The Ink UI (banner header, chat pane, status bar), the `bin/sherman` wire-up and
-`sherman --raw` land in **04-02**. The board view is a later phase still.
+## What phase 04-02 added
 
-No npm dependencies. Nothing to install.
+The **UI**, in `src/ui/`:
 
-## Running it
+- `app.js` — the root component. All turn state lives here; everything else is
+  presentational. It renders the event union below and nothing else.
+- `Thinking.js` — the activity indicator (see the note on perceived speed).
+- `Transcript.js` — committed history through a single `<Static>`.
+- `Header.js` — the banner, and the compact header line.
+- `StatusBar.js` — engine · model · user · vault · tokens.
+- `Composer.js` — the input line.
+- `theme.js` — the house palette, in one place.
+
+Plus the wire-up: `bin/sherman` execs the shell, `sherman --raw` execs the
+engine, and `install.sh` installs the shell's dependencies.
+
+The board view is still a later phase.
+
+## The engine-layer harness
 
 ```
 node shell/bin/sherman-shell.js --probe "Reply with exactly: PONG"
@@ -37,11 +65,12 @@ Several turns in one session, to exercise conversation memory:
 node shell/bin/sherman-shell.js --probe "Remember the word BANANA." "What word did I ask you to remember?"
 ```
 
-`--probe` is the engine-layer harness: no UI, normalized events printed as they
-arrive. It stays after 04-02 on purpose — when the shell misbehaves, `--probe`
-tells you whether the engine layer or the renderer is at fault.
-
-Ctrl+C aborts the in-flight turn. A second Ctrl+C exits.
+`--probe` prints normalized events with no UI in the way. It survives on purpose:
+when the shell misbehaves, `--probe` tells you whether the engine layer or the
+renderer is at fault. `--version` and `--probe` also load neither Ink nor React —
+the UI is imported lazily — so they keep working on a machine that has never run
+`npm install`, and a broken UI dependency cannot take down the tool you would use
+to debug it.
 
 ## Transport: `codex exec --json`, not the app-server protocol
 
@@ -227,3 +256,50 @@ Interrupting is just killing the turn's process. The thread survives, because
 Codex persists it — so the next `send()` resumes the same conversation. That
 falls out of the one-process-per-turn model for free, and it is the main
 consolation for not having the app-server's protocol-level interrupt.
+
+At the UI layer that becomes the two-stage Ctrl+C: `busy` is the entire state
+machine. Interrupting clears it, so the next press falls through to exit — and
+starting a new turn re-arms it, so a later Ctrl+C interrupts again rather than
+quitting. Ink is started with `exitOnCtrlC: false`, or it would quit on the first
+press before the app could abort anything.
+
+## UI decisions worth knowing
+
+**Perceived speed is a feature here, not polish.** Because there are no token
+deltas, an answer lands all at once after a wait, and the *first* turn is the
+slowest one in the product — nothing is cached until turn 2. So the shell always
+shows an animated indicator with a running elapsed time, and the label is replaced
+by the newest reasoning or tool line so the wait narrates itself. Without it a
+perfectly healthy shell reads as hung on the very first thing a new user does.
+`useAnimation` supplies both the spinner frame and the elapsed milliseconds, so
+there is no manual timer to get wrong.
+
+**No alternate screen.** Ink can run in the terminal's alternate screen, which
+would give a tidier fixed layout — and would make the scrollback buffer
+unavailable. Instead history is committed through one `<Static>`, so the terminal
+itself owns the transcript and the mouse wheel behaves normally. There is exactly
+one `<Static>` in the tree, with the banner as its first item; Ink only reliably
+supports one, and it also guarantees the banner stays above the first message.
+
+**The banner prints once, not pinned.** It is 18 lines. Pinning it would leave six
+rows for the conversation on a 24-row terminal, so the full mark is the launch
+moment and a single compact line stays in the chrome. `bin/sherman` deliberately
+does *not* print the banner when handing off to the shell — the shell draws it —
+or you would see it twice on every launch.
+
+**The composer is hand-rolled** on `useInput`. Ink 7 ships no text input, and
+`ink-text-input` only claims `ink>=5`. Bulk input is stripped of control
+characters, because a paste arrives as one chunk and could otherwise carry CR/LF
+straight into the prompt.
+
+**Missing Node fails loudly.** If Node is absent, older than 22, or the
+dependencies are not installed, `bin/sherman` explains and exits non-zero. It
+never silently execs the engine instead: that would drop you into the engine's own
+chrome while you believed you were in Sherman, which is the exact failure this
+shell exists to remove. `--raw` remains available — the point is that you choose
+it.
+
+**Smoke drives `--raw` for the wizard checks.** The default handoff is now an
+interactive Ink app, so piping stdin at `bin/sherman` would trip Ink's raw-mode
+guard instead of testing the wizard. Checks 2 and 3 use `--raw`, which exercises
+exactly what they are for: wizard → config → adapter → exec engine.
