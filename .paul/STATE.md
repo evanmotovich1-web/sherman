@@ -3,22 +3,45 @@
 ## Current Position
 
 Milestone: v0.1 Evan-only local prototype — 🟡 In progress
-Phase: 1 of 3 (Launcher chassis) — Planning
-Plan: 01-01 created, awaiting approval
-Status: PLAN created, ready for APPLY
-Last activity: 2026-07-26 — Bootstrapped .paul/ from design doc; created
-`.paul/phases/01-launcher-chassis/01-01-PLAN.md`
+Phase: 1 of 3 (Launcher chassis) — APPLY complete
+Plan: 01-01 executed. 3/3 tasks PASS, AC-1..AC-7 all met. Commit `2f59775`.
+Status: `sherman` installed and working. Nothing pushed.
+Last activity: 2026-07-26 — APPLY complete for 01-01
 
 Progress:
-- Milestone v0.1: [░░░░░░░░░░] 0%
-- Phase 1: [░░░░░░░░░░] 0%
+- Milestone v0.1: [███░░░░░░░] ~33% (chassis done; logo/vault landing, skills blocked)
+- Phase 1: [██████████] 100% (1/1 plan)
 
 ## Loop Position
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ○        ○     [Plan created, awaiting approval]
+  ✓        ✓        ○     [APPLY complete — ready for UNIFY]
 ```
+
+## APPLY results (01-01, 2026-07-26)
+
+- **Task 1 PASS** — repo skeleton, `agent/SYSTEM.md`, two adapter templates
+  carrying only an engine wrapper plus the `{{SHERMAN_BODY}}` token. No
+  persona text duplicated into either adapter.
+- **Task 2 PASS** — `bin/sherman`: banner, two-question wizard, config write,
+  `awk` splice, `exec` into the engine at `~/.sherman/workspace/`. Proven in
+  sandbox across first run, second run, engine switch, missing binary, banner
+  fallback, and symlink invocation from outside the repo.
+- **Task 3 PASS** — `install.sh` (idempotent, `~/.local/bin`, reports PATH
+  status), `smoke.sh` (3 checks / 12 assertions, green), commit `2f59775`.
+
+### Deviations (for UNIFY)
+
+1. Task 1's verify asserted `logo/`+`vault/` were empty; the Codex track landed
+   6 files mid-execution. Boundary intent — this plan authors nothing there —
+   holds. Assertion corrected to non-authorship.
+2. `install.sh` needed its own exec bit; nothing chmodded the installer.
+   Committed at mode `100755`.
+3. Real `~/.sherman/config.json` deliberately not created — the provider
+   question is Evan's to answer. All paths proven in sandbox instead.
+4. `smoke.sh` gained cleanup of the `smoke-tester` private-memory dir it
+   creates in the real vault (`rmdir`, so never destructive). Addition.
 
 ## Parallel track
 
