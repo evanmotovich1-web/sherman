@@ -2,18 +2,25 @@
 
 Derived from design doc §6 (Phases). Bootstrapped 2026-07-26.
 
-## Milestone v0.1 — Evan-only local prototype 🟡 In progress (1 of 4 phases)
+## Milestone v0.1 — Evan-only local prototype 🟡 In progress (2 of 4 phases)
 
 Proves the whole contract end to end on one Mac: *type `sherman`, the agent
 appears, it knows the business.*
 
-Design-doc Phase 1 splits into three tracks. Two run in parallel right now.
-Phase 4 was added 2026-07-26 after Evan's first live run.
+Design-doc Phase 1 splits into three tracks. Phase 4 was added 2026-07-26 after
+Evan's first live run.
 
-**Status:** the "type `sherman`, the agent appears" half is done and verified.
-The "knows the business" half is not — that needs Phase 2's vault contents and
-Phase 3's skills. And *`sherman` appears as Sherman* needs Phase 4 — right now
-the launcher hands the screen to OpenAI's chrome.
+**Status:** *type `sherman`, the agent appears — as Sherman* is done and verified.
+Phases 1 and 4 delivered the command, the branded screen, the headless engine and
+the vault boundary.
+
+**What remains is the sentence's last clause: "it knows the business."** The vault
+holds READMEs. Sherman will correctly say it does not know rather than invent, but
+until knowledge and skills land the product is a very good shell around an empty
+brain — and that is now the only thing between Sherman and being useful.
+
+That gap is Phase 2 (vault seed, parallel Codex track) and Phase 3 (skills,
+blocked on §7 Q1).
 
 ### Phase 1 — Launcher chassis ✅ Complete (2026-07-26, 1/1 plan)
 
@@ -50,7 +57,7 @@ matters most (design doc §7 Q1): the 3–5 tasks employees burn the most hours
 on. Candidate shapes: SOP answerer, intake/report drafting, customer comms
 drafts, daily digest.
 
-### Phase 4 — Sherman Shell 🟡 In progress, 1 of 2 plans (added 2026-07-26)
+### Phase 4 — Sherman Shell ✅ Complete (2026-07-26, 2/2 plans)
 
 Sherman owns the screen. Design doc §3c, added after Evan's first live run:
 launching into raw Codex chrome is not Sherman. Our UI on top, the engine
@@ -70,26 +77,33 @@ Split into two plans, risk front-loaded:
   thread retention and no orphan, and an escape test showing writes outside the
   vault and all network egress denied. Answers as Sherman Abrams through the
   headless path, confirming the Phase 1 adapter loads.
-- `04-02` 🟡 **Shell UI + wire-up** (planned 2026-07-26). Ink 7 app: banner header
-  in house colours, chat pane over the terminal's own scrollback, status bar
-  (engine · model · user · vault · tokens), two-stage Ctrl+C, `bin/sherman`'s final
-  `exec` swapped to the shell, `sherman --raw` for debugging, `smoke.sh` +3 checks.
+- `04-02` ✅ **Shell UI + wire-up** (2026-07-26, commit `fcd2b82`). Ink 7 app:
+  banner header in house colours, chat pane over the terminal's own scrollback,
+  status bar (engine · model · user · vault · tokens), two-stage Ctrl+C,
+  `bin/sherman`'s final `exec` swapped to the shell, `sherman --raw` for debugging,
+  `smoke.sh` extended to 6 checks. 9/9 ACs Pass, human-verify approved.
   **Includes the activity indicator with elapsed time** — Evan made this
-  non-deferrable: given D8 there are no token deltas, and the first turn is the
-  slowest one a user sees, so without it the shell reads as hung on first
-  impression. Ends in a human-verify checkpoint, because "does the wait feel alive"
-  is not scriptable.
+  non-deferrable, and it was measured rather than eyeballed: a captured pty session
+  shows the timer advancing 0.0s→4.5s in 0.1s steps from the moment of submit, all
+  ten spinner glyphs cycling, and the label switching to the live tool line.
 
 Exit condition: typing `sherman` lands in a branded Sherman screen — no OpenAI
-or Anthropic chrome — holding a real streaming conversation with the engine
-sealed inside the vault.
+or Anthropic chrome — holding a real conversation with the engine sealed inside
+the vault. **Met**, verified in a pty across launch, a two-turn conversation,
+interrupt-and-recover, clean exit, `--raw`, and four broken-environment paths.
 
-**Board view is explicitly NOT in this phase** (§3c: "comes right after the chat
-loop is solid, not in the same diff").
+Note on "streaming": there are no token deltas on this transport (D8), so output
+is item-level. The activity indicator carries the wait instead. If that ever
+grates, the fix is the app-server transport, not more UI.
 
-Key decision: `codex exec --json` over the app-server protocol. See D8 in
-`04-01-PLAN.md` — app-server has true token deltas but is `[experimental]`;
-stability won for v1, and `EngineSession` keeps the swap cheap.
+**Board view was explicitly NOT in this phase** (§3c: "comes right after the chat
+loop is solid, not in the same diff"). The chat loop is now solid, so it is
+unblocked — it slots into `app.js` as another region against the same event
+contract.
+
+Key decisions: `codex exec --json` over the `[experimental]` app-server protocol
+(D8), and the vault boundary enforced by the OS sandbox rather than by removing
+Codex's shell tool (D9). Both in `04-01-PLAN.md`.
 
 ## Milestone v0.2 — Installer + second admin device + Codex adapter ⚪ Not started
 

@@ -40,15 +40,24 @@ The skills are the product; everything else is chassis.
 | R5 | Engine-specific detail lives in the adapter, never in skills or the vault | §3 | ✓ Phase 1 |
 | R6 | Vault reached through a thin interface — local-path backend now, network backend at v0.3. Swap must be a config change, not a rewrite. | §4 | ✓ Phase 1 — `vault_path` config field |
 | R7 | Installer is idempotent — rerunning re-asks only what is missing | §3b | ✓ Phase 1 |
+| R11 | **Sherman owns the screen.** Our UI on top, the engine headless underneath — no OpenAI or Anthropic chrome. `sherman --raw` remains the debugging escape hatch. | §3c | ✓ Phase 4 |
+| R12 | The either-engine promise holds at the **UI seam**, not just the persona seam: one `EngineSession` contract, engine specifics quarantined in one backend file | §3c | ✓ Phase 4 — proven by shipping the whole UI without touching `shell/src/engine/` |
+| R13 | The engine runs restricted — file read/search/write inside the vault only, no network, nothing else auto-approved | §3c, §4 | ✓ Phase 4 — enforced by the OS sandbox and proven by an escape test |
 
 ### Active
 
-- [ ] **R8 — The vault has to actually know things.** The chassis works; the brain is empty. Blocked on §7 Q1.
-- [ ] **R9 — The Codex adapter must be exercised against real Codex.** Phase 1 proved assembly, not the contract. v0.2, on a machine without Claude Code.
+- [ ] **R8 — The vault has to actually know things.** The chassis works, the screen is ours, the brain is still empty. Blocked on §7 Q1. **This is now the only thing standing between Sherman and being useful.**
+- [ ] **R9 — The Codex adapter must be exercised against real Codex.** Partially discharged: Phase 4 drove real Codex headlessly through `codex exec --json`, so the adapter and the transport are both proven on this machine. What remains is a machine *without* Claude Code — v0.2.
 
 ### Emerged during Phase 1
 
 - [ ] **R10 — Durable output must go to the vault, never the workspace.** `~/.sherman/workspace/` is wiped and rebuilt on every launch by design. Any future skill that writes artifacts there loses them. Needs stating in skill-authoring guidance before the first skill ships.
+
+### Emerged during Phase 4
+
+- [ ] **R14 — Node 22+ is now a hard runtime dependency.** The shell is an Ink app. On this Mac `node` is supplied by Hermes' bundled runtime (`~/.local/bin/node → ~/.hermes/node/bin/node`). v0.2's installer must decide: require Node, or bundle it. Without Node there is no UI — only `sherman --raw`.
+- [ ] **R15 — Perceived speed is a product requirement, not polish.** There are no token deltas on the Codex transport (D8), and the first turn is the slowest one a user ever sees. Any future surface that waits on the engine must show live progress, or a healthy Sherman reads as a hung one.
+- [ ] **R16 — The shell looks like a chat app, so users will expect chat-app affordances.** No cross-run history, no up-arrow recall, no multi-line editing. Deliberate for v1; the first to be missed is probably history recall.
 
 ## Key decisions
 
@@ -60,6 +69,13 @@ The skills are the product; everything else is chassis.
 | `awk` for the splice, never `sed` | Persona is multi-line markdown containing `&`, `/`, backslashes | 1 |
 | Adapter rebuilt on every launch | Repo is truth, workspace is disposable — edits to the workspace can never silently become config | 1 |
 | Both adapter files removed before writing one | Switching engines otherwise strands a stale sibling the other engine may read | 1 |
+| Codex driven via `codex exec --json` + `exec resume`, not the app-server protocol | Stable CLI surface, verified end to end. app-server has true token deltas but is `[experimental]` with 39+ message types — a v1 built on it breaks on `codex update`. The cost is no typewriter streaming | 4 |
+| Vault boundary enforced by the macOS seatbelt sandbox, not by disabling `shell_tool` | On Codex, file access is delivered *through* shell; removing the tool would strip the capability Sherman needs. The kernel cannot be talked around by a prompt | 4 |
+| All engine posture travels as `-c` overrides | `codex exec resume` accepts a narrower flag set than `codex exec` — `-s`/`-C`/`--add-dir`/`-p` are rejected. Passing sandbox as `-s` would be correct on turn 1 and silently absent afterward | 4 |
+| Engine cwd stays `~/.sherman/workspace`; the vault becomes writable via `writable_roots` | Codex reads `AGENTS.md` from its cwd, and that file is Sherman's system prompt. Pointing cwd at the vault would seal the sandbox correctly and orphan the persona | 4 |
+| Primary terminal screen + a single `<Static>`, never Ink's alternate screen | The alternate screen makes scrollback unavailable. Letting the terminal own the transcript is worth more than a tidy fixed layout | 4 |
+| Banner printed once, not pinned; `bin/sherman` skips it in shell mode | It is 18 lines — pinning leaves six rows for the conversation on a 24-row terminal, and printing it in both places shows it twice | 4 |
+| Node problems fail loudly instead of falling back to the engine | A silent fallback drops the user into engine chrome believing they are in Sherman — the exact failure the shell exists to remove | 4 |
 
 ## Hard constraints
 
@@ -131,7 +147,16 @@ to leak through, it belongs in the backend instead.
 ```
 ~/.sherman/config.json    # {version, engine, user, vault_path}
 ~/.sherman/workspace/     # engine cwd; adapter file refreshed every launch
+shell/node_modules/       # ink + react; installed by install.sh, gitignored
 ```
+
+### Runtime requirements
+
+| Need | For | Without it |
+|---|---|---|
+| The chosen engine (`codex` or `claude`) on PATH | everything | `sherman` refuses to start |
+| Node 22+ and `shell/node_modules` | the Sherman Shell UI | `sherman` explains and exits; `sherman --raw` still works |
+| An interactive TTY | the UI | clear message; use `--probe` or `--raw` |
 
 ## Memory model
 
@@ -147,4 +172,4 @@ to leak through, it belongs in the backend instead.
 - Anything that puts patient-identifying data anywhere near Sherman
 
 ---
-*Last updated: 2026-07-26 after Phase 1*
+*Last updated: 2026-07-26 after Phase 4*

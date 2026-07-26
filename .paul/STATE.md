@@ -2,75 +2,81 @@
 
 ## Current Position
 
-Milestone: v0.1 Evan-only local prototype — 🟡 In progress (1 of 4 phases)
-Phase: 4 (Sherman Shell) — 🟡 In progress (1 of 2 plans) — Planning 04-02
-Plan: 04-02 created, awaiting approval. 04-01 ✅ loop closed.
-Status: PLAN created, ready for APPLY
-Last activity: 2026-07-26 — Created `.paul/phases/04-sherman-shell/04-02-PLAN.md`
+Milestone: v0.1 Evan-only local prototype — 🟡 In progress (2 of 4 phases)
+Phase: 4 (Sherman Shell) — ✅ COMPLETE & transitioned (2/2 plans)
+Plan: None active. Ready to plan.
+Status: Sherman owns the screen. Nothing pushed.
+Last activity: 2026-07-26 — Phase 4 complete and transitioned
 
 Progress:
-- Milestone v0.1: [██░░░░░░░░] 1/4 phases (chassis done; shell engine layer built, UI planned)
+- Milestone v0.1: [█████░░░░░] 2/4 phases (command + branded screen done; vault seed and skills remain)
 - Phase 1: [██████████] 100% (1/1 plan)
-- Phase 4: [█████░░░░░] 50% (1/2 plans — 04-01 done, 04-02 planned)
+- Phase 4: [██████████] 100% (2/2 plans)
 
 ## Loop Position
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ○        ○     [04-02 plan created, awaiting approval]
+  ✓        ✓        ✓     [04-02 loop complete — Phase 4 transitioned]
 ```
 
-04-02 is the **last plan in Phase 4** — its UNIFY must run the phase transition
-(PROJECT.md requirement evolution, ROADMAP status, phase commit).
+Both Phase 4 loops closed cleanly:
 
-04-02 is `autonomous: false` — it ends in a human-verify checkpoint, because
-"does the wait feel alive?" is not a thing a script can assert.
+| Plan | Tasks | ACs | Commit |
+|---|---|---|---|
+| `04-01` engine layer | 3/3 PASS | 8/8 Pass | `1f75e0a` |
+| `04-02` shell UI + wire-up | 3/3 PASS + checkpoint approved | 9/9 Pass | `fcd2b82` |
 
-Phase 1 loop (`01-01`) closed cleanly: 3/3 tasks PASS, AC-1..AC-7 Pass,
-commits `2f59775`, `a1c10a4`.
+Phase 1 (`01-01`) also closed cleanly: 3/3 PASS, AC-1..AC-7 Pass, `2f59775`.
 
-**Phase 4 is NOT complete.** The plan/summary file count is 1:1, which a naive
-check reads as a finished phase — but ROADMAP defines Phase 4 as two plans and
-04-02 has not been authored yet. No phase transition was run. ROADMAP is the
-authority on phase scope, not the file count.
-
-### 04-01 result
-
-3/3 tasks DONE, all qualified PASS. AC-1..AC-8 Pass. Two mechanical deviations,
-both recorded in `04-01-SUMMARY.md`: a task-ordering artifact (`codex.js` skeleton
-needed in Task 1 for Task 1's own verify to resolve), and an imprecise
-`grep "dangerously"` check in the plan replaced with a precise argv assertion.
-
-Full detail: `.paul/phases/04-sherman-shell/04-01-SUMMARY.md`
+Details: `.paul/phases/04-sherman-shell/04-01-SUMMARY.md`, `04-02-SUMMARY.md`
 
 ## What works right now
 
-`sherman` is on PATH at `~/.local/bin/sherman`. First run asks two questions
-(provider, name), writes `~/.sherman/config.json`, and opens a session. Every
-run rebuilds the adapter in `~/.sherman/workspace/` from `agent/SYSTEM.md` plus
-the memory blocks and the no-PHI rule, then execs the engine there.
+**Type `sherman` and Sherman appears — as Sherman.**
 
-**New in 04-01 — a headless Sherman you can talk to:**
+```
+sherman           the Sherman Shell: banner, chat pane, status bar
+sherman --raw     the engine directly, its own chrome, for debugging
+```
+
+First run asks two questions (provider, name) and writes
+`~/.sherman/config.json`. Every run rebuilds the adapter in
+`~/.sherman/workspace/` from `agent/SYSTEM.md` plus the memory blocks and the
+no-PHI rule, then hands off.
+
+In the shell: type, Enter to send. An animated indicator with elapsed time covers
+the wait. Ctrl+C interrupts the turn; again exits. The transcript lives in the
+terminal's own scrollback. The status bar shows engine · model · user · vault ·
+tokens and grows as you talk.
+
+The engine is sealed in the vault: writes outside it are denied, network egress is
+denied, and that was proven by a test that tried to escape.
+
+Diagnostics:
 
 ```
 node shell/bin/sherman-shell.js --probe "who are you?"
 ```
 
-Answers as Sherman Abrams and names its own vault paths. Multi-turn works
-(`--probe "a" "b"`), token counts are reported, Ctrl+C aborts a turn without
-ending the session, and the engine cannot write outside the vault or reach the
-network.
+Normalized events, no UI. Works even with no `node_modules`, so a broken UI cannot
+disable the tool that debugs it.
 
-Not yet wired to the `sherman` command — that is 04-02.
+`./smoke.sh` — 6 checks, 17 assertions, green.
 
-`./smoke.sh` — 3 checks, 12 assertions, green.
+**What does NOT work yet: knowing the business.** The vault holds READMEs. Sherman
+will say it doesn't know rather than invent.
 
 ## Parallel track
 
-A Codex session owns `logo/` and `vault/`. It landed `logo/banner.ans`,
-`logo/banner.txt`, and README scaffolding under `vault/` at 01:01, mid-APPLY —
-picked up automatically, zero conflicts. Those paths remain untracked in git;
-that session commits them.
+A Codex session owns `logo/` and `vault/`. Across both Phase 4 plans it committed
+`f8c4d59` (logo ring-mark fix), `5dbcc32` (gitignore graphify-out), `4e2bca4` (root
+AGENTS.md, DESIGN.md, CLAUDE.md, docs/) and `728c0dc` (graphify rule). Every one
+checked for overlap with `shell/` and the protected launcher files: zero conflicts
+across three phases now.
+
+Its `AGENTS.md` adds a repo rule this session has followed: run `graphify update .`
+after every commit, and never commit `graphify-out/`.
 
 ## Decisions
 
@@ -93,12 +99,31 @@ that session commits them.
 
 ## Concerns
 
-- **Sherman has an empty brain.** Chassis complete, vault holds only READMEs. It will correctly say it doesn't know rather than invent, but the product feels hollow until knowledge lands. This is the gap that matters.
-- **Sherman doesn't own the screen yet.** `bin/sherman` ends in `exec codex`, so the user lands in OpenAI's chrome. Phase 4 fixes this. Until then Sherman is branded up to the banner and unbranded after it.
-- **No typewriter streaming on the Codex path.** Accepted (D8). A single short answer will appear all at once after a pause; 04-02 must carry the perceived-responsiveness load with an activity indicator and elapsed timer, or the shell will feel slower than raw Codex even though it isn't.
-- **Sherman now has a hard Node dependency it did not have in Phase 1.** On this Mac `node` is `~/.local/bin/node` → `~/.hermes/node/bin/node` — supplied by Hermes' bundled runtime. It works and is on PATH, but if Hermes were removed, `sherman` would lose its UI and fall back to needing `--raw`. v0.2's installer has to decide whether to require Node or bundle it.
-- **Codex adapter never met real Codex.** Assembly proven, contract not. First real exercise is v0.2.
-- **`~/.sherman/workspace/` is disposable by design.** Any future skill writing artifacts there loses them on next launch. Needs stating in skill-authoring guidance (tracked as R10 in PROJECT.md).
+- **Sherman has an empty brain. This is now THE gap.** Two phases built an
+  excellent shell around a vault of READMEs. Everything else on this list is a
+  detail next to it.
+- **The first turn is the slowest thing a user meets** — ~19,900 input tokens with
+  nothing cached until turn 2. The indicator covers it honestly but does not make it
+  fast. If it grates, the fix is D8 (app-server transport), not more UI.
+- **Node 22+ is a hard dependency** for the UI, supplied here by Hermes' bundled
+  runtime (`~/.local/bin/node → ~/.hermes/node/bin/node`). If Hermes went away,
+  `sherman` would drop to `--raw` only. v0.2's installer must decide: require or
+  bundle. Tracked as R14.
+- **`ink` + `react` are the project's first dependencies.** Ink 7 needs React ≥19.2
+  and Node ≥22, so a Node upgrade is now also a UI compatibility question.
+- **The shell looks like a chat app, so it will be judged like one.** No cross-run
+  history, no up-arrow recall, no multi-line editing. Deliberate for v1; history
+  recall is the first thing likely to be missed. Tracked as R16.
+- **The posture depends on codex config key names** (`sandbox_mode`,
+  `sandbox_workspace_write.writable_roots`, `approval_policy`). Re-run the boundary
+  test in `shell/README.md` after any `codex update`.
+- **Claude backend is still a stub.** Fine for Evan (codex); blocking for an
+  Anthropic user. Now genuinely a one-file job.
+- **Codex adapter has still not met a machine *without* Claude Code.** Phase 4 drove
+  real Codex, so the transport and adapter are proven here — the remaining gap is a
+  second machine (v0.2, R9).
+- **`~/.sherman/workspace/` is disposable by design.** Any future skill writing
+  artifacts there loses them on next launch (R10).
 
 ## Blockers
 
@@ -106,25 +131,31 @@ that session commits them.
 
 ## Git State
 
-Last commit: `1f75e0a` (engine layer). Plan committed as `7a9b4dd`.
 Branch: `main`
-Remotes: none configured — nothing pushed, by design (Evan pushes)
-Uncommitted: `logo/banner.ans`, `logo/banner.txt` (parallel Codex session is
-mid-redesign of the mark — left alone deliberately), plus untracked
-`graphify-out/` which neither track created as deliverable.
+Remotes: none configured — **nothing pushed, by design (Evan pushes)**
+Feature branches: none — all work on `main`
 
-The parallel Codex session committed `4e2bca4` (root AGENTS.md, DESIGN.md,
-CLAUDE.md, docs/) during this APPLY. Checked: no overlap with `shell/` or any
-protected file. Zero conflicts, same as last phase.
+Phase 4 commits: `7a9b4dd` (04-01 plan), `1f75e0a` (engine layer), `7536aa2`,
+`c5b22a6` (04-01 close), `879240d` (04-02 plan), `fcd2b82` (shell UI).
+
+`shell/node_modules/` and `graphify-out/` are gitignored.
+`shell/package-lock.json` is tracked, for reproducible installs at v0.2.
 
 ## Session Continuity
 
 Last session: 2026-07-26
-Stopped at: Plan 04-02 created (Sherman Shell UI + launcher wire-up)
-Next action: Review and approve, then `/paul:apply .paul/phases/04-sherman-shell/04-02-PLAN.md`
-Resume file: `.paul/phases/04-sherman-shell/04-02-PLAN.md`
+Stopped at: Phase 4 complete and transitioned — Sherman owns the screen
+Next action: **Answer design-doc §7 Q1** (the 3–5 tasks employees burn the most
+hours on) to unblock Phase 3 skills. That is the one answer standing between
+Sherman and being useful. Alternatives: plan the board view (now unblocked), or let
+the Codex track finish the vault seed.
+Resume file: `.paul/ROADMAP.md`
 
-Try the engine layer now: `node shell/bin/sherman-shell.js --probe "who are you?"`
+Try it now:
+
+```
+sherman
+```
 
 ### UI facts probed at 04-02 plan time (ink 7.1.1, react 19.2.8, node v22.23.1)
 
