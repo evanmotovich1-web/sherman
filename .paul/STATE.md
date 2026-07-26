@@ -3,25 +3,24 @@
 ## Current Position
 
 Milestone: v0.1 Evan-only local prototype — 🟡 In progress (3 of 6 phases)
-Phase: 6 (Session identity & the live turn UI) — Planning
-Plan: 06-01 and 06-02 created, awaiting approval
-Status: PLAN created, ready for APPLY (06-01 first; 06-02 follows — shared files)
-Last activity: 2026-07-26 — Created both Phase 6 plans; colour-fix `15fed16`
-landed the same day (Ink drops bare 256-colour indexes; everything now
-`ansi256(N)`, guarded by smoke check 9)
+Phase: 6 (Session identity & the live turn UI) — 🟡 In progress (1/2 plans)
+Plan: 06-01 ✅ APPLY complete, checkpoint approved (commit `99331f3`). 06-02 next.
+Status: 06-02 APPLY starting — turn UI + status bar
+Last activity: 2026-07-26 — 06-01 shipped: session id everywhere, JSONL log,
+attribution, `sherman update`, launch screen v3
 
 Progress:
 - Milestone v0.1: [█████░░░░░] 3/6 phases (command, shell, launch screen done; vault seed, skills, session/turn UI remain)
 - Phase 1: [██████████] 100% (1/1 plan)
 - Phase 4: [██████████] 100% (2/2 plans)
 - Phase 5: [██████████] 100% (1/1 plan)
-- Phase 6: [░░░░░░░░░░] 0% (0/2 plans — both planned)
+- Phase 6: [█████░░░░░] 1/2 plans (06-01 done; 06-02 in APPLY)
 
 ## Loop Position
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ○        ○     [06-01 + 06-02 created, awaiting approval]
+  ✓        ◐        ○     [06-01 applied + approved; 06-02 APPLY in progress]
 ```
 
 Every loop closed cleanly:
