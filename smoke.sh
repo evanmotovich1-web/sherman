@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — six checks, no framework.
+# smoke.sh — eight checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -10,6 +10,8 @@
 #   4. The shell entry point launches and exits clean on --version.
 #   5. Backend selection follows config.json's engine field.
 #   6. The --raw path still execs the engine.
+#   7. The launch screen renders at 80 columns without overflowing.
+#   8. The launch screen renders at 200 columns without overflowing.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -199,10 +201,82 @@ env HOME="$TMPHOME" PATH="$STUBDIR:$PATH" ./bin/sherman --raw >/dev/null 2>&1
     && pass "--raw reached the engine" \
     || fail "--raw did not exec the engine"
 
+# --------------------------------------------------------------- checks 7-8 --
+# The launch screen is the one surface where a layout bug is silent: it still
+# renders, it just spills past the terminal edge and shatters the block art. So
+# these assert a measurable property rather than "it did not crash" -- no
+# rendered line may be wider than the terminal it was rendered for.
+#
+# Width is counted in CODE POINTS after stripping ANSI. The block glyphs are
+# three bytes each and one column wide, so byte length would over-count by 3x and
+# report overflow everywhere.
+#
+# `columns` is passed to the component as well as to renderToString because Ink's
+# useWindowSize() reports a fixed 80x24 off a TTY -- without the prop the narrow
+# and wide cases would both silently render at 80 and prove nothing.
+#
+# Unlike checks 4 and 5 these need ink and react, so they skip (not fail) on a
+# checkout that has never run install.sh.
+
+RENDER_JS=$(cat <<'JS'
+import React from 'react';
+import { renderToString } from 'ink';
+import { LaunchScreen } from './src/ui/LaunchScreen.js';
+
+const cols = Number(process.env.SMOKE_COLS);
+const info = {
+    engine: 'codex',
+    model: 'smoke-model',
+    user: 'smoke-tester',
+    vaultPath: '/tmp/smoke/sherman/vault',
+    threadId: null,
+};
+const stats = { wiki: 2, shared: 1, private: 0, inbox: 3, ok: true };
+
+const out = renderToString(
+    React.createElement(LaunchScreen, { info, stats, columns: cols }),
+    { columns: cols }
+);
+
+const width = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, '')].length;
+const over = out.split('\n').filter((line) => width(line) > cols);
+
+if (over.length > 0) {
+    console.error(over.length + ' line(s) wider than ' + cols);
+    process.exit(1);
+}
+process.exit(0);
+JS
+)
+
+for cols in 80 200; do
+    echo
+    if [ "$cols" = "80" ]; then
+        echo "7. launch screen renders at 80 columns"
+    else
+        echo "8. launch screen renders at 200 columns"
+    fi
+
+    if ! command -v node >/dev/null 2>&1; then
+        fail "node not found -- cannot render the launch screen"
+    elif [ ! -d "shell/node_modules/ink" ]; then
+        pass "skipped -- shell/node_modules absent, run install.sh"
+    else
+        render_err=$(cd shell && env SMOKE_COLS="$cols" node --input-type=module -e "$RENDER_JS" 2>&1)
+        render_status=$?
+
+        if [ "$render_status" -eq 0 ]; then
+            pass "renders at $cols columns, no line exceeds the width"
+        else
+            fail "render at $cols columns: $(printf '%s' "$render_err" | head -3)"
+        fi
+    fi
+done
+
 # -------------------------------------------------------------------- result --
 echo
 if [ "$FAILURES" -eq 0 ]; then
-    echo "6 checks, all green."
+    echo "8 checks, all green."
     echo
     exit 0
 fi

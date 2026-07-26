@@ -14,6 +14,7 @@ import { StatusBar } from './StatusBar.js';
 import { Composer } from './Composer.js';
 import { Thinking } from './Thinking.js';
 import { emptyUsage } from '../engine/session.js';
+import { readVaultStats } from '../vault.js';
 
 // Monotonic ids. <Static> needs a stable key per item, and array index is not
 // one — Ink would re-emit rows when the array grows.
@@ -26,9 +27,26 @@ const nextId = () => `i${seq++}`;
 export function App({ session }) {
     const { exit } = useApp();
 
-    // The banner rides in as the first committed item so it stays above the first
-    // message and only ever prints once (D12/D13 — one <Static> for everything).
-    const [items, setItems] = useState(() => [{ id: nextId(), kind: 'banner' }]);
+    // The launch screen rides in as the first committed item so it stays above the
+    // first message and only ever prints once (D12/D13 — one <Static> for
+    // everything).
+    //
+    // Its info and vault counts are captured HERE, at mount, and travel on the
+    // item itself. Two reasons: the initialiser runs once, so the vault readdir
+    // is not repeated on every <Static> commit; and a committed transcript item
+    // should show what was true when it was written, not mutate as the session
+    // goes on.
+    const [items, setItems] = useState(() => [
+        {
+            id: nextId(),
+            kind: 'launch',
+            info: session.info,
+            stats: readVaultStats({
+                vaultPath: session.info.vaultPath,
+                user: session.info.user,
+            }),
+        },
+    ]);
     const [busy, setBusy] = useState(false);
     const [activity, setActivity] = useState(null);
     const [usage, setUsage] = useState(() => session.usage ?? emptyUsage());

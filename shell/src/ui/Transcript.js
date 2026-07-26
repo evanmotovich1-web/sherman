@@ -14,6 +14,7 @@ import { Text, Box, Static } from 'ink';
 
 import { color } from './theme.js';
 import { Banner } from './Header.js';
+import { LaunchScreen } from './LaunchScreen.js';
 
 // Width of the speaker gutter. A fixed column means wrapped lines hang under the
 // text rather than under the label.
@@ -35,6 +36,11 @@ function Row({ label, labelColor, children, bold }) {
 /** One committed transcript item. */
 function Item({ item }) {
     switch (item.kind) {
+        case 'launch':
+            return React.createElement(LaunchScreen, { info: item.info, stats: item.stats });
+
+        // Superseded by 'launch', kept deliberately. It costs one line, and it
+        // means a stale or hand-constructed item kind can never blank the opener.
         case 'banner':
             return React.createElement(Banner);
 

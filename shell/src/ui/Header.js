@@ -34,9 +34,17 @@ function readBanner() {
 }
 
 /**
- * The full mark. Ink preserves the raw 256-colour escapes and measures the
- * 41-column block art correctly — verified with renderToString — so the file
- * content goes through untouched. Do not strip, recolour or re-wrap it.
+ * The full mark, read from logo/banner.ans.
+ *
+ * NOT DEAD CODE, and not the shell's opener any more: since 05-01 the shell
+ * renders <LaunchScreen> instead, which draws its own wordmark and mark rather
+ * than reading the asset. This stays because `bin/sherman` still prints
+ * banner.ans for its pre-shell moments, and Transcript still answers to the
+ * 'banner' item kind. Deleting it would make those two disagree.
+ *
+ * Ink preserves the raw 256-colour escapes and measures the 41-column block art
+ * correctly — verified with renderToString — so the file content goes through
+ * untouched. Do not strip, recolour or re-wrap it.
  */
 export function Banner() {
     const banner = readBanner();
