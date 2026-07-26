@@ -2,34 +2,36 @@
 
 ## Current Position
 
-Milestone: v0.1 Evan-only local prototype — 🟡 In progress (2 of 4 phases)
-Phase: 4 (Sherman Shell) — ✅ COMPLETE & transitioned (2/2 plans)
+Milestone: v0.1 Evan-only local prototype — 🟡 In progress (3 of 5 phases)
+Phase: 5 (Launch screen v2) — ✅ COMPLETE & transitioned (1/1 plans)
 Plan: None active. Ready to plan.
-Status: Sherman owns the screen. Nothing pushed.
-Last activity: 2026-07-26 — Phase 4 complete and transitioned
+Status: Sherman's first frame states what it is and what it knows. Nothing pushed.
+Last activity: 2026-07-26 — Phase 5 complete and transitioned
 
 Progress:
-- Milestone v0.1: [█████░░░░░] 2/4 phases (command + branded screen done; vault seed and skills remain)
+- Milestone v0.1: [██████░░░░] 3/5 phases (command, branded screen, launch screen done; vault seed and skills remain)
 - Phase 1: [██████████] 100% (1/1 plan)
 - Phase 4: [██████████] 100% (2/2 plans)
+- Phase 5: [██████████] 100% (1/1 plan)
 
 ## Loop Position
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [04-02 loop complete — Phase 4 transitioned]
+  ✓        ✓        ✓     [05-01 loop complete — Phase 5 transitioned]
 ```
 
-Both Phase 4 loops closed cleanly:
+Every loop closed cleanly:
 
 | Plan | Tasks | ACs | Commit |
 |---|---|---|---|
+| `01-01` launcher chassis | 3/3 PASS | 7/7 Pass | `2f59775` |
 | `04-01` engine layer | 3/3 PASS | 8/8 Pass | `1f75e0a` |
 | `04-02` shell UI + wire-up | 3/3 PASS + checkpoint approved | 9/9 Pass | `fcd2b82` |
+| `05-01` launch screen v2 | 4/4 PASS (2 gaps fixed) + checkpoint approved | 8/8 Pass | `a8ab909` |
 
-Phase 1 (`01-01`) also closed cleanly: 3/3 PASS, AC-1..AC-7 Pass, `2f59775`.
-
-Details: `.paul/phases/04-sherman-shell/04-01-SUMMARY.md`, `04-02-SUMMARY.md`
+Details: `.paul/phases/04-sherman-shell/04-01-SUMMARY.md`, `04-02-SUMMARY.md`,
+`.paul/phases/05-launch-screen-v2/05-01-SUMMARY.md`
 
 ## What works right now
 
@@ -44,6 +46,13 @@ First run asks two questions (provider, name) and writes
 `~/.sherman/config.json`. Every run rebuilds the adapter in
 `~/.sherman/workspace/` from `agent/SYSTEM.md` plus the memory blocks and the
 no-PHI rule, then hands off.
+
+**The first frame states what Sherman is and what it knows.** A layered SHERMAN
+wordmark (55×7, falling back to 41×5 under 58 columns), then one bordered panel:
+the three-circle mark and identity on the left, live vault counts and the real key
+bindings on the right, engine · model · exit in the footer. Then one plain welcome
+line. Every value is read from config, `session.info` or a readdir — nothing on it
+is invented, which is why it currently reads `0` everywhere.
 
 In the shell: type, Enter to send. An animated indicator with elapsed time covers
 the wait. Ctrl+C interrupts the turn; again exits. The transcript lives in the
@@ -62,10 +71,11 @@ node shell/bin/sherman-shell.js --probe "who are you?"
 Normalized events, no UI. Works even with no `node_modules`, so a broken UI cannot
 disable the tool that debugs it.
 
-`./smoke.sh` — 6 checks, 17 assertions, green.
+`./smoke.sh` — 8 checks, green.
 
 **What does NOT work yet: knowing the business.** The vault holds READMEs. Sherman
-will say it doesn't know rather than invent.
+will say it doesn't know rather than invent — and since Phase 5 the launch screen
+says so too, on every single launch.
 
 ## Parallel track
 
@@ -96,6 +106,10 @@ after every commit, and never commit `graphify-out/`.
 | D12 | Primary screen + `<Static>`, never `alternateScreen` | Ink's own docs: scrollback is unavailable in the alternate screen. `<Static>` commits history so the terminal's native scrollback and mouse wheel work. Scrollback was in the brief; a tidy full-window layout was not. | 2026-07-26 |
 | D13 | Full banner once at top; compact header pinned | The banner is 18 lines. Pinning it on a 24-row terminal leaves 6 rows for the conversation. Matches how `bin/sherman` already behaves and the brief's "small variant acceptable". | 2026-07-26 |
 | D14 | Missing/old Node fails loudly; never silent fallback to the engine | A silent fallback drops the user into OpenAI chrome while they believe they are in Sherman — the exact failure Phase 4 exists to remove. `--raw` stays available, but the user chooses it. | 2026-07-26 |
+| D15 | READMEs excluded from vault counts | The launch panel's whole value is that its numbers are true. Counting scaffolding would print "1 wiki page" over an empty vault. Reads 0 until R8 lands, which is both honest and useful pressure. | 2026-07-26 |
+| D16 | Launch panel says "Keys", not "Commands" | The shell has zero slash commands and no `/help`. A Commands section could only be empty or invented, and the panel's one rule is that nothing on it is invented. One-line change the day a command ships. | 2026-07-26 |
+| D17 | Width-branching components take an injectable `columns` prop | `useWindowSize()` returns a fixed 80x24 under `renderToString`, so a width-dependent test would silently render at 80 and prove nothing. The screen resolves width once and passes it down. **Any future width-branching UI must follow this or it is untestable off a TTY.** | 2026-07-26 |
+| D18 | `engine · model` appears in the panel footer only | The brief placed it in the left column *and* the footer of the same box; printed twice inside one border it reads as a rendering bug. Left column is identity, footer is runtime. | 2026-07-26 |
 
 ## Concerns
 
@@ -136,7 +150,10 @@ Remotes: none configured — **nothing pushed, by design (Evan pushes)**
 Feature branches: none — all work on `main`
 
 Phase 4 commits: `7a9b4dd` (04-01 plan), `1f75e0a` (engine layer), `7536aa2`,
-`c5b22a6` (04-01 close), `879240d` (04-02 plan), `fcd2b82` (shell UI).
+`c5b22a6` (04-01 close), `879240d` (04-02 plan), `fcd2b82` (shell UI),
+`3d7625d` (Phase 4 close).
+
+Phase 5 commits: `a8ab909` (launch screen v2).
 
 `shell/node_modules/` and `graphify-out/` are gitignored.
 `shell/package-lock.json` is tracked, for reproducible installs at v0.2.
@@ -144,11 +161,14 @@ Phase 4 commits: `7a9b4dd` (04-01 plan), `1f75e0a` (engine layer), `7536aa2`,
 ## Session Continuity
 
 Last session: 2026-07-26
-Stopped at: Phase 4 complete and transitioned — Sherman owns the screen
+Stopped at: Phase 5 complete and transitioned — the launch screen states what
+Sherman is and what it knows
 Next action: **Answer design-doc §7 Q1** (the 3–5 tasks employees burn the most
-hours on) to unblock Phase 3 skills. That is the one answer standing between
-Sherman and being useful. Alternatives: plan the board view (now unblocked), or let
-the Codex track finish the vault seed.
+hours on) to unblock Phase 3 skills. Three phases have now built an excellent
+chassis around an empty vault, and Phase 5 put that emptiness on the launch screen
+where it cannot be ignored. Alternatives: plan the board view (unblocked since
+Phase 4, and D17's width pattern is now established for it), or let the Codex track
+finish the vault seed.
 Resume file: `.paul/ROADMAP.md`
 
 Try it now:
@@ -156,6 +176,38 @@ Try it now:
 ```
 sherman
 ```
+
+### UI facts probed at 05-01 plan time (ink 7.1.1, react 19.2.8, node v22.23.1)
+
+Measured, not assumed. Recorded so APPLY does not re-derive them:
+
+- **`renderToString(node, {columns})` honours `columns`** (default 80) and *does*
+  capture `<Static>` output. This is how the launch screen gets smoke-tested at any
+  width with no TTY — the mechanism 04-02 lacked.
+- **…but `useWindowSize()` does NOT see that `columns`.** Corrected during APPLY:
+  under `renderToString` the hook returns a hardcoded **80x24** at every width;
+  the option drives layout and truncation only. Any component whose behaviour
+  branches on width must therefore accept an **injectable `columns` prop** or it
+  is untestable off a TTY — and worse, a width-dependent test will silently pass
+  by rendering at 80 and proving nothing. `LaunchScreen` resolves width once and
+  passes it to `Wordmark`, so the two can never disagree.
+- **A `<Box width={N}>` does not stretch on a wide terminal** — width 76 measured 76
+  at both 80 and 200 columns. **But a hardcoded 76 overflows at 60.** Panel width
+  must be `Math.min(columns - 2, 76)`. This is the single likeliest way to ship
+  wrapped garbage.
+- **Wordmark geometry, both forms rendered and measured:** large (7-wide glyphs +
+  1 gutter) = **55 cols × 7 rows**; small (5-wide) = **41 cols × 5 rows**, identical
+  to the existing `banner.ans` wordmark. 55 fits inside 80 with 25 to spare.
+- **Visual width = strip `\x1b\[[0-9;]*m`, then count code points.** `█ ▄ ▀` are
+  3 bytes but 1 column — byte length lies, and every width assertion depends on this.
+- **The shell has ZERO slash commands** (grep across `shell/src/ui/`). The real
+  affordances are Enter, Ctrl+C, and the CLI flags. A "Commands" section cannot be
+  honestly populated today; `/help` does not exist.
+- **`session.info` already carries `engine`, `model`, `user`, `vaultPath`,
+  `threadId`** — the panel needs nothing new from the engine layer, so Phase 5
+  touches no file under `shell/src/engine/` and R12's record holds.
+- **`threadId` is null until the engine reports one**, so at launch it is *always*
+  null. `'new'` is the honest launch-time value, not a bug to chase.
 
 ### UI facts probed at 04-02 plan time (ink 7.1.1, react 19.2.8, node v22.23.1)
 

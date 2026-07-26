@@ -2,13 +2,13 @@
 
 Derived from design doc §6 (Phases). Bootstrapped 2026-07-26.
 
-## Milestone v0.1 — Evan-only local prototype 🟡 In progress (2 of 4 phases)
+## Milestone v0.1 — Evan-only local prototype 🟡 In progress (2 of 5 phases)
 
 Proves the whole contract end to end on one Mac: *type `sherman`, the agent
 appears, it knows the business.*
 
 Design-doc Phase 1 splits into three tracks. Phase 4 was added 2026-07-26 after
-Evan's first live run.
+Evan's first live run; Phase 5 the same day, after seeing the launch screen.
 
 **Status:** *type `sherman`, the agent appears — as Sherman* is done and verified.
 Phases 1 and 4 delivered the command, the branded screen, the headless engine and
@@ -104,6 +104,46 @@ contract.
 Key decisions: `codex exec --json` over the `[experimental]` app-server protocol
 (D8), and the vault boundary enforced by the OS sandbox rather than by removing
 Codex's shell tool (D9). Both in `04-01-PLAN.md`.
+
+### Phase 5 — Launch screen v2 ✅ Complete (2026-07-26, 1/1 plan)
+
+Phase 4 made Sherman own the screen. It does not yet own the **first frame**.
+Added 2026-07-26 after Evan compared Sherman's opener against a reference agent
+launch screen — same pattern that produced Phase 4: a live run showed the gap.
+
+The opener today is a flat red wordmark and a mark, carrying no information. The
+reference screen's value is not its colours; it is that the first frame answers
+*what is this and what does it know* before you type a character.
+
+Owns `shell/src/ui/` launch-time rendering plus one new non-UI reader:
+
+- a layered SHERMAN wordmark (lit top edge, body darkening downward, shadow) in
+  the red family, with the existing 41-column mark as the narrow fallback
+- a bordered two-column info panel — mark and identity left, live vault counts
+  and real key bindings right, engine · model · exit in the footer
+- `shell/src/vault.js`, a vault stats reader
+- one welcome line, and two new smoke checks (80 and 200 columns)
+
+**Governing rule: only true content, nothing invented.** That rule is why the
+panel is worth having, and it is also why it will read `0` everywhere until R8
+lands — the numbers are real, and today the real number is zero.
+
+Exit condition: typing `sherman` opens on a screen that states what Sherman is,
+what it can reach, and how to drive it — every value on it traceable to config,
+`session.info`, or a filesystem read. **Met** — verified mechanically by render at
+60/80/100/200 columns and by the full App tree mounting against the real vault;
+approved by Evan at the plan's human-verify checkpoint.
+
+Plans: `05-01` ✅ (wordmark, panel, vault reader, wire-up) — 4/4 tasks, 8/8 ACs
+
+Two things worth carrying forward:
+
+- **D17 binds the board view.** `useWindowSize()` is blind to `renderToString`'s
+  width, so any width-branching component takes an injectable `columns` prop or it
+  cannot be tested off a TTY — and worse, its tests pass while proving nothing.
+- **The panel is a live report, so it will fill itself in.** Counts come from a
+  readdir at mount. Nothing about this screen needs revisiting when Phase 2 lands;
+  the numbers simply stop being zero.
 
 ## Milestone v0.2 — Installer + second admin device + Codex adapter ⚪ Not started
 

@@ -43,6 +43,7 @@ The skills are the product; everything else is chassis.
 | R11 | **Sherman owns the screen.** Our UI on top, the engine headless underneath — no OpenAI or Anthropic chrome. `sherman --raw` remains the debugging escape hatch. | §3c | ✓ Phase 4 |
 | R12 | The either-engine promise holds at the **UI seam**, not just the persona seam: one `EngineSession` contract, engine specifics quarantined in one backend file | §3c | ✓ Phase 4 — proven by shipping the whole UI without touching `shell/src/engine/` |
 | R13 | The engine runs restricted — file read/search/write inside the vault only, no network, nothing else auto-approved | §3c, §4 | ✓ Phase 4 — enforced by the OS sandbox and proven by an escape test |
+| R17 | **The first frame must state what Sherman is and what it knows** — owning the screen is not the same as owning the first impression | Phase 5 brief | ✓ Phase 5 — layered wordmark + bordered panel, every value read from config, `session.info` or a readdir |
 
 ### Active
 
@@ -58,6 +59,11 @@ The skills are the product; everything else is chassis.
 - [ ] **R14 — Node 22+ is now a hard runtime dependency.** The shell is an Ink app. On this Mac `node` is supplied by Hermes' bundled runtime (`~/.local/bin/node → ~/.hermes/node/bin/node`). v0.2's installer must decide: require Node, or bundle it. Without Node there is no UI — only `sherman --raw`.
 - [ ] **R15 — Perceived speed is a product requirement, not polish.** There are no token deltas on the Codex transport (D8), and the first turn is the slowest one a user ever sees. Any future surface that waits on the engine must show live progress, or a healthy Sherman reads as a hung one.
 - [ ] **R16 — The shell looks like a chat app, so users will expect chat-app affordances.** No cross-run history, no up-arrow recall, no multi-line editing. Deliberate for v1; the first to be missed is probably history recall.
+
+### Emerged during Phase 5
+
+- [ ] **R18 — Width-dependent UI must accept an injectable width, or it cannot be tested.** `useWindowSize()` reports a fixed 80×24 under Ink's `renderToString`, so a width-branching component tested off a TTY silently renders at 80 and proves nothing. Every such component takes an optional `columns` prop; the screen resolves width once and passes it down. This binds the board view and any future launch-time surface.
+- [ ] **R19 — The launch screen is now a live report on the vault.** Its counts come from a readdir at mount, so knowledge appears the moment it lands — but equally, an empty vault is now the product's first impression on every launch. That is intended pressure toward R8, not a defect to paper over.
 
 ## Key decisions
 
@@ -76,6 +82,9 @@ The skills are the product; everything else is chassis.
 | Primary terminal screen + a single `<Static>`, never Ink's alternate screen | The alternate screen makes scrollback unavailable. Letting the terminal own the transcript is worth more than a tidy fixed layout | 4 |
 | Banner printed once, not pinned; `bin/sherman` skips it in shell mode | It is 18 lines — pinning leaves six rows for the conversation on a 24-row terminal, and printing it in both places shows it twice | 4 |
 | Node problems fail loudly instead of falling back to the engine | A silent fallback drops the user into engine chrome believing they are in Sherman — the exact failure the shell exists to remove | 4 |
+| Every value on the launch screen is read, never authored | The panel is only worth having because its numbers are true. One invented figure and none of them can be trusted — so READMEs are excluded from vault counts, and the Skills section is absent rather than a placeholder | 5 |
+| The wordmark is generated from a glyph table, not read from `logo/banner.ans` | `logo/` belongs to the parallel track and the asset stays as bin/sherman's. Two sizes from one table also means the narrow fallback can never drift from the mark | 5 |
+| Width-branching components take an injectable `columns` prop | `useWindowSize()` is blind to `renderToString`'s width, so the alternative is UI that cannot be tested off a TTY — and tests that pass while proving nothing | 5 |
 
 ## Hard constraints
 
@@ -126,11 +135,15 @@ No `${var,,}`, no associative arrays, no `readlink -f`. Verified 2026-07-26.
   shell/                  # the Sherman Shell — our UI, engine headless underneath
     bin/sherman-shell.js  #   entry: --version, --help, --probe (Ink app at 04-02)
     src/config.js         #   reads ~/.sherman/config.json (read-only)
+    src/vault.js          #   live vault counts for the launch screen (read-only)
     src/engine/session.js #   EngineSession contract + normalized events — the seam
     src/engine/codex.js   #   the ONLY file that knows Codex exists
     src/engine/claude.js  #   stub until the Claude backend phase
+    src/ui/LaunchScreen.js#   the first frame: wordmark + info panel + welcome
+    src/ui/Wordmark.js    #   SHERMAN in two sizes from one glyph table
+    src/ui/Mark.js        #   the three-circle mark, compacted for the panel
     README.md             #   transport decision, permissions posture, traps
-  smoke.sh                # 3 checks, no framework
+  smoke.sh                # 8 checks, no framework
   logo/                   # ANSI banner            [PARALLEL TRACK — Codex owns]
   vault/                  # company knowledge base [PARALLEL TRACK — Codex owns]
   skills/                 # company skills         [later slice]
@@ -172,4 +185,4 @@ shell/node_modules/       # ink + react; installed by install.sh, gitignored
 - Anything that puts patient-identifying data anywhere near Sherman
 
 ---
-*Last updated: 2026-07-26 after Phase 4*
+*Last updated: 2026-07-26 after Phase 5*
