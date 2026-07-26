@@ -29,15 +29,37 @@ The skills are the product; everything else is chassis.
 
 ## Core requirements
 
-| # | Requirement | Source |
+### Validated — shipped and verified
+
+| # | Requirement | Source | Shipped |
+|---|---|---|---|
+| R1 | `sherman` on PATH → banner → working session | §1, §3b step 6 | ✓ Phase 1 |
+| R2 | Provider choice is the FIRST question ever asked; it IS the engine choice (Anthropic→`claude`, OpenAI→`codex`) | §3b step 1 | ✓ Phase 1 |
+| R3 | **No custom OAuth.** Launching the engine triggers that engine's own native browser login. Sherman only records the choice. | §3b step 1 | ✓ Phase 1 |
+| R4 | Two-tier memory: shared business memory (all agents read+write) + private per-user memory (that user's agent only) | §4 | ✓ Phase 1 — wired into the adapter; enforcement is prose until v0.3 |
+| R5 | Engine-specific detail lives in the adapter, never in skills or the vault | §3 | ✓ Phase 1 |
+| R6 | Vault reached through a thin interface — local-path backend now, network backend at v0.3. Swap must be a config change, not a rewrite. | §4 | ✓ Phase 1 — `vault_path` config field |
+| R7 | Installer is idempotent — rerunning re-asks only what is missing | §3b | ✓ Phase 1 |
+
+### Active
+
+- [ ] **R8 — The vault has to actually know things.** The chassis works; the brain is empty. Blocked on §7 Q1.
+- [ ] **R9 — The Codex adapter must be exercised against real Codex.** Phase 1 proved assembly, not the contract. v0.2, on a machine without Claude Code.
+
+### Emerged during Phase 1
+
+- [ ] **R10 — Durable output must go to the vault, never the workspace.** `~/.sherman/workspace/` is wiped and rebuilt on every launch by design. Any future skill that writes artifacts there loses them. Needs stating in skill-authoring guidance before the first skill ships.
+
+## Key decisions
+
+| Decision | Rationale | Phase |
 |---|---|---|
-| R1 | `sherman` on PATH → banner → working session | §1, §3b step 6 |
-| R2 | Provider choice is the FIRST question ever asked; it IS the engine choice (Anthropic→`claude`, OpenAI→`codex`) | §3b step 1 |
-| R3 | **No custom OAuth.** Launching the engine triggers that engine's own native browser login. Sherman only records the choice. | §3b step 1 |
-| R4 | Two-tier memory: shared business memory (all agents read+write) + private per-user memory (that user's agent only) | §4 |
-| R5 | Engine-specific detail lives in the adapter, never in skills or the vault | §3 |
-| R6 | Vault reached through a thin interface — local-path backend now, network backend at Phase 3. Swap must be a config change, not a rewrite. | §4 |
-| R7 | Installer is idempotent — rerunning re-asks only what is missing | §3b |
+| Vault at `<repo>/vault`, recorded as `vault_path` | Build brief overrode design-doc §2's separate-repo layout | 1 |
+| PATH priority `~/.local/bin` → `~/bin` → `/usr/local/bin` | Neither dir the brief named exists on this Mac; `~/.local/bin` is on PATH and holds claude/codex/hermes | 1 |
+| Adapter templates hold only an engine wrapper + `{{SHERMAN_BODY}}` | Hand-duplicating the persona across adapters is how "either engine" decays into Claude-only | 1 |
+| `awk` for the splice, never `sed` | Persona is multi-line markdown containing `&`, `/`, backslashes | 1 |
+| Adapter rebuilt on every launch | Repo is truth, workspace is disposable — edits to the workspace can never silently become config | 1 |
+| Both adapter files removed before writing one | Switching engines otherwise strands a stale sibling the other engine may read | 1 |
 
 ## Hard constraints
 
@@ -110,3 +132,6 @@ No `${var,,}`, no associative arrays, no `readlink -f`. Verified 2026-07-26.
 - Pi seats, factory machinery, agentic-os integration
 - Custom OAuth of any kind
 - Anything that puts patient-identifying data anywhere near Sherman
+
+---
+*Last updated: 2026-07-26 after Phase 1*

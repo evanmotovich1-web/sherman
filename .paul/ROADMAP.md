@@ -2,14 +2,18 @@
 
 Derived from design doc §6 (Phases). Bootstrapped 2026-07-26.
 
-## Milestone v0.1 — Evan-only local prototype 🟡 In progress
+## Milestone v0.1 — Evan-only local prototype 🟡 In progress (1 of 3 phases)
 
 Proves the whole contract end to end on one Mac: *type `sherman`, the agent
 appears, it knows the business.*
 
 Design-doc Phase 1 splits into three tracks. Two run in parallel right now.
 
-### Phase 1 — Launcher chassis 🟡 Planning  ← THIS TRACK (Claude Code session)
+**Status:** the "type `sherman`, the agent appears" half is done and verified.
+The "knows the business" half is not — that needs Phase 2's vault contents and
+Phase 3's skills.
+
+### Phase 1 — Launcher chassis ✅ Complete (2026-07-26, 1/1 plan)
 
 The thing that makes `sherman` a command. Owns:
 
@@ -21,8 +25,10 @@ The thing that makes `sherman` a command. Owns:
 
 Exit condition: `sherman` launches a real Claude Code session whose CLAUDE.md
 carries the persona, both vault paths, the user's name, and the no-PHI rule.
+**Met** — verified across first run, second run, engine switch, missing binary,
+both banner branches, and symlink invocation from outside the repo.
 
-Plans: `01-01` (chassis, all of the above)
+Plans: `01-01` ✅ (chassis, all of the above) — commit `2f59775`
 
 ### Phase 2 — Logo + vault seed ⚪ Parallel track (Codex session)
 
