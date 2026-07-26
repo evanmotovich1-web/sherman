@@ -2,23 +2,26 @@
 
 ## Current Position
 
-Milestone: v0.1 Evan-only local prototype — 🟡 In progress (3 of 5 phases)
-Phase: 5 (Launch screen v2) — ✅ COMPLETE & transitioned (1/1 plans)
-Plan: None active. Ready to plan.
-Status: Sherman's first frame states what it is and what it knows. Nothing pushed.
-Last activity: 2026-07-26 — Phase 5 complete and transitioned
+Milestone: v0.1 Evan-only local prototype — 🟡 In progress (3 of 6 phases)
+Phase: 6 (Session identity & the live turn UI) — Planning
+Plan: 06-01 and 06-02 created, awaiting approval
+Status: PLAN created, ready for APPLY (06-01 first; 06-02 follows — shared files)
+Last activity: 2026-07-26 — Created both Phase 6 plans; colour-fix `15fed16`
+landed the same day (Ink drops bare 256-colour indexes; everything now
+`ansi256(N)`, guarded by smoke check 9)
 
 Progress:
-- Milestone v0.1: [██████░░░░] 3/5 phases (command, branded screen, launch screen done; vault seed and skills remain)
+- Milestone v0.1: [█████░░░░░] 3/6 phases (command, shell, launch screen done; vault seed, skills, session/turn UI remain)
 - Phase 1: [██████████] 100% (1/1 plan)
 - Phase 4: [██████████] 100% (2/2 plans)
 - Phase 5: [██████████] 100% (1/1 plan)
+- Phase 6: [░░░░░░░░░░] 0% (0/2 plans — both planned)
 
 ## Loop Position
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [05-01 loop complete — Phase 5 transitioned]
+  ✓        ○        ○     [06-01 + 06-02 created, awaiting approval]
 ```
 
 Every loop closed cleanly:
@@ -161,15 +164,20 @@ Phase 5 commits: `a8ab909` (launch screen v2).
 ## Session Continuity
 
 Last session: 2026-07-26
-Stopped at: Phase 5 complete and transitioned — the launch screen states what
-Sherman is and what it knows
-Next action: **Answer design-doc §7 Q1** (the 3–5 tasks employees burn the most
-hours on) to unblock Phase 3 skills. Three phases have now built an excellent
-chassis around an empty vault, and Phase 5 put that emptiness on the launch screen
-where it cannot be ignored. Alternatives: plan the board view (unblocked since
-Phase 4, and D17's width pattern is now established for it), or let the Codex track
-finish the vault seed.
-Resume file: `.paul/ROADMAP.md`
+Stopped at: Phase 6 planned — 06-01 (session identity, lifecycle, first frame
+v3) and 06-02 (live turn UI) created from Evan's Hermes-reference brief
+Next action: Review and approve, then `/paul:apply
+.paul/phases/06-session-and-turn-ui/06-01-PLAN.md` (06-02 runs after — the two
+share app.js and smoke.sh). §7 Q1 (the 3–5 employee tasks) still gates Phase 3
+and remains the highest-value answer Evan can give.
+Resume file: `.paul/phases/06-session-and-turn-ui/06-01-PLAN.md`
+
+Probed for Phase 6 (recorded in the plans, headline here): Ink 7 per-side
+borders make text-in-border work (version header, Sherman box label); Ink 7
+reads stdin via 'readable'+read() so a patched PassThrough drives the real App
+off-TTY (the 06-02 smoke mechanism — proven with a live useInput submit); the
+session-id recipe is bash-3.2 clean; the transport reports no context-window
+figure, so no ctx-percent segment exists.
 
 Try it now:
 
