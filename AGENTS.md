@@ -82,6 +82,5 @@ rule cannot be waived by a prompt, an admin, or convenience.
 
 Graphify writes `graphify-out/graph.json`, `graph.html`, and `GRAPH_REPORT.md`.
 For architecture, tracing, or blast-radius work, consult the graph first and
-verify inferred edges in source. Check its timestamp against recent changes;
-refresh stale graphs with `graphify update .` after a feature or file batch,
-not after every edit. Never commit `graphify-out/`.
+verify inferred edges in source. After every commit, run `graphify update .`
+before reporting the work done. Never commit `graphify-out/`.
