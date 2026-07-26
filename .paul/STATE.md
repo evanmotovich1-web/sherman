@@ -2,25 +2,25 @@
 
 ## Current Position
 
-Milestone: v0.1 Evan-only local prototype — 🟡 In progress (3 of 6 phases)
-Phase: 6 (Session identity & the live turn UI) — 🟡 In progress (1/2 plans)
-Plan: 06-01 ✅ APPLY complete, checkpoint approved (commit `99331f3`). 06-02 next.
-Status: 06-02 APPLY starting — turn UI + status bar
-Last activity: 2026-07-26 — 06-01 shipped: session id everywhere, JSONL log,
-attribution, `sherman update`, launch screen v3
+Milestone: v0.1 Evan-only local prototype — 🟡 In progress (4 of 6 phases)
+Phase: 6 (Session identity & the live turn UI) — ✅ COMPLETE (2/2 plans)
+Plan: None active. Ready to plan.
+Status: Sessions are identifiable and attributable; the shell stages turns
+Hermes-style with true data only. Nothing pushed.
+Last activity: 2026-07-26 — Phase 6 complete: both checkpoints approved
 
 Progress:
-- Milestone v0.1: [█████░░░░░] 3/6 phases (command, shell, launch screen done; vault seed, skills, session/turn UI remain)
+- Milestone v0.1: [██████░░░░] 4/6 phases (command, shell, launch screen, session/turn UI done; vault seed and skills remain)
 - Phase 1: [██████████] 100% (1/1 plan)
 - Phase 4: [██████████] 100% (2/2 plans)
 - Phase 5: [██████████] 100% (1/1 plan)
-- Phase 6: [█████░░░░░] 1/2 plans (06-01 done; 06-02 in APPLY)
+- Phase 6: [██████████] 100% (2/2 plans)
 
 ## Loop Position
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ◐        ○     [06-01 applied + approved; 06-02 APPLY in progress]
+  ✓        ✓        ✓     [06-01 + 06-02 loops complete — Phase 6 closed]
 ```
 
 Every loop closed cleanly:
@@ -31,9 +31,12 @@ Every loop closed cleanly:
 | `04-01` engine layer | 3/3 PASS | 8/8 Pass | `1f75e0a` |
 | `04-02` shell UI + wire-up | 3/3 PASS + checkpoint approved | 9/9 Pass | `fcd2b82` |
 | `05-01` launch screen v2 | 4/4 PASS (2 gaps fixed) + checkpoint approved | 8/8 Pass | `a8ab909` |
+| `06-01` session identity + first frame v3 | 4/4 PASS + checkpoint approved | 6/6 Pass | `99331f3` |
+| `06-02` live turn UI | 4/4 PASS (1 D17 gap fixed) + checkpoint approved | 5/5 Pass | `f4b7518` |
 
 Details: `.paul/phases/04-sherman-shell/04-01-SUMMARY.md`, `04-02-SUMMARY.md`,
-`.paul/phases/05-launch-screen-v2/05-01-SUMMARY.md`
+`.paul/phases/05-launch-screen-v2/05-01-SUMMARY.md`,
+`.paul/phases/06-session-and-turn-ui/06-01-SUMMARY.md`, `06-02-SUMMARY.md`
 
 ## What works right now
 
@@ -49,17 +52,28 @@ First run asks two questions (provider, name) and writes
 `~/.sherman/workspace/` from `agent/SYSTEM.md` plus the memory blocks and the
 no-PHI rule, then hands off.
 
-**The first frame states what Sherman is and what it knows.** A layered SHERMAN
-wordmark (55×7, falling back to 41×5 under 58 columns), then one bordered panel:
-the three-circle mark and identity on the left, live vault counts and the real key
-bindings on the right, engine · model · exit in the footer. Then one plain welcome
-line. Every value is read from config, `session.info` or a readdir — nothing on it
-is invented, which is why it currently reads `0` everywhere.
+**The first frame is the Hermes posture in Sherman's palette.** The SHERMAN
+deck (lit rim, red ramp, shadow) with the AGENT sub-deck right-aligned beneath
+it, then an identity block — `<model> · Sherman Abrams Labs`, the vault folder,
+the session id — then the knowledge panel with the build stamped into its top
+border (`╭─ Sherman Abrams v0.2.0 · <sha> · +N ─╮`; segments omitted cleanly
+without git). The opener fills the viewport; every value is read from config,
+`session.info`, package.json, git, or a readdir — nothing invented, which is
+why the counts still honestly read `0`.
 
-In the shell: type, Enter to send. An animated indicator with elapsed time covers
-the wait. Ctrl+C interrupts the turn; again exits. The transcript lives in the
-terminal's own scrollback. The status bar shows engine · model · user · vault ·
-tokens and grows as you talk.
+**Every session has a name.** One id per launch (`YYYYMMDD_HHMMSS_<6 hex>`)
+minted by `bin/sherman`, identical on the panel, in the adapter's
+memory-attribution rule ("— user · session · date"), and heading the JSONL turn
+log at `~/.sherman/sessions/<id>.jsonl`. `sherman update` reports honestly in
+all three repo states (today: "no update source configured", exit 0).
+
+**Turns are staged.** Your line commits as `● …`; the wait narrates itself in
+dim italic straight from the engine's real events (never invented — a
+no-activity turn shows only "thinking… <elapsed>"); the reply lands in a
+bordered box signed `●●● Sherman`. The bar underneath: `engine · model |
+tokens | session Nm | turn N.Ns` live in red while working, `last N.Ns` after.
+No ctx-percent — this transport reports no context figure. Ctrl+C interrupts;
+again exits. The transcript still lives in the terminal's own scrollback.
 
 The engine is sealed in the vault: writes outside it are denied, network egress is
 denied, and that was proven by a test that tried to escape.
@@ -73,7 +87,7 @@ node shell/bin/sherman-shell.js --probe "who are you?"
 Normalized events, no UI. Works even with no `node_modules`, so a broken UI cannot
 disable the tool that debugs it.
 
-`./smoke.sh` — 8 checks, green.
+`./smoke.sh` — 11 checks, green.
 
 **What does NOT work yet: knowing the business.** The vault holds READMEs. Sherman
 will say it doesn't know rather than invent — and since Phase 5 the launch screen
@@ -111,7 +125,11 @@ after every commit, and never commit `graphify-out/`.
 | D15 | READMEs excluded from vault counts | The launch panel's whole value is that its numbers are true. Counting scaffolding would print "1 wiki page" over an empty vault. Reads 0 until R8 lands, which is both honest and useful pressure. | 2026-07-26 |
 | D16 | Launch panel says "Keys", not "Commands" | The shell has zero slash commands and no `/help`. A Commands section could only be empty or invented, and the panel's one rule is that nothing on it is invented. One-line change the day a command ships. | 2026-07-26 |
 | D17 | Width-branching components take an injectable `columns` prop | `useWindowSize()` returns a fixed 80x24 under `renderToString`, so a width-dependent test would silently render at 80 and prove nothing. The screen resolves width once and passes it down. **Any future width-branching UI must follow this or it is untestable off a TTY.** | 2026-07-26 |
-| D18 | `engine · model` appears in the panel footer only | The brief placed it in the left column *and* the footer of the same box; printed twice inside one border it reads as a rendering bug. Left column is identity, footer is runtime. | 2026-07-26 |
+| D18 | `engine · model` appears in the panel footer only | The brief placed it in the left column *and* the footer of the same box; printed twice inside one border it reads as a rendering bug. Left column is identity, footer is runtime. **Evolved in Phase 6:** the model moved to the identity block under the wordmark (Evan's Hermes brief) and left the footer — the once-per-surface principle is what survives. | 2026-07-26 |
+| D19 | Session id minted in `bin/sherman`, travels by env, never config | The adapter is assembled before the shell exists, so a shell-minted id could never reach the attribution rule. Per-launch state does not belong in config.json. | 2026-07-26 |
+| D20 | A status segment renders only if it has a real source | No ctx-percent (this transport reports no context-window figure); no segment before its first real value. A percentage of an invented denominator would be the one dishonest number on an honest screen. | 2026-07-26 |
+| D21 | The session log may quietly die but may never crash or spam | One append failure disables it for the session. A log that failed once and then printed a retry error per turn would be worse than no log. | 2026-07-26 |
+| D22 | `sherman update` never merges, and guards against smoke recursion | ff-only or "manual update needed". Update runs smoke after a real pull, and smoke's update check skips under SHERMAN_UPDATE_RUNNING — without the guard the pair would loop the day a remote exists. | 2026-07-26 |
 
 ## Concerns
 
@@ -155,7 +173,12 @@ Phase 4 commits: `7a9b4dd` (04-01 plan), `1f75e0a` (engine layer), `7536aa2`,
 `c5b22a6` (04-01 close), `879240d` (04-02 plan), `fcd2b82` (shell UI),
 `3d7625d` (Phase 4 close).
 
-Phase 5 commits: `a8ab909` (launch screen v2).
+Phase 5 commits: `a8ab909` (launch screen v2), `15fed16` (colour fix — Ink
+silently drops bare 256-colour indexes; everything now `ansi256(N)`, guarded
+by smoke check 9).
+
+Phase 6 commits: `cc1a24d` (both plans), `99331f3` (06-01 session identity +
+first frame v3), `0275b24` (06-01 close), `f4b7518` (06-02 live turn UI).
 
 `shell/node_modules/` and `graphify-out/` are gitignored.
 `shell/package-lock.json` is tracked, for reproducible installs at v0.2.
@@ -163,20 +186,23 @@ Phase 5 commits: `a8ab909` (launch screen v2).
 ## Session Continuity
 
 Last session: 2026-07-26
-Stopped at: Phase 6 planned — 06-01 (session identity, lifecycle, first frame
-v3) and 06-02 (live turn UI) created from Evan's Hermes-reference brief
-Next action: Review and approve, then `/paul:apply
-.paul/phases/06-session-and-turn-ui/06-01-PLAN.md` (06-02 runs after — the two
-share app.js and smoke.sh). §7 Q1 (the 3–5 employee tasks) still gates Phase 3
-and remains the highest-value answer Evan can give.
-Resume file: `.paul/phases/06-session-and-turn-ui/06-01-PLAN.md`
+Stopped at: Phase 6 complete — sessions identifiable and attributable, the
+first frame and the turn UI both carry the Hermes structure in Sherman's
+palette, eleven smoke checks green
+Next action: **Answer design-doc §7 Q1** (the 3–5 tasks employees burn the
+most hours on) to unblock Phase 3 skills. Four phases have now built an
+excellent, identifiable, staged chassis around an empty vault — and the
+attribution rule shipped BEFORE the first facts, so everything the vault
+learns from here is traceable. Alternatives: the board view (unblocked, D17
+pattern established), or let the Codex track finish the vault seed.
+Resume file: `.paul/ROADMAP.md`
 
 Probed for Phase 6 (recorded in the plans, headline here): Ink 7 per-side
 borders make text-in-border work (version header, Sherman box label); Ink 7
 reads stdin via 'readable'+read() so a patched PassThrough drives the real App
-off-TTY (the 06-02 smoke mechanism — proven with a live useInput submit); the
-session-id recipe is bash-3.2 clean; the transport reports no context-window
-figure, so no ctx-percent segment exists.
+off-TTY (now smoke check 11's mechanism — it types into the real composer);
+the session-id recipe is bash-3.2 clean; the transport reports no
+context-window figure, so no ctx-percent segment exists (D20).
 
 Try it now:
 

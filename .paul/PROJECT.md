@@ -44,6 +44,8 @@ The skills are the product; everything else is chassis.
 | R12 | The either-engine promise holds at the **UI seam**, not just the persona seam: one `EngineSession` contract, engine specifics quarantined in one backend file | §3c | ✓ Phase 4 — proven by shipping the whole UI without touching `shell/src/engine/` |
 | R13 | The engine runs restricted — file read/search/write inside the vault only, no network, nothing else auto-approved | §3c, §4 | ✓ Phase 4 — enforced by the OS sandbox and proven by an escape test |
 | R17 | **The first frame must state what Sherman is and what it knows** — owning the screen is not the same as owning the first impression | Phase 5 brief | ✓ Phase 5 — layered wordmark + bordered panel, every value read from config, `session.info` or a readdir |
+| R20 | **Every session is identifiable and attributable.** One id per launch, identical on screen, in the adapter's memory-attribution rule, and on the JSONL turn log — shipped BEFORE the vault fills, so no fact ever lands untraceable | Phase 6 brief | ✓ Phase 6 — minted in `bin/sherman`, travels by env (D19) |
+| R21 | **The wait and the reply must stage themselves honestly** — activity lines only from real engine events, status segments only with real sources | Phase 6 brief | ✓ Phase 6 — event-sourced trace, signed reply box, segmented bar; no ctx-percent on a transport that reports none (D20) |
 
 ### Active
 
@@ -85,6 +87,10 @@ The skills are the product; everything else is chassis.
 | Every value on the launch screen is read, never authored | The panel is only worth having because its numbers are true. One invented figure and none of them can be trusted — so READMEs are excluded from vault counts, and the Skills section is absent rather than a placeholder | 5 |
 | The wordmark is generated from a glyph table, not read from `logo/banner.ans` | `logo/` belongs to the parallel track and the asset stays as bin/sherman's. Two sizes from one table also means the narrow fallback can never drift from the mark | 5 |
 | Width-branching components take an injectable `columns` prop | `useWindowSize()` is blind to `renderToString`'s width, so the alternative is UI that cannot be tested off a TTY — and tests that pass while proving nothing | 5 |
+| Session id minted in the launcher, carried by env, never persisted to config | The adapter is assembled before the shell exists; per-launch state is not configuration | 6 |
+| Colours must be spelled `ansi256(N)` — Ink silently ignores a bare index | The v2 launch screen shipped all-white with no error anywhere; smoke check 9 now asserts the escapes are actually emitted | 6 |
+| A status segment renders only if it has a real data source | No ctx-percent on a transport that reports no context figure; a percentage of an invented denominator would be the one dishonest number on an honest screen | 6 |
+| `sherman update` never merges; update/smoke recursion is env-guarded | ff-only or "manual update needed" — a diverged tree is a person's merge to make. Without the guard, update-runs-smoke and smoke-runs-update would loop the day a remote exists | 6 |
 
 ## Hard constraints
 
@@ -185,4 +191,4 @@ shell/node_modules/       # ink + react; installed by install.sh, gitignored
 - Anything that puts patient-identifying data anywhere near Sherman
 
 ---
-*Last updated: 2026-07-26 after Phase 5*
+*Last updated: 2026-07-26 after Phase 6*

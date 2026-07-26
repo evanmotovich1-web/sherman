@@ -2,7 +2,7 @@
 
 Derived from design doc §6 (Phases). Bootstrapped 2026-07-26.
 
-## Milestone v0.1 — Evan-only local prototype 🟡 In progress (3 of 6 phases)
+## Milestone v0.1 — Evan-only local prototype 🟡 In progress (4 of 6 phases)
 
 Proves the whole contract end to end on one Mac: *type `sherman`, the agent
 appears, it knows the business.*
@@ -145,7 +145,7 @@ Two things worth carrying forward:
   readdir at mount. Nothing about this screen needs revisiting when Phase 2 lands;
   the numbers simply stop being zero.
 
-### Phase 6 — Session identity & the live turn UI 🟡 Planning (2 plans created)
+### Phase 6 — Session identity & the live turn UI ✅ Complete (2026-07-26, 2/2 plans)
 
 Added 2026-07-26 after Evan compared Sherman against Hermes mid-conversation —
 the third phase born from a live-run comparison (same pattern as Phases 4 and 5).
@@ -153,30 +153,31 @@ Scope: `shell/` and `bin/sherman`. Structure copied from the Hermes reference,
 palette Sherman's own (red 196 family; mark pink/purple/blue), under 05-01's
 governing rule: every value true, nothing invented.
 
-- `06-01` 🟡 **Session identity, lifecycle & the first frame v3** (planned).
-  Session id `YYYYMMDD_HHMMSS_<6 hex>` minted by `bin/sherman`, shown on the
-  panel, spliced into the adapter's new memory-attribution rule ("— user ·
-  session · date"), and heading a JSONL turn log at `~/.sherman/sessions/`
-  (operational data — never the vault). Version header embedded in the panel's
-  top border (omits git segments cleanly when absent). `sherman update`
-  subcommand with honest no-remote behavior. Launch screen v3: retro SHERMAN
-  AGENT two-deck wordmark, identity block (model · Sherman Abrams Labs, folder,
-  session id), full-height first frame — primary screen still, never alternate
-  (D12). One new smoke check (update); session-id assert folds into check 3.
-- `06-02` 🟡 **The live turn UI** (planned, after 06-01 — shared files).
-  Hermes turn structure: `● user` bullets, dim-italic activity trace sourced
-  ONLY from real engine events (no tool events → "thinking… <elapsed>" and
-  nothing else), Sherman's reply in a bordered box signed with the mark glyph +
-  "Sherman" in its top border. Status bar in red: engine · model | session
-  tokens | session minutes | live turn timer / last turn duration. NO
-  ctx-percent — the transport reports no context figure (probed 04-01), and a
-  segment without a real source does not appear. One new smoke check: a
-  scripted turn through a fake backend over the proven fake-stdio harness.
+- `06-01` ✅ **Session identity, lifecycle & the first frame v3** (commit
+  `99331f3`). Session id `YYYYMMDD_HHMMSS_<6 hex>` minted by `bin/sherman` and
+  identical everywhere it was promised: the launch panel, the adapter's new
+  memory-attribution rule ("— user · session · date"), both handoffs, and the
+  JSONL turn log at `~/.sherman/sessions/` (operational data — never the
+  vault; may quietly die, may never crash a turn). Build stamped into the
+  panel's top border, segments omitted cleanly without git. `sherman update`
+  honest in all three repo states, recursion-guarded against smoke. Launch
+  screen v3: SHERMAN AGENT two-deck wordmark, identity block, full-height
+  opener on the primary screen (D12 held). 4/4 tasks, AC 1–6 Pass, checkpoint
+  approved.
+- `06-02` ✅ **The live turn UI** (commit `f4b7518`). `● user` bullets,
+  dim-italic activity trace sourced ONLY from real engine events, replies in a
+  bordered box signed `●●● Sherman` (the mark at one-character scale), and the
+  red segmented bar: engine · model | tokens | session minutes | live turn
+  timer / last duration. NO ctx-percent — the transport reports no context
+  figure. Smoke check 11 drives the REAL App through a fake backend over
+  PassThrough stdio and asserts the trace line exists only because the fake
+  emitted it. 4/4 tasks, AC 1–5 Pass, checkpoint approved.
 
-Exit condition: a session is identifiable (screen, adapter, log), updatable
-(`sherman update`), and staged like the reference — opener fills the viewport,
-turns render as bullet → live trace → signed box, the bar carries true segments
-in red. Both human-verify checkpoints approved by Evan.
+Exit condition — **met and approved at both checkpoints**: a session is
+identifiable (screen, adapter, log), updatable (`sherman update`), and staged
+like the reference: opener fills the viewport, turns render as bullet → live
+trace → signed box, the bar carries true segments in red. Eleven smoke checks
+green.
 
 ## Milestone v0.2 — Installer + second admin device + Codex adapter ⚪ Not started
 
