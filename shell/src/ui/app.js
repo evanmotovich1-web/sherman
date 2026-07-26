@@ -58,6 +58,13 @@ export function App({ session, sessionId }) {
     const [usage, setUsage] = useState(() => session.usage ?? emptyUsage());
     const [info, setInfo] = useState(() => session.info);
 
+    // Real clocks for the status bar: when this session started, and how long
+    // the last turn took. The live in-turn timer is useAnimation's, down in
+    // StatusBar itself — only the durable numbers live here.
+    const [sessionStart] = useState(() => Date.now());
+    const [lastTurnMs, setLastTurnMs] = useState(null);
+    const turnStartRef = useRef(0);
+
     // Mirrors `busy` for the Ctrl+C handler. React state is async, so two fast
     // presses would both observe the stale value and neither would exit.
     const busyRef = useRef(false);
@@ -80,6 +87,7 @@ export function App({ session, sessionId }) {
             // dead time at the start of a turn is exactly what it exists to cover.
             setBusyBoth(true);
             setActivity(null);
+            turnStartRef.current = Date.now();
 
             try {
                 for await (const event of session.send(text)) {
@@ -130,6 +138,10 @@ export function App({ session, sessionId }) {
                 setBusyBoth(false);
                 setActivity(null);
                 setInfo(session.info);
+                // In `finally`, not on turn-end: an interrupted or failed turn
+                // still ran for a true amount of time, and that is the honest
+                // value for "last".
+                setLastTurnMs(Date.now() - turnStartRef.current);
             }
         },
         [commit, session, setBusyBoth, log]
@@ -162,7 +174,7 @@ export function App({ session, sessionId }) {
             Box,
             { marginTop: 1, flexDirection: 'column' },
             React.createElement(CompactHeader),
-            React.createElement(StatusBar, { info, usage })
+            React.createElement(StatusBar, { info, usage, busy, sessionStart, lastTurnMs })
         )
     );
 }

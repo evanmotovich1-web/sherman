@@ -14,6 +14,8 @@
 #   8. The launch screen renders at 200 columns without overflowing.
 #   9. The launch screen's colours are emitted as real ANSI sequences.
 #  10. `sherman update` exits honestly in this repo's state.
+#  11. A scripted turn through a fake backend renders the turn structure:
+#      user bullet, signed Sherman box, and a trace line from a real event.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -385,10 +387,107 @@ else
     fi
 fi
 
+# ----------------------------------------------------------------- check 11 --
+# The turn structure, proven off-TTY. Ink 7 reads stdin via 'readable'+read(),
+# so a PassThrough with isTTY/setRawMode stubs drives the REAL App: the check
+# types a prompt into the real composer, a fake EngineSession yields a scripted
+# turn, and the captured output must contain the user bullet, the signed
+# Sherman box border, and a trace line that exists ONLY because the fake
+# backend emitted it — which is the honesty rule, mechanised.
+#
+# HOME is the sandbox so the session log writes there, never the real one.
+
+TURN_JS=$(cat <<'JS'
+import React from 'react';
+import { render } from 'ink';
+import { PassThrough } from 'node:stream';
+import { App } from './src/ui/app.js';
+
+const fakeSession = {
+    info: {
+        engine: 'fake',
+        model: 'fake-model',
+        user: 'smoke-tester',
+        vaultPath: '/tmp/smoke/sherman/vault',
+        threadId: null,
+    },
+    usage: { total: 42, input: 20, cachedInput: 0, output: 20, reasoning: 2 },
+    async *send() {
+        yield { kind: 'turn-start' };
+        yield { kind: 'reasoning', text: 'checking the vault' };
+        yield { kind: 'tool', label: 'read wiki/intake-sop.md' };
+        yield { kind: 'message', text: 'The intake SOP says to log the request first.' };
+        yield { kind: 'turn-end', usage: this.usage };
+    },
+    interrupt() {},
+    dispose() {},
+};
+
+const stdin = new PassThrough();
+stdin.isTTY = true;
+stdin.setRawMode = () => {};
+stdin.ref = () => {};
+stdin.unref = () => {};
+
+const stdout = new PassThrough();
+stdout.columns = 80;
+stdout.rows = 24;
+let captured = '';
+stdout.on('data', (d) => { captured += d.toString(); });
+
+const inst = render(
+    React.createElement(App, { session: fakeSession, sessionId: '20260726_120000_abc123' }),
+    { stdout, stdin, exitOnCtrlC: false, patchConsole: false }
+);
+
+setTimeout(() => { stdin.write('read the sop'); }, 40);
+setTimeout(() => { stdin.write('\r'); }, 90);
+
+const startedAt = Date.now();
+const poll = setInterval(() => {
+    const plain = captured.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+    const done = plain.includes('The intake SOP says');
+    if (!done && Date.now() - startedAt < 2000) return;
+
+    clearInterval(poll);
+    inst.unmount();
+
+    const missing = [];
+    if (!plain.includes('● read the sop')) missing.push('user bullet');
+    if (!/╭─.*Sherman.*╮/.test(plain)) missing.push('Sherman box label');
+    if (!plain.includes('read wiki/intake-sop.md')) missing.push('trace line from the fake tool event');
+
+    if (missing.length > 0) {
+        console.error('missing: ' + missing.join(', '));
+        process.exit(1);
+    }
+    process.exit(0);
+}, 50);
+JS
+)
+
+echo
+echo "11. a scripted turn renders the turn structure"
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot drive the shell"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    pass "skipped -- shell/node_modules absent, run install.sh"
+else
+    turn_err=$(cd shell && env HOME="$TMPHOME" node --input-type=module -e "$TURN_JS" 2>&1)
+    turn_status=$?
+
+    if [ "$turn_status" -eq 0 ]; then
+        pass "bullet, signed box, and event-sourced trace line all rendered"
+    else
+        fail "$(printf '%s' "$turn_err" | head -3)"
+    fi
+fi
+
 # -------------------------------------------------------------------- result --
 echo
 if [ "$FAILURES" -eq 0 ]; then
-    echo "10 checks, all green."
+    echo "11 checks, all green."
     echo
     exit 0
 fi

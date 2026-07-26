@@ -5,20 +5,30 @@
 // OWN scrollback — so the mouse wheel and Cmd-F work the way people expect. The
 // alternate screen would give a tidier fixed layout and destroy exactly that.
 //
-// ONE <Static> for the whole history, with the banner as its first item. Ink only
-// reliably supports a single Static instance, and threading the banner through the
-// same list also guarantees it stays above the first message.
+// ONE <Static> for the whole history, with the launch screen as its first item.
+// Ink only reliably supports a single Static instance, and threading the opener
+// through the same list also guarantees it stays above the first message.
+//
+// Turn structure (Phase 6): the user's line is a bullet, the work the engine
+// reported commits as a dim italic trace under it, and Sherman's reply arrives
+// in a bordered box signed in its top border. The trace renders ONLY what the
+// engine actually emitted — an activity line that never happened is a lie in
+// the transcript, and one invented line poisons trust in all of them.
 
 import React from 'react';
-import { Text, Box, Static } from 'ink';
+import { Text, Box, Static, useWindowSize } from 'ink';
 
-import { color } from './theme.js';
+import { color, markRamp } from './theme.js';
 import { Banner } from './Header.js';
 import { LaunchScreen } from './LaunchScreen.js';
 
-// Width of the speaker gutter. A fixed column means wrapped lines hang under the
-// text rather than under the label.
+// Width of the speaker gutter for notice/error rows. A fixed column means
+// wrapped lines hang under the text rather than under the label.
 const GUTTER = 9;
+
+// Same cap as the launch panel: readable on a wide terminal, never wider than
+// the terminal on a narrow one.
+const MAX_BOX = 76;
 
 function Row({ label, labelColor, children, bold }) {
     return React.createElement(
@@ -33,8 +43,48 @@ function Row({ label, labelColor, children, bold }) {
     );
 }
 
+/**
+ * Sherman's reply, boxed and signed: the mark at one-character scale (three
+ * dots in the mark's own colours) plus the word Sherman, set into the top
+ * border — the same composed-line + borderTop:false construction the launch
+ * panel's version header uses.
+ */
+function ShermanBox({ text, width }) {
+    const box = Math.min(width - 2, MAX_BOX);
+
+    // ' ●●● Sherman ' — measured in code points so the fill is exact.
+    const label = ' ●●● Sherman ';
+    const fill = Math.max(0, box - 3 - [...label].length);
+
+    return React.createElement(
+        Box,
+        { flexDirection: 'column', width: box },
+        React.createElement(
+            Text,
+            { wrap: 'truncate' },
+            React.createElement(Text, { color: color.frame }, '╭─ '),
+            React.createElement(Text, { color: markRamp.dot.mid }, '●'),
+            React.createElement(Text, { color: markRamp.inner.mid }, '●'),
+            React.createElement(Text, { color: markRamp.outer.mid }, '●'),
+            React.createElement(Text, { color: color.accent, bold: true }, ' Sherman '),
+            React.createElement(Text, { color: color.frame }, '─'.repeat(fill) + '╮')
+        ),
+        React.createElement(
+            Box,
+            {
+                width: box,
+                borderStyle: 'round',
+                borderTop: false,
+                borderColor: color.frame,
+                paddingX: 1,
+            },
+            React.createElement(Text, null, text)
+        )
+    );
+}
+
 /** One committed transcript item. */
-function Item({ item }) {
+function Item({ item, width }) {
     switch (item.kind) {
         case 'launch':
             return React.createElement(LaunchScreen, {
@@ -50,33 +100,25 @@ function Item({ item }) {
 
         case 'user':
             return React.createElement(
-                Row,
-                { label: 'you', labelColor: color.muted },
+                Text,
+                null,
+                React.createElement(Text, { color: color.accent }, '● '),
                 React.createElement(Text, { color: color.user }, item.text)
             );
 
-        case 'message':
-            return React.createElement(
-                Row,
-                { label: 'sherman', labelColor: color.accent, bold: true },
-                React.createElement(Text, null, item.text)
-            );
-
-        // Reasoning and tool lines are deliberately quiet. They exist to prove
-        // work is happening, not to be read closely.
+        // The committed activity trace. Dim italic, indented under the bullet,
+        // and rendered EXACTLY as the engine reported it — reasoning text and
+        // tool labels come straight off the events, never a mapping table.
         case 'reasoning':
-            return React.createElement(
-                Row,
-                { label: '', labelColor: color.faint },
-                React.createElement(Text, { dimColor: true }, `thinking · ${item.text}`)
-            );
-
         case 'tool':
             return React.createElement(
-                Row,
-                { label: '', labelColor: color.faint },
-                React.createElement(Text, { dimColor: true }, `· ${item.text}`)
+                Text,
+                { dimColor: true, italic: true, wrap: 'truncate' },
+                `  ${item.text}`
             );
+
+        case 'message':
+            return React.createElement(ShermanBox, { text: item.text, width });
 
         case 'notice':
             return React.createElement(
@@ -100,14 +142,26 @@ function Item({ item }) {
 }
 
 /**
- * @param {{items: Array<{id: string, kind: string, text?: string}>}} props
+ * @param {{items: Array<{id: string, kind: string, text?: string}>, columns?: number}} props
+ *
+ * `columns` is injectable for off-TTY fixtures (D17); live, the hook wins.
  */
-export function Transcript({ items }) {
+export function Transcript({ items, columns }) {
+    const measured = useWindowSize().columns;
+    const width = typeof columns === 'number' ? columns : measured;
+
     return React.createElement(Static, { items }, (item) =>
         React.createElement(
             Box,
-            { key: item.id, flexDirection: 'column', marginBottom: item.kind === 'message' ? 1 : 0 },
-            React.createElement(Item, { item })
+            {
+                key: item.id,
+                flexDirection: 'column',
+                // Air above each user turn and below each reply — the rhythm
+                // that makes turns read as turns.
+                marginTop: item.kind === 'user' ? 1 : 0,
+                marginBottom: item.kind === 'message' ? 1 : 0,
+            },
+            React.createElement(Item, { item, width })
         )
     );
 }
