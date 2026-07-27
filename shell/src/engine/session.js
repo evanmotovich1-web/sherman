@@ -39,7 +39,8 @@
  * @typedef {{kind:'turn-start'}} TurnStartEvent
  * @typedef {{kind:'reasoning', text:string}} ReasoningEvent
  * @typedef {{kind:'message', text:string}} MessageEvent
- * @typedef {{kind:'tool', label:string}} ToolEvent
+ * @typedef {{kind:'tool', id:string, phase:'started'|'completed', glyph:string,
+ *            label:string, durationMs:number|null}} ToolEvent
  * @typedef {{kind:'turn-end', usage:Usage}} TurnEndEvent
  * @typedef {{kind:'interrupted'}} InterruptedEvent
  * @typedef {{kind:'error', message:string}} ErrorEvent
@@ -65,7 +66,14 @@ export const ev = Object.freeze({
     turnStart: () => ({ kind: 'turn-start' }),
     reasoning: (text) => ({ kind: 'reasoning', text }),
     message: (text) => ({ kind: 'message', text }),
-    tool: (label) => ({ kind: 'tool', label }),
+    tool: ({ id, phase, glyph = '›', label, durationMs = null }) => ({
+        kind: 'tool',
+        id,
+        phase,
+        glyph,
+        label,
+        durationMs,
+    }),
     turnEnd: (usage) => ({ kind: 'turn-end', usage }),
     interrupted: () => ({ kind: 'interrupted' }),
     error: (message) => ({ kind: 'error', message }),

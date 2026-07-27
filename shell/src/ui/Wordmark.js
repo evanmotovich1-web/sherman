@@ -5,32 +5,33 @@
 //   1. logo/ belongs to the parallel Codex track, and banner.ans stays exactly
 //      as it is — bin/sherman still prints it for its pre-shell moments.
 //   2. Two sizes from one table means the small form can never drift from the
-//      large one. Parsing five lines back out of a mixed-content .ans file to
-//      get the fallback would be both fragile and pointless.
+//      large one. Parsing lines back out of a mixed-content .ans file to get
+//      the fallback would be both fragile and pointless.
 //
-// The letterforms are the same shapes banner.ans uses. Only the rendering is new.
+// The letterforms are the same shapes banner.ans uses, redrawn at seven rows
+// for the v3 full-bleed pass. Only the rendering is new.
 //
-// Since Phase 6 the mark is a two-deck lockup: SHERMAN carries the lit/ramp/
-// shadow treatment, and AGENT sits beneath it as a sub-deck — small glyphs on
-// the large form, a spaced text tag on the narrow fallback — right-aligned so
-// the two decks read as one retro lockup rather than two words.
+// Since v3 the lockup is left-anchored: SHERMAN carries the lit/ramp/shadow
+// treatment, and AGENT sits directly beneath it, flush to the same left edge,
+// so the pair reads as one unit the way HERMES-AGENT does — not as a word with
+// a right-floated tag.
 
 import React from 'react';
 import { Text, Box, useWindowSize } from 'ink';
 
-import { color, ramp } from './theme.js';
+import { ramp } from './theme.js';
 
-// 7 columns per glyph. Joined with a single space: 7*7 + 6 = 55 columns.
+// 7 columns per glyph, 7 rows tall. Joined with a single space:
+// 7*7 + 6 = 55 columns. Only SHERMAN's letters exist at this size — the AGENT
+// sub-deck always draws from the SMALL table.
 const LARGE = {
-    S: ['███████', '█      ', '███████', '      █', '███████'],
-    H: ['█     █', '█     █', '███████', '█     █', '█     █'],
-    E: ['███████', '█      ', '█████  ', '█      ', '███████'],
-    R: ['██████ ', '█     █', '██████ ', '█   █  ', '█    ██'],
-    M: ['█     █', '██   ██', '█ ███ █', '█     █', '█     █'],
-    A: [' █████ ', '█     █', '███████', '█     █', '█     █'],
-    N: ['█     █', '██    █', '█  █  █', '█    ██', '█     █'],
-    G: ['███████', '█      ', '█  ████', '█     █', '███████'],
-    T: ['███████', '   █   ', '   █   ', '   █   ', '   █   '],
+    S: ['███████', '█      ', '█      ', '███████', '      █', '      █', '███████'],
+    H: ['█     █', '█     █', '█     █', '███████', '█     █', '█     █', '█     █'],
+    E: ['███████', '█      ', '█      ', '█████  ', '█      ', '█      ', '███████'],
+    R: ['██████ ', '█     █', '█     █', '██████ ', '█   █  ', '█    █ ', '█     █'],
+    M: ['█     █', '██   ██', '█ ███ █', '█  █  █', '█     █', '█     █', '█     █'],
+    A: [' █████ ', '█     █', '█     █', '███████', '█     █', '█     █', '█     █'],
+    N: ['█     █', '██    █', '█ █   █', '█  █  █', '█   █ █', '█    ██', '█     █'],
 };
 
 // 5 columns per glyph: 5*7 + 6 = 41 columns for SHERMAN. Pixel-identical to
@@ -51,25 +52,15 @@ const SMALL = {
 const WORD = 'SHERMAN';
 const SUB = 'AGENT';
 
-// Body rows, top to bottom. Bright at the top, darkening downward — this is the
-// gradient that makes the letters read as lit from above.
-const BODY = [ramp.bright, ramp.bright, ramp.mid, ramp.deep, ramp.deep];
-
 /** Measured, not estimated. Exported so the smoke checks assert against one source. */
 export const LARGE_COLUMNS = 55;
 export const SMALL_COLUMNS = 41;
 
-// AGENT in the 5-wide table: 5*5 + 4 gutters = 29 columns, right-aligned
-// under the 55-column deck above it.
-const SUB_COLUMNS = 29;
-const SUB_PAD_LARGE = LARGE_COLUMNS - SUB_COLUMNS;
-
 // The narrow tag: letters spaced out so 5 glyphs still read as a deck.
 const SUB_TAG = SUB.split('').join(' ');
-const SUB_PAD_SMALL = SMALL_COLUMNS - SUB_TAG.length;
 
-/** Rim + 5 body rows + shadow + gap + 5 AGENT rows. */
-export const LARGE_ROWS = 13;
+/** Rim + 7 body rows + shadow + gap + 5 AGENT rows. */
+export const LARGE_ROWS = 15;
 /** 5 body rows + the tag line. */
 export const SMALL_ROWS = 6;
 
@@ -104,49 +95,37 @@ function Line({ tint, children }) {
     return React.createElement(Text, { color: tint, wrap: 'truncate' }, children);
 }
 
-/** 55 x 13. Lit rim, SHERMAN on the ramp, shadow, then the AGENT sub-deck. */
+/** 55 x 15. Lit rim, SHERMAN on the ramp, shadow, then AGENT flush left. */
 function Large() {
     const top = row(LARGE, WORD, 0);
-    const bottom = row(LARGE, WORD, 4);
-    const pad = ' '.repeat(SUB_PAD_LARGE);
+    const bottom = row(LARGE, WORD, 6);
 
     return React.createElement(
         Box,
         { flexDirection: 'column' },
         React.createElement(Line, { key: 'lit', tint: ramp.lit }, edge(top, '▄')),
-        ...BODY.map((tint, r) =>
+        ...ramp.body.map((tint, r) =>
             React.createElement(Line, { key: `b${r}`, tint }, row(LARGE, WORD, r))
         ),
         React.createElement(Line, { key: 'shadow', tint: ramp.shadow }, edge(bottom, '▄')),
         React.createElement(Text, { key: 'gap' }, ' '),
         ...[0, 1, 2, 3, 4].map((r) =>
-            React.createElement(
-                Line,
-                { key: `a${r}`, tint: ramp.mid },
-                pad + row(SMALL, SUB, r)
-            )
+            React.createElement(Line, { key: `a${r}`, tint: ramp.agent }, row(SMALL, SUB, r))
         )
     );
 }
 
 /**
- * 41 x 6, flat house red with the AGENT tag beneath.
- *
- * Deliberately NOT shaded. The ramp needs seven rows to read as depth; applied
- * to five it just looks like an uneven colour, which is worse than flat.
+ * 41 x 6, the compact brand gradient with the AGENT tag beneath, flush left.
  */
 function Small() {
     return React.createElement(
         Box,
         { flexDirection: 'column' },
-        ...[0, 1, 2, 3, 4].map((r) =>
-            React.createElement(Line, { key: `s${r}`, tint: color.accent }, row(SMALL, WORD, r))
+        ...ramp.compact.map((tint, r) =>
+            React.createElement(Line, { key: `s${r}`, tint }, row(SMALL, WORD, r))
         ),
-        React.createElement(
-            Line,
-            { key: 'tag', tint: ramp.mid },
-            ' '.repeat(SUB_PAD_SMALL) + SUB_TAG
-        )
+        React.createElement(Line, { key: 'tag', tint: ramp.agent }, SUB_TAG)
     );
 }
 

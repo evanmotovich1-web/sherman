@@ -26,10 +26,6 @@ import { LaunchScreen } from './LaunchScreen.js';
 // wrapped lines hang under the text rather than under the label.
 const GUTTER = 9;
 
-// Same cap as the launch panel: readable on a wide terminal, never wider than
-// the terminal on a narrow one.
-const MAX_BOX = 76;
-
 function Row({ label, labelColor, children, bold }) {
     return React.createElement(
         Box,
@@ -50,7 +46,13 @@ function Row({ label, labelColor, children, bold }) {
  * panel's version header uses.
  */
 function ShermanBox({ text, width }) {
-    const box = Math.min(width - 2, MAX_BOX);
+    const box = Math.max(1, width);
+
+    // Ink's rounded border has an intrinsic four-column minimum. Below that,
+    // degrade to truncated prose rather than spill past the terminal edge.
+    if (box < 4) {
+        return React.createElement(Text, { wrap: 'truncate' }, text);
+    }
 
     // ' ●●● Sherman ' — measured in code points so the fill is exact.
     const label = ' ●●● Sherman ';
@@ -62,12 +64,12 @@ function ShermanBox({ text, width }) {
         React.createElement(
             Text,
             { wrap: 'truncate' },
-            React.createElement(Text, { color: color.frame }, '╭─ '),
+            React.createElement(Text, { color: color.accent }, '╭─ '),
             React.createElement(Text, { color: markRamp.dot.mid }, '●'),
             React.createElement(Text, { color: markRamp.inner.mid }, '●'),
             React.createElement(Text, { color: markRamp.outer.mid }, '●'),
             React.createElement(Text, { color: color.accent, bold: true }, ' Sherman '),
-            React.createElement(Text, { color: color.frame }, '─'.repeat(fill) + '╮')
+            React.createElement(Text, { color: color.accent }, '─'.repeat(fill) + '╮')
         ),
         React.createElement(
             Box,
@@ -75,8 +77,9 @@ function ShermanBox({ text, width }) {
                 width: box,
                 borderStyle: 'round',
                 borderTop: false,
-                borderColor: color.frame,
+                borderColor: color.accent,
                 paddingX: 1,
+                paddingY: 1,
             },
             React.createElement(Text, null, text)
         )
@@ -107,8 +110,8 @@ function Item({ item, width }) {
             );
 
         // The committed activity trace. Dim italic, indented under the bullet,
-        // and rendered EXACTLY as the engine reported it — reasoning text and
-        // tool labels come straight off the events, never a mapping table.
+        // and sourced only from normalized engine events. Tool glyphs, labels,
+        // and measured durations are formatted by App; none are simulated here.
         case 'reasoning':
         case 'tool':
             return React.createElement(

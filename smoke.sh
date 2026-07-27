@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — ten checks, no framework.
+# smoke.sh — eleven checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -259,10 +259,25 @@ const out = renderToString(
 );
 
 const width = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, '')].length;
-const over = out.split('\n').filter((line) => width(line) > cols);
+const lines = out.split('\n');
+const over = lines.filter((line) => width(line) > cols);
 
 if (over.length > 0) {
     console.error(over.length + ' line(s) wider than ' + cols);
+    process.exit(1);
+}
+
+// v3 full-bleed: the panel top border must span the full render width.
+// NOTE: no apostrophes in this heredoc -- bash 3.2 tracks quotes inside
+// $( ) command substitution and an unbalanced one breaks the parse.
+const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+const border = lines.map(strip).find((l) => l.startsWith('╭─') && l.trimEnd().endsWith('╮'));
+if (!border) {
+    console.error('panel top border not found');
+    process.exit(1);
+}
+if (width(border.trimEnd()) !== cols) {
+    console.error('panel border is ' + width(border.trimEnd()) + ' cols, expected ' + cols);
     process.exit(1);
 }
 process.exit(0);
@@ -297,9 +312,9 @@ done
 # Colours must actually reach the terminal. Ink silently ignores colour strings
 # it does not recognise -- a bare 256-colour index like '196' renders as plain
 # default-coloured text with no error anywhere, which is exactly how the v2
-# launch screen shipped all-white. This asserts the four signature colours
-# (wordmark red, then the mark's pink, purple and blue) are present as real
-# ANSI sequences in the rendered output.
+# launch screen shipped all-white. This asserts the three signature colours
+# (brand pink, purple and blue) are present as real ANSI sequences in the
+# rendered output, and the retired red ramp is absent.
 #
 # FORCE_COLOR=3 because chalk sees the pipe as colourless and would strip every
 # escape, which would turn this check into a tautology.
@@ -330,15 +345,21 @@ const out = renderToString(
 );
 
 const need = {
-    'wordmark red (196)': '38;5;196m',
-    'mark pink (205)': '38;5;205m',
-    'mark purple (135)': '38;5;135m',
-    'mark blue (39)': '38;5;39m',
+    'brand pink (205)': '38;5;205m',
+    'brand purple (135)': '38;5;135m',
+    'brand blue (39)': '38;5;39m',
 };
 const missing = Object.keys(need).filter((name) => !out.includes(need[name]));
+const retired = {
+    'old red (196)': '38;5;196m',
+    'old deep red (160)': '38;5;160m',
+    'old frame red (124)': '38;5;124m',
+};
+const present = Object.keys(retired).filter((name) => out.includes(retired[name]));
 
-if (missing.length > 0) {
-    console.error('missing colour(s): ' + missing.join(', '));
+if (missing.length > 0 || present.length > 0) {
+    if (missing.length > 0) console.error('missing colour(s): ' + missing.join(', '));
+    if (present.length > 0) console.error('retired colour(s) still present: ' + present.join(', '));
     process.exit(1);
 }
 process.exit(0);
@@ -357,7 +378,7 @@ else
     color_status=$?
 
     if [ "$color_status" -eq 0 ]; then
-        pass "wordmark red and all three mark colours are emitted"
+        pass "pink, purple and blue are emitted; retired red ramp is absent"
     else
         fail "$(printf '%s' "$color_err" | head -3)"
     fi
@@ -392,17 +413,174 @@ fi
 # so a PassThrough with isTTY/setRawMode stubs drives the REAL App: the check
 # types a prompt into the real composer, a fake EngineSession yields a scripted
 # turn, and the captured output must contain the user bullet, the signed
-# Sherman box border, and a trace line that exists ONLY because the fake
-# backend emitted it — which is the honesty rule, mechanised.
+# Sherman box border, a completed trace line that exists ONLY because the fake
+# backend emitted it, and the full-width composer bar.
 #
 # HOME is the sandbox so the session log writes there, never the real one.
 
 TURN_JS=$(cat <<'JS'
 import React from 'react';
-import { render } from 'ink';
+import { render, renderToString } from 'ink';
 import { PassThrough } from 'node:stream';
 import { App } from './src/ui/app.js';
+import { Composer } from './src/ui/Composer.js';
+import { LaunchScreen } from './src/ui/LaunchScreen.js';
+import { Transcript } from './src/ui/Transcript.js';
+import { CodexSession } from './src/engine/codex.js';
 
+const mapper = new CodexSession({
+    engine: 'codex',
+    user: 'smoke-tester',
+    vaultPath: '/tmp/smoke/vault',
+    workspacePath: '/tmp/smoke/workspace',
+});
+const map = (type, item) => mapper._mapLine(JSON.stringify({ type, item }));
+const readStart = map('item.started', {
+    id: 'read-1', type: 'command_execution',
+    command: "/bin/zsh -lc 'cat input.txt'", status: 'in_progress',
+});
+const readDone = map('item.completed', {
+    id: 'read-1', type: 'command_execution',
+    status: 'completed', exit_code: 0,
+});
+const sedStart = map('item.started', {
+    id: 'read-2', type: 'command_execution',
+    command: `/bin/zsh -lc "sed -n '1p' input.txt"`, status: 'in_progress',
+});
+map('item.completed', {
+    id: 'read-2', type: 'command_execution',
+    command: `/bin/zsh -lc "sed -n '1p' input.txt"`, status: 'completed', exit_code: 0,
+});
+const sedEditStart = map('item.started', {
+    id: 'exec-1', type: 'command_execution',
+    command: `/bin/zsh -lc "sed -i '' 's/a/b/' input.txt"`, status: 'in_progress',
+});
+map('item.completed', {
+    id: 'exec-1', type: 'command_execution',
+    command: `/bin/zsh -lc "sed -i '' 's/a/b/' input.txt"`, status: 'completed', exit_code: 0,
+});
+const uncertainSedStarts = [
+    `sed -i'' 's/a/b/' input.txt`,
+    `sed -i.bak 's/a/b/' input.txt`,
+    `sed --in-place 's/a/b/' input.txt`,
+    `sed -n '1w output.txt' input.txt`,
+].map((command, index) => {
+    const id = `sed-uncertain-${index}`;
+    const [start] = map('item.started', {
+        id, type: 'command_execution', command, status: 'in_progress',
+    });
+    map('item.completed', {
+        id, type: 'command_execution', command, status: 'completed', exit_code: 0,
+    });
+    return start;
+});
+const ESC = String.fromCharCode(27);
+const BEL = String.fromCharCode(7);
+const controlStart = map('item.started', {
+    id: 'exec-2', type: 'command_execution',
+    command: `/bin/zsh -lc 'printf ${ESC}[31mBAD'`, status: 'in_progress',
+});
+map('item.completed', {
+    id: 'exec-2', type: 'command_execution',
+    command: `/bin/zsh -lc 'printf ${ESC}[31mBAD'`, status: 'completed', exit_code: 0,
+});
+const patchStart = map('item.started', {
+    id: 'patch-1', type: 'file_change',
+    changes: [{ path: `/tmp/smoke/workspace/${ESC}]0;pwn${BEL}output.txt`, kind: 'add' }],
+    status: 'in_progress',
+});
+const patchDone = map('item.completed', {
+    id: 'patch-1', type: 'file_change',
+    changes: [{ path: `/tmp/smoke/workspace/${ESC}]0;pwn${BEL}output.txt`, kind: 'add' }],
+    status: 'completed',
+});
+const unknown = map('item.completed', { id: 'future-1', type: 'future_item' });
+
+const mappingMissing = [];
+if (readStart[0]?.phase !== 'started' || readStart[0]?.label !== 'read input.txt') {
+    mappingMissing.push('Codex read start mapping');
+}
+if (
+    readDone[0]?.phase !== 'completed' ||
+    readDone[0]?.label !== 'read input.txt' ||
+    typeof readDone[0]?.durationMs !== 'number'
+) {
+    mappingMissing.push('Codex read completion duration');
+}
+if (!sedStart[0]?.label?.startsWith('exec sed -n')) {
+    mappingMissing.push('uncertain sed remains an exec');
+}
+if (!sedEditStart[0]?.label?.startsWith('exec sed -i')) {
+    mappingMissing.push('mutating sed remains an exec');
+}
+if (uncertainSedStarts.some((event) => !event?.label?.startsWith('exec sed'))) {
+    mappingMissing.push('all unproven sed forms remain exec');
+}
+if (/[\x00-\x1f\x7f-\x9f]/.test(controlStart[0]?.label ?? '')) {
+    mappingMissing.push('tool label control-character stripping');
+}
+if (patchStart[0]?.phase !== 'started' || patchStart[0]?.label !== 'patch output.txt') {
+    mappingMissing.push('Codex patch start mapping');
+}
+if (patchDone[0]?.phase !== 'completed' || typeof patchDone[0]?.durationMs !== 'number') {
+    mappingMissing.push('Codex patch completion duration');
+}
+if (unknown.length !== 0) mappingMissing.push('unknown Codex item silence');
+
+const composerPlain = renderToString(
+    React.createElement(Composer, { onSubmit() {}, busy: false }),
+    { columns: 80 }
+).replace(/\x1b\[[0-9;]*m/g, '');
+
+const visualWidth = (line) => [...line.replace(/\x1b\[[0-9;]*m/g, '')].length;
+const maxWidth = (out) => Math.max(...out.split('\n').map(visualWidth));
+const narrowInfo = {
+    engine: 'codex', model: 'smoke-model', user: 'smoke-tester',
+    vaultPath: '/tmp/smoke/vault', threadId: null,
+};
+const narrowStats = { wiki: 1, shared: 1, private: 0, inbox: 0, ok: true };
+for (const columns of [19, 20]) {
+    const launch = renderToString(
+        React.createElement(LaunchScreen, {
+            info: narrowInfo, stats: narrowStats, sessionId: 'smoke-session', columns,
+        }),
+        { columns }
+    );
+    if (maxWidth(launch) > columns) mappingMissing.push(`launch overflow at ${columns} columns`);
+}
+const narrowReply = renderToString(
+    React.createElement(Transcript, {
+        items: [{ id: 'narrow-reply', kind: 'message', text: 'ok' }], columns: 3,
+    }),
+    { columns: 3 }
+);
+if (maxWidth(narrowReply) > 3) mappingMissing.push('reply overflow below four columns');
+const fullReplyLines = renderToString(
+    React.createElement(Transcript, {
+        items: [{ id: 'full-reply', kind: 'message', text: 'reply body' }], columns: 80,
+    }),
+    { columns: 80 }
+).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
+const replyTop = fullReplyLines.findIndex((line) => line.includes('●●● Sherman'));
+const replyBottom = fullReplyLines.findIndex(
+    (line, index) => index > replyTop && line.startsWith('╰')
+);
+const fullBlankInterior = '│' + ' '.repeat(78) + '│';
+if (
+    replyTop < 0 ||
+    replyBottom < 0 ||
+    fullReplyLines[replyTop + 1] !== fullBlankInterior ||
+    fullReplyLines[replyBottom - 1] !== fullBlankInterior
+) {
+    mappingMissing.push('Sherman box scoped vertical padding');
+}
+const narrowComposer = renderToString(
+    React.createElement(Composer, { onSubmit() {}, busy: false, columns: 3 }),
+    { columns: 3 }
+);
+if (maxWidth(narrowComposer) > 3) mappingMissing.push('composer overflow below four columns');
+
+const sent = [];
 const fakeSession = {
     info: {
         engine: 'fake',
@@ -412,10 +590,12 @@ const fakeSession = {
         threadId: null,
     },
     usage: { total: 42, input: 20, cachedInput: 0, output: 20, reasoning: 2 },
-    async *send() {
+    async *send(text) {
+        sent.push(text);
         yield { kind: 'turn-start' };
         yield { kind: 'reasoning', text: 'checking the vault' };
-        yield { kind: 'tool', label: 'read wiki/intake-sop.md' };
+        yield { kind: 'tool', id: 'tool-1', phase: 'started', glyph: '›', label: 'patch smoke.sh' };
+        yield { kind: 'tool', id: 'tool-1', phase: 'completed', glyph: '›', label: 'patch smoke.sh', durationMs: 900 };
         yield { kind: 'message', text: 'The intake SOP says to log the request first.' };
         yield { kind: 'turn-end', usage: this.usage };
     },
@@ -440,7 +620,7 @@ const inst = render(
     { stdout, stdin, exitOnCtrlC: false, patchConsole: false }
 );
 
-setTimeout(() => { stdin.write('read the sop'); }, 40);
+setTimeout(() => { stdin.write('read\nthe sop'); }, 40);
 setTimeout(() => { stdin.write('\r'); }, 90);
 
 const startedAt = Date.now();
@@ -452,10 +632,28 @@ const poll = setInterval(() => {
     clearInterval(poll);
     inst.unmount();
 
-    const missing = [];
-    if (!plain.includes('● read the sop')) missing.push('user bullet');
+    const missing = [...mappingMissing];
+    if (!plain.includes('● read') || !plain.includes('the sop')) missing.push('user bullet');
+    if (sent.length !== 1 || sent[0] !== 'read\nthe sop') {
+        missing.push('multi-line paste preserved until Enter');
+    }
     if (!/╭─.*Sherman.*╮/.test(plain)) missing.push('Sherman box label');
-    if (!plain.includes('read wiki/intake-sop.md')) missing.push('trace line from the fake tool event');
+    if (!plain.includes('› patch smoke.sh  0.9s')) missing.push('completed trace line with duration');
+
+    const width = (s) => [...s].length;
+    const lines = plain.split(/\r?\n/);
+    const signedTop = lines.find((line) => line.includes('●●● Sherman'));
+    if (!signedTop || width(signedTop) !== 80) missing.push('full-width Sherman box');
+
+    const composerLines = composerPlain.split('\n');
+    if (
+        composerLines.length !== 3 ||
+        composerLines.some((line) => width(line) !== 80) ||
+        !composerLines[1].startsWith('│ ›') ||
+        !composerLines[1].endsWith('│')
+    ) {
+        missing.push('80-column composer border');
+    }
 
     if (missing.length > 0) {
         console.error('missing: ' + missing.join(', '));
@@ -478,7 +676,7 @@ else
     turn_status=$?
 
     if [ "$turn_status" -eq 0 ]; then
-        pass "bullet, signed box, and event-sourced trace line all rendered"
+        pass "bullet, vivid reply, real timed trace, and composer bar all rendered"
     else
         fail "$(printf '%s' "$turn_err" | head -3)"
     fi

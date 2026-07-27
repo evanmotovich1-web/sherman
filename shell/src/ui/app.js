@@ -22,6 +22,15 @@ import { createSessionLog } from '../sessionlog.js';
 let seq = 0;
 const nextId = () => `i${seq++}`;
 
+function formatTool(event, includeDuration) {
+    const glyph = event.glyph || '›';
+    const duration =
+        includeDuration && typeof event.durationMs === 'number'
+            ? `  ${(event.durationMs / 1000).toFixed(1)}s`
+            : '';
+    return `${glyph} ${event.label}${duration}`;
+}
+
 /**
  * @param {{session: import('../engine/session.js').EngineSession, sessionId: string}} props
  */
@@ -100,17 +109,22 @@ export function App({ session, sessionId }) {
                             log.append('sherman', event.text);
                             break;
 
-                        // Committed dim so the transcript shows the work that
-                        // happened, and mirrored into the indicator so the wait
-                        // narrates itself.
+                        // Reasoning summaries commit immediately and also become
+                        // the live tail. Tool starts stay dynamic; only their
+                        // measured completion commits below.
                         case 'reasoning':
                             commit('reasoning', event.text);
                             setActivity(event.text);
                             break;
 
                         case 'tool':
-                            commit('tool', event.label);
-                            setActivity(event.label);
+                            if (event.phase === 'started') {
+                                setActivity(formatTool(event, false));
+                            } else {
+                                const line = formatTool(event, true);
+                                commit('tool', line);
+                                setActivity(line);
+                            }
                             break;
 
                         case 'turn-end':
@@ -164,17 +178,20 @@ export function App({ session, sessionId }) {
         exit();
     });
 
+    // Hermes stacking, top-anchored: transcript (launch panel + welcome),
+    // activity, then the status region, then the prompt LAST — directly under
+    // the status bar, never pinned to the bottom of the screen with a gap.
     return React.createElement(
         Box,
         { flexDirection: 'column' },
         React.createElement(Transcript, { items }),
         React.createElement(Thinking, { active: busy, activity }),
-        React.createElement(Composer, { onSubmit: submit, busy }),
         React.createElement(
             Box,
-            { marginTop: 1, flexDirection: 'column' },
+            { flexDirection: 'column' },
             React.createElement(CompactHeader),
             React.createElement(StatusBar, { info, usage, busy, sessionStart, lastTurnMs })
-        )
+        ),
+        React.createElement(Composer, { onSubmit: submit, busy })
     );
 }

@@ -1,4 +1,4 @@
-// The input line.
+// The full-width input bar.
 //
 // Hand-rolled on useInput (D11): Ink 7 ships no text input, and ink-text-input
 // only claims `ink>=5`. This is the whole editor, and it is short enough that
@@ -9,20 +9,28 @@
 // does not own. Splitting that across two components is how the contract breaks.
 
 import React, { useState } from 'react';
-import { Text, Box, useInput } from 'ink';
+import { Text, Box, useInput, useWindowSize } from 'ink';
 
 import { color } from './theme.js';
 
-// C0 controls plus DEL. A single keystroke never contains these, but a PASTE
-// arrives as one bulk chunk and can carry CR/LF, which would otherwise land in
-// the prompt and be sent to the engine verbatim.
-const CONTROL_CHARS = /[\x00-\x1f\x7f]/g;
+// Preserve pasted line breaks so a multi-line prompt remains visibly multi-line
+// inside the field. Strip every other C0 control plus DEL; those escape/control
+// bytes would otherwise render as mojibake or damage the border.
+const CONTROL_CHARS_EXCEPT_LF = /[\x00-\x09\x0b-\x1f\x7f]/g;
+
+function normalizeInput(input) {
+    return input
+        .replace(/\r\n?/g, '\n')
+        .replace(CONTROL_CHARS_EXCEPT_LF, '');
+}
 
 /**
- * @param {{onSubmit: (text: string) => void, busy: boolean}} props
+ * @param {{onSubmit: (text: string) => void, busy: boolean, columns?: number}} props
  */
-export function Composer({ onSubmit, busy }) {
+export function Composer({ onSubmit, busy, columns }) {
     const [value, setValue] = useState('');
+    const measured = useWindowSize().columns;
+    const width = Math.max(1, typeof columns === 'number' ? columns : measured);
 
     useInput(
         (input, key) => {
@@ -52,7 +60,7 @@ export function Composer({ onSubmit, busy }) {
 
             // Pasting a multi-line block then pressing Enter is the intended
             // flow; a pasted newline deliberately does not auto-send.
-            const clean = input ? input.replace(CONTROL_CHARS, '') : '';
+            const clean = input ? normalizeInput(input) : '';
             if (clean) setValue((v) => v + clean);
         },
         // While a turn is in flight the composer stops listening entirely, so a
@@ -60,22 +68,34 @@ export function Composer({ onSubmit, busy }) {
         { isActive: !busy }
     );
 
-    if (busy) {
-        // Keep a row here even when inactive. Letting the line vanish makes the
-        // whole UI jump every turn.
+    // Ink's rounded border cannot render below four columns. Keep the shell
+    // usable without overflow; normal terminals always take the bordered path.
+    if (width < 4) {
         return React.createElement(
-            Box,
-            null,
-            React.createElement(Text, { dimColor: true }, '  … working, Ctrl+C to interrupt')
+            Text,
+            { color: color.accent, wrap: 'truncate' },
+            busy ? '…' : `›${value}`
         );
     }
 
     return React.createElement(
         Box,
-        null,
-        React.createElement(Text, { color: color.accent, bold: true }, '› '),
-        React.createElement(Text, null, value),
-        // Our own caret. Ink's useCursor is for IME positioning, not a text caret.
-        React.createElement(Text, { inverse: true }, ' ')
+        {
+            width,
+            borderStyle: 'round',
+            borderColor: color.accent,
+            paddingX: 1,
+            flexDirection: 'row',
+        },
+        busy
+            ? React.createElement(Text, { dimColor: true }, '… working, Ctrl+C to interrupt')
+            : React.createElement(
+                  React.Fragment,
+                  null,
+                  React.createElement(Text, { color: color.accent, bold: true }, '› '),
+                  React.createElement(Text, null, value),
+                  // Our own caret. Ink's useCursor is for IME positioning, not a text caret.
+                  React.createElement(Text, { inverse: true }, ' ')
+              )
     );
 }

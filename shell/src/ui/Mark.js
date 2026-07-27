@@ -63,9 +63,33 @@ const GRID = [
     '...CCCCCC...',
 ];
 
+// The tightened variant for the launch panel's left column (v3): same three
+// shapes, same palette, less air — 16 pixel rows instead of 22, so the mark
+// cannot dictate the panel's height. Dot (3), gap (1), inner ring (4), gap (2),
+// outer ring (6). Row count stays even for the vertical-pair renderer.
+const GRID_COMPACT = [
+    '....PPPP....',
+    '....PPPP....',
+    '.....mm.....',
+    '............',
+    '...VVVVVV...',
+    '..VV....VV..',
+    '..VV....VV..',
+    '...uuuuuu...',
+    '............',
+    '............',
+    '.BBBBBBBBBB.',
+    'BB........BB',
+    'BB........BB',
+    'BB........BB',
+    '.CCCCCCCCCC.',
+    '...CCCCCC...',
+];
+
 /** Measured from the art, not estimated. The panel column is sized against these. */
 export const MARK_COLUMNS = GRID[0].length;
 export const MARK_ROWS = Math.ceil(GRID.length / 2);
+export const MARK_ROWS_COMPACT = Math.ceil(GRID_COMPACT.length / 2);
 
 /**
  * Collapse one vertical pixel pair into styled runs.
@@ -134,11 +158,13 @@ function Row({ runs }) {
     );
 }
 
-/** 12 x 11. Pink dot, purple ring, blue ring, top to bottom, with gaps. */
-export function Mark() {
+/** 12 x 11 (or 12 x 8 compact). Pink dot, purple ring, blue ring, top to
+ *  bottom, with gaps. `compact` is the launch panel's variant. */
+export function Mark({ compact = false } = {}) {
+    const grid = compact ? GRID_COMPACT : GRID;
     const rows = [];
-    for (let y = 0; y < GRID.length; y += 2) {
-        rows.push(spans(GRID[y], GRID[y + 1] ?? '.'.repeat(GRID[y].length)));
+    for (let y = 0; y < grid.length; y += 2) {
+        rows.push(spans(grid[y], grid[y + 1] ?? '.'.repeat(grid[y].length)));
     }
 
     return React.createElement(

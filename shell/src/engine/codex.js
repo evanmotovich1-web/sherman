@@ -26,7 +26,7 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join, relative } from 'node:path';
 
 import { EngineSession, ev, emptyUsage, addUsage } from './session.js';
 
@@ -72,6 +72,7 @@ export class CodexSession extends EngineSession {
         this._model = detectModel();
         this._child = null;
         this._interrupted = false;
+        this._toolStarts = new Map();
     }
 
     get info() {
@@ -150,14 +151,19 @@ export class CodexSession extends EngineSession {
                 return [];
 
             case 'turn.started':
+                this._toolStarts.clear();
                 return [ev.turnStart()];
 
+            case 'item.started':
+                return this._mapItem(msg.item, 'started');
+
             case 'item.completed':
-                return this._mapItem(msg.item);
+                return this._mapItem(msg.item, 'completed');
 
             case 'turn.completed': {
                 const usage = mapUsage(msg.usage);
                 this._usage = addUsage(this._usage, usage);
+                this._toolStarts.clear();
                 return [ev.turnEnd(usage)];
             }
 
@@ -170,32 +176,59 @@ export class CodexSession extends EngineSession {
         }
     }
 
-    /** @param {{type?:string,text?:string,summary?:string,command?:string}} item */
-    _mapItem(item) {
+    /**
+     * @param {{id?:string,type?:string,text?:string,summary?:string,command?:string,changes?:Array<{path?:string}>}} item
+     * @param {'started'|'completed'} phase
+     */
+    _mapItem(item, phase) {
         if (!item || typeof item !== 'object') return [];
         const text = item.text ?? item.summary ?? '';
 
         switch (item.type) {
             case 'agent_message':
-                return text ? [ev.message(text)] : [];
+                return phase === 'completed' && text ? [ev.message(text)] : [];
 
             case 'reasoning':
-                return text ? [ev.reasoning(text)] : [];
+                return phase === 'completed' && text ? [ev.reasoning(text)] : [];
 
             case 'command_execution':
-                return [ev.tool(`ran ${firstLine(item.command) || 'a command'}`)];
-
             case 'file_change':
-                return [ev.tool('changed files')];
+                return this._mapTool(item, phase);
 
             case 'error':
-                return [ev.error(text || 'The engine reported an error.')];
+                return phase === 'completed'
+                    ? [ev.error(text || 'The engine reported an error.')]
+                    : [];
 
             default:
-                // Something the model did that this build has no name for. Show
-                // that work happened rather than an unexplained silent pause.
-                return [ev.tool(item.type ? `${item.type}` : 'working')];
+                // An unknown item is not evidence of what work happened. Silence
+                // is more honest than turning a vendor type into a fake tool line.
+                return [];
         }
+    }
+
+    _mapTool(item, phase) {
+        if (!item.id) return [];
+
+        const started = phase === 'completed' ? this._toolStarts.get(item.id) : null;
+        const derivedLabel =
+            item.type === 'command_execution'
+                ? commandLabel(item.command)
+                : fileChangeLabel(item.changes, this._config);
+        const label = started?.label ?? derivedLabel;
+        if (!label) return [];
+
+        if (phase === 'started') {
+            this._toolStarts.set(item.id, { startedAt: performance.now(), label });
+            return [ev.tool({ id: item.id, phase, label })];
+        }
+
+        this._toolStarts.delete(item.id);
+        const durationMs =
+            typeof started?.startedAt === 'number'
+                ? Math.max(0, Math.round(performance.now() - started.startedAt))
+                : null;
+        return [ev.tool({ id: item.id, phase, label, durationMs })];
     }
 
     /**
@@ -205,6 +238,7 @@ export class CodexSession extends EngineSession {
      */
     async *send(text) {
         this._interrupted = false;
+        this._toolStarts.clear();
 
         const child = spawn('codex', this._argsFor(text), {
             cwd: this._config.workspacePath,
@@ -309,4 +343,59 @@ function firstLine(value) {
     if (typeof value !== 'string') return '';
     const line = value.split('\n')[0].trim();
     return line.length > 60 ? `${line.slice(0, 57)}...` : line;
+}
+
+/** Tool labels are terminal output. Remove control protocols before rendering. */
+function safeLabel(value) {
+    if (typeof value !== 'string') return '';
+    return value
+        .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '')
+        .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+        .replace(/[\x00-\x1f\x7f-\x9f]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/** Remove Codex's shell wrapper so the trace names the command that ran. */
+function shellCommand(value) {
+    if (typeof value !== 'string') return '';
+    const line = value.split('\n')[0].trim();
+    const wrapped = line.match(/^\/bin\/(?:zsh|bash|sh)\s+-lc\s+(.+)$/);
+    let command = wrapped ? wrapped[1] : line;
+    const quote = command[0];
+    if ((quote === "'" || quote === '"') && command.endsWith(quote)) {
+        command = command.slice(1, -1);
+    }
+    return safeLabel(command.replace(/'\\''/g, "'"));
+}
+
+/** `cat file` is the read shape observed in the real 0.145.0 stream. */
+function commandLabel(value) {
+    const command = shellCommand(value);
+    if (command === '') return null;
+
+    const read = command.match(/^(?:cat|head|tail)\s+(?:--\s+)?(.+)$/);
+    if (read) return `read ${firstLine(read[1])}`;
+
+    return `exec ${firstLine(command)}`;
+}
+
+function displayPath(value, config) {
+    if (typeof value !== 'string' || value === '') return null;
+    for (const root of [config.workspacePath, config.vaultPath]) {
+        if (typeof root !== 'string' || root === '') continue;
+        const within = relative(root, value);
+        if (within && !within.startsWith('..') && !within.startsWith('/')) {
+            return safeLabel(within);
+        }
+    }
+    return safeLabel(basename(value));
+}
+
+function fileChangeLabel(changes, config) {
+    if (!Array.isArray(changes) || changes.length === 0) return null;
+    const paths = changes.map((change) => displayPath(change?.path, config)).filter(Boolean);
+    if (paths.length === 0) return null;
+    if (paths.length === 1) return `patch ${paths[0]}`;
+    return `patch ${paths.slice(0, 2).join(', ')}${paths.length > 2 ? ` +${paths.length - 2}` : ''}`;
 }

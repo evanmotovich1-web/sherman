@@ -1,9 +1,12 @@
 // The first frame.
 //
-// Wordmark deck, identity block, one bordered panel with the build stamped into
-// its top border, one welcome line — spaced to fill the viewport on entry. It
-// answers "what is this, whose is it, and what does it know" before the user
-// types anything.
+// v3, the full-bleed pass: the wordmark, the panel, and everything after it
+// span the full terminal width, Hermes-style. One bordered panel with the
+// build stamped into its top border; a narrow left column inside it carrying
+// the mark and the dimmed identity (model, engine, user, vault, session); a
+// right column carrying what Sherman knows. Nothing floats above the box, and
+// nothing pushes the prompt to the bottom of the screen — the welcome line,
+// status bar, and composer stack directly under the panel, top-anchored.
 //
 // The governing rule is that every value on it is true. Nothing here is
 // hardcoded copy standing in for a real number: the counts come from a readdir,
@@ -12,8 +15,9 @@
 // (no git on a future employee install), its segment is OMITTED, never faked.
 //
 // Like the banner it replaces, this commits once through <Static> and scrolls
-// away (D12/D13). "Fills the viewport" means vertical spacing on the primary
-// screen — never the alternate screen, which would destroy scrollback.
+// away (D12/D13). That is also why it sizes at launch rather than reacting to
+// resize: a Static child cannot re-render without re-emitting itself into
+// scrollback.
 
 import React from 'react';
 import { Text, Box, useWindowSize } from 'ink';
@@ -23,26 +27,19 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { color } from './theme.js';
-import { Wordmark, wordmarkRows } from './Wordmark.js';
-import { Mark, MARK_ROWS } from './Mark.js';
+import { Wordmark } from './Wordmark.js';
+import { Mark } from './Mark.js';
 
 // Resolved from THIS file, never process.cwd() — at runtime the cwd is the
 // engine's workspace, not the repo. Same reasoning as Header.js.
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SKILLS_DIR = join(REPO_ROOT, 'skills');
 
-// Wide enough to read, narrow enough that a 200-column terminal does not get a
-// panel stretched across the whole screen.
-const MAX_PANEL = 76;
-
-// Holds the mark (12 wide) plus a label/value pair without crushing either.
-const LEFT_COLUMN = 26;
+// The identity column: holds the mark (12 wide) plus a label/value pair
+// without crushing either, and matches Hermes's narrow-left proportions.
+// 32 = label (9) + gutter (1) + a 22-char session id, untruncated.
+const LEFT_COLUMN = 32;
 const LABEL = 9;
-
-// Rows the pinned region below the transcript occupies when idle: composer,
-// its top margin, compact header, status bar. Part of the height budget so
-// "fills the viewport" includes the chrome the user actually sees.
-const CHROME_ROWS = 4;
 
 /**
  * Keep the tail of a path, cutting only at separators.
@@ -162,29 +159,6 @@ function Field({ label, value }) {
     );
 }
 
-/**
- * Under the wordmark, before the panel: what is running and where. Model and
- * company neutral-white on purpose — the wordmark above carries the colour.
- */
-function IdentityBlock({ info, sessionId, width }) {
-    return React.createElement(
-        Box,
-        { flexDirection: 'column' },
-        React.createElement(
-            Text,
-            { wrap: 'truncate' },
-            React.createElement(Text, { color: color.user }, info.model),
-            React.createElement(Text, { color: color.muted }, ' · '),
-            React.createElement(Text, { color: color.user }, 'Sherman Abrams Labs')
-        ),
-        React.createElement(Field, {
-            label: 'folder',
-            value: truncatePath(info.vaultPath, Math.max(1, width - LABEL)),
-        }),
-        React.createElement(Field, { label: 'session', value: sessionId ?? '—' })
-    );
-}
-
 function Section({ title, lines }) {
     return React.createElement(
         Box,
@@ -200,17 +174,30 @@ function Section({ title, lines }) {
     );
 }
 
-/** Left column: the mark, then who is signed in. Where and which session moved
- *  up to the identity block. */
-function Identity({ info }) {
+/**
+ * Left column: the compact mark, then the full identity beneath it, all
+ * dimmed. Everything that used to float above the panel lives here now —
+ * model, engine, user, vault path, session id.
+ */
+function Identity({ info, sessionId, width = LEFT_COLUMN }) {
+    // Label column + gutter inside the available identity box.
+    const valueBudget = Math.max(1, width - LABEL - 1);
+
     return React.createElement(
         Box,
-        { width: LEFT_COLUMN, flexShrink: 0, flexDirection: 'column' },
-        React.createElement(Mark),
+        { width, flexShrink: 0, flexDirection: 'column' },
+        React.createElement(Mark, { compact: true }),
         React.createElement(
             Box,
             { marginTop: 1, flexDirection: 'column' },
-            React.createElement(Field, { label: 'user', value: info.user })
+            React.createElement(Field, { label: 'model', value: info.model }),
+            React.createElement(Field, { label: 'engine', value: info.engine }),
+            React.createElement(Field, { label: 'user', value: info.user }),
+            React.createElement(Field, {
+                label: 'vault',
+                value: truncatePath(info.vaultPath, valueBudget),
+            }),
+            React.createElement(Field, { label: 'session', value: sessionId ?? '—' })
         )
     );
 }
@@ -265,57 +252,32 @@ function welcome(stats) {
 }
 
 /**
- * Rows this screen occupies, derived from the same constants the components
- * render with — never re-measured, never guessed. Drift here costs a line of
- * filler, not a wrapped panel, so derived arithmetic is the right tool.
- */
-function estimateRows(width, hasSkills) {
-    const identity = 3;
-    const left = MARK_ROWS + 1 + 1; // mark, margin, user
-    const right = 3 + 1 + 3 + (hasSkills ? 3 : 0); // vault, gap, keys, skills
-    const inner = Math.max(left, right) + 1 + 1; // + footer margin + footer
-    const panel = 1 + inner + 1; // version border + body + bottom border
-    // wordmark, gap, identity, gap, panel, gap, welcome
-    return wordmarkRows(width) + 1 + identity + 1 + panel + 1 + 1;
-}
-
-/**
  * @param {{info: object, stats: import('../vault.js').VaultStats, sessionId?: string, columns?: number, rows?: number}} props
  *
- * `columns` and `rows` override the measured size. Live, nothing passes them;
- * they exist because `useWindowSize()` reports a fixed 80x24 under
- * `renderToString` (D17), so neither the narrow fallback nor the height math
- * could be tested off a TTY without injection. Resolved once here and passed
- * down, so no two parts of the screen can disagree about the terminal.
+ * `columns` overrides the measured size. Live, nothing passes it; it exists
+ * because `useWindowSize()` reports a fixed 80x24 under `renderToString`
+ * (D17), so the narrow fallback and the full-bleed border could not be tested
+ * off a TTY without injection. Resolved once here and passed down, so no two
+ * parts of the screen can disagree about the terminal. `rows` is accepted for
+ * call-site compatibility but unused: v3 is top-anchored, not viewport-filled.
  */
-export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
+export function LaunchScreen({ info, stats, sessionId, columns }) {
     const measured = useWindowSize();
     const width = typeof columns === 'number' ? columns : measured.columns;
-    const height = typeof rows === 'number' ? rows : measured.rows;
 
-    // Never a constant. A fixed width overflows the moment the terminal is
-    // narrower than it, and a spilled border is the exact "wrapped garbage" this
-    // screen must not produce.
-    const panel = Math.min(width - 2, MAX_PANEL);
-
-    // The opener owns the first viewport: whatever the content does not use,
-    // the filler hands to the margin so the composer region sits at the bottom
-    // of the screen on entry. On small terminals this clamps to the old
-    // one-line gap and the screen simply scrolls, exactly as before.
-    const filler = Math.max(
-        1,
-        height - estimateRows(width, existsSync(SKILLS_DIR)) - CHROME_ROWS
-    );
+    // Full bleed: the panel spans the terminal, like Hermes. Never a fixed
+    // constant — the border is composed to the measured width, so a narrow
+    // terminal gets a narrow panel, not a spilled one.
+    const panel = Math.max(1, width);
+    // Border + horizontal padding consume four columns. Below the normal
+    // two-column layout, stack identity above knowledge and let both shrink.
+    const inner = Math.max(1, panel - 4);
+    const stack = inner < LEFT_COLUMN + 20;
 
     return React.createElement(
         Box,
-        { flexDirection: 'column', marginBottom: filler },
+        { flexDirection: 'column', marginBottom: 1 },
         React.createElement(Wordmark, { columns: width }),
-        React.createElement(
-            Box,
-            { marginTop: 1 },
-            React.createElement(IdentityBlock, { info, sessionId, width: panel })
-        ),
         React.createElement(
             Box,
             { marginTop: 1, width: panel, flexDirection: 'column' },
@@ -326,25 +288,23 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
                     width: panel,
                     borderStyle: 'round',
                     borderTop: false,
-                    // Deep red, not the accent: the wordmark and mark carry the
-                    // colour on this screen, and the frame must not compete.
+                    // The same anchor used by the rest of the shell chrome.
                     borderColor: color.frame,
                     paddingX: 1,
                     flexDirection: 'column',
                 },
                 React.createElement(
                     Box,
-                    { flexDirection: 'row' },
-                    React.createElement(Identity, { info }),
-                    React.createElement(Knowledge, { stats })
-                ),
-                React.createElement(
-                    Box,
-                    { marginTop: 1 },
+                    { flexDirection: stack ? 'column' : 'row' },
+                    React.createElement(Identity, {
+                        info,
+                        sessionId,
+                        width: Math.min(LEFT_COLUMN, inner),
+                    }),
                     React.createElement(
-                        Text,
-                        { color: color.faint, dimColor: true, wrap: 'truncate' },
-                        'ctrl+c to exit'
+                        Box,
+                        { marginTop: stack ? 1 : 0, flexGrow: 1 },
+                        React.createElement(Knowledge, { stats })
                     )
                 )
             )

@@ -2,7 +2,7 @@
 //
 // No component hardcodes a colour number. Ink only understands four colour
 // forms: a chalk name ('gray'), '#hex', 'rgb(r, g, b)', or 'ansi256(N)'.
-// Anything else -- including a bare 256-colour index like '196' -- is
+// Anything else -- including a bare 256-colour index like '205' -- is
 // SILENTLY ignored by Ink's colorize and renders in the terminal's default
 // colour. That is how the v2 launch screen shipped all-white, so every
 // numeric colour below goes through `c()` and smoke check 9 asserts the
@@ -15,15 +15,13 @@
 const c = (n) => `ansi256(${n})`;
 
 export const color = {
-    // Red 196 is the accent. Used sparingly on purpose: it marks Sherman's own
-    // voice and the live indicator, and loses all its force if it decorates
-    // everything.
-    accent: c(196),
-
-    // The launch panel's border. Deliberately the deep red rather than the
-    // accent: the wordmark and the mark carry the colour on that screen, and a
-    // bright 196 frame around the whole panel would shout over both.
-    frame: c(124),
+    // One vivid anchor for all persistent chrome, matching Hermes's use of one
+    // bright yellow. Purple and blue are secondary accents, never competing
+    // local palettes invented by individual components.
+    accent: c(205),
+    frame: c(205),
+    secondary: c(135),
+    tertiary: c(39),
 
     // Secondary text. `muted` is for structural labels, `faint` for things the
     // eye should skip unless it is looking for them (tool lines, timings).
@@ -35,24 +33,18 @@ export const color = {
 };
 
 /**
- * The red depth ramp, brightest to darkest.
+ * The wordmark's brand gradient, top to bottom.
  *
- * Only the launch wordmark uses it. A pixel wordmark drawn in one flat colour
- * reads as a stencil; the same shape drawn with a lit top edge, a body that
- * darkens downward and a shadow beneath reads as an object with mass. That is
- * the whole difference between the v1 mark and this one, and it costs nothing
- * but picking five numbers off the same hue.
- *
- * `accent` (196) is deliberately the second entry rather than the first: the
- * wordmark's body still sits at the house red, and `lit`/`shadow` only extend
- * past it at the two edges.
+ * Pink at the lit top travels through magenta and purple into blue at the
+ * bottom. The rim and shadow remain in-family, preserving the existing object
+ * depth without dimming the logo into a dark single-hue ramp.
  */
 export const ramp = {
-    lit: c(203),
-    bright: c(196),
-    mid: c(160),
-    deep: c(124),
-    shadow: c(88),
+    lit: c(212),
+    body: [c(205), c(205), c(171), c(135), c(99), c(63), c(39)],
+    compact: [c(205), c(171), c(135), c(99), c(39)],
+    agent: c(39),
+    shadow: c(33),
 };
 
 /**

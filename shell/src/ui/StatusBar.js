@@ -1,6 +1,6 @@
 // engine · model | tokens | session minutes | turn timer / last turn
 //
-// Hermes-style segments in the red family, under one rule: every segment has a
+// Hermes-style segments in the brand family, under one rule: every segment has a
 // real data source — session.info, session.usage, or a real clock — or it does
 // not appear. There is deliberately NO context-percent segment: this transport
 // reports no context-window figure (probed at 04-01), and a percentage of an
