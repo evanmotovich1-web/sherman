@@ -23,6 +23,12 @@ export const color = {
     secondary: c(135),
     tertiary: c(39),
 
+    // Identity values. Labels stay muted; these three values carry the brand
+    // hierarchy wherever identity is repeated (launch panel, status region).
+    valueModel: c(205),
+    valueEngine: c(135),
+    valueUser: c(39),
+
     // Secondary text. `muted` is for structural labels, `faint` for things the
     // eye should skip unless it is looking for them (tool lines, timings).
     muted: 'gray',

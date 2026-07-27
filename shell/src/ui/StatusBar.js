@@ -86,7 +86,7 @@ export function StatusBar({
             spans: [
                 { text: info.engine, tint: color.muted },
                 { text: ' · ', tint: color.frame, dim: !busy },
-                { text: info.model, tint: color.muted },
+                { text: info.model, tint: color.valueModel, bold: true },
             ],
         },
         {

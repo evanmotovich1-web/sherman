@@ -1,12 +1,11 @@
 // The first frame.
 //
-// v3, the full-bleed pass: the wordmark, the panel, and everything after it
+// v5.1, the presence pass: the wordmark, the panel, and everything after it
 // span the full terminal width, Hermes-style. One bordered panel with the
-// build stamped into its top border; a narrow left column inside it carrying
-// the mark and the dimmed identity (model, engine, user, vault, session); a
-// right column carrying what Sherman knows. Nothing floats above the box, and
-// nothing pushes the prompt to the bottom of the screen — the welcome line,
-// status bar, and composer stack directly under the panel, top-anchored.
+// build stamped into its top border; a narrow left column carrying the full
+// mark; a dense right column carrying vault, keys, and identity. Nothing floats
+// above the box, and nothing pushes the prompt to the bottom of the screen —
+// the welcome line, status bar, and composer stack directly under the panel.
 //
 // The governing rule is that every value on it is true. Nothing here is
 // hardcoded copy standing in for a real number: the counts come from a readdir,
@@ -35,10 +34,9 @@ import { Mark } from './Mark.js';
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SKILLS_DIR = join(REPO_ROOT, 'skills');
 
-// The identity column: holds the mark (12 wide) plus a label/value pair
-// without crushing either, and matches Hermes's narrow-left proportions.
-// 32 = label (9) + gutter (1) + a 22-char session id, untruncated.
-const LEFT_COLUMN = 32;
+// The mark is 12 columns; four columns of breathing room keep it from feeling
+// pinned to the divider while giving the information column the useful width.
+const LEFT_COLUMN = 16;
 const LABEL = 9;
 
 /**
@@ -145,8 +143,8 @@ function VersionBorder({ width }) {
     );
 }
 
-/** `label   value`, dimmed, on one truncated line. */
-function Field({ label, value }) {
+/** `label   value` on one truncated line. Labels recede; identity values may light. */
+function Field({ label, value, valueColor = color.muted, bold = false }) {
     return React.createElement(
         Box,
         { flexDirection: 'row' },
@@ -155,7 +153,7 @@ function Field({ label, value }) {
             { width: LABEL, flexShrink: 0 },
             React.createElement(Text, { color: color.muted }, label)
         ),
-        React.createElement(Text, { color: color.muted, wrap: 'truncate' }, value)
+        React.createElement(Text, { color: valueColor, bold, wrap: 'truncate' }, value)
     );
 }
 
@@ -174,36 +172,38 @@ function Section({ title, lines }) {
     );
 }
 
-/**
- * Left column: the compact mark, then the full identity beneath it, all
- * dimmed. Everything that used to float above the panel lives here now —
- * model, engine, user, vault path, session id.
- */
-function Identity({ info, sessionId, width = LEFT_COLUMN }) {
-    // Label column + gutter inside the available identity box.
-    const valueBudget = Math.max(1, width - LABEL - 1);
-
+/** Identity values live under Keys so the right column ends with information. */
+function IdentityFields({ info, sessionId, width }) {
+    const valueBudget = Math.max(1, width - LABEL);
     return React.createElement(
         Box,
-        { width, flexShrink: 0, flexDirection: 'column' },
-        React.createElement(Mark, { compact: true }),
-        React.createElement(
-            Box,
-            { marginTop: 1, flexDirection: 'column' },
-            React.createElement(Field, { label: 'model', value: info.model }),
-            React.createElement(Field, { label: 'engine', value: info.engine }),
-            React.createElement(Field, { label: 'user', value: info.user }),
-            React.createElement(Field, {
-                label: 'vault',
-                value: truncatePath(info.vaultPath, valueBudget),
-            }),
-            React.createElement(Field, { label: 'session', value: sessionId ?? '—' })
-        )
+        { flexDirection: 'column' },
+        React.createElement(Field, {
+            label: 'model',
+            value: info.model,
+            valueColor: color.valueModel,
+            bold: true,
+        }),
+        React.createElement(Field, {
+            label: 'engine',
+            value: info.engine,
+            valueColor: color.valueEngine,
+        }),
+        React.createElement(Field, {
+            label: 'user',
+            value: info.user,
+            valueColor: color.valueUser,
+        }),
+        React.createElement(Field, {
+            label: 'vault',
+            value: truncatePath(info.vaultPath, valueBudget),
+        }),
+        React.createElement(Field, { label: 'session', value: sessionId ?? '—' })
     );
 }
 
-/** Right column: what Sherman can reach, and how to drive it. */
-function Knowledge({ stats }) {
+/** Right column: what Sherman can reach, how to drive it, and who is running. */
+function Knowledge({ stats, info, sessionId, width }) {
     const vaultLines = stats.ok
         ? [
               `${plural(stats.wiki, 'wiki page')} · ${plural(stats.shared, 'shared fact')}`,
@@ -227,6 +227,11 @@ function Knowledge({ stats }) {
                 // a Commands section to fill the space.
                 lines: ['enter    send', 'ctrl+c   interrupt, again to exit'],
             })
+        ),
+        React.createElement(
+            Box,
+            { marginTop: 1, flexDirection: 'column' },
+            React.createElement(IdentityFields, { info, sessionId, width })
         ),
         // Skills is absent, not empty. A "coming soon" placeholder would be the
         // one invented thing on an otherwise entirely true panel.
@@ -291,20 +296,36 @@ export function LaunchScreen({ info, stats, sessionId, columns }) {
                     // The same anchor used by the rest of the shell chrome.
                     borderColor: color.frame,
                     paddingX: 1,
+                    paddingY: 1,
                     flexDirection: 'column',
                 },
                 React.createElement(
                     Box,
                     { flexDirection: stack ? 'column' : 'row' },
-                    React.createElement(Identity, {
-                        info,
-                        sessionId,
-                        width: Math.min(LEFT_COLUMN, inner),
-                    }),
                     React.createElement(
                         Box,
-                        { marginTop: stack ? 1 : 0, flexGrow: 1 },
-                        React.createElement(Knowledge, { stats })
+                        {
+                            flexShrink: 0,
+                            width: Math.min(LEFT_COLUMN, inner),
+                            flexDirection: 'column',
+                        },
+                        React.createElement(Mark)
+                    ),
+                    React.createElement(
+                        Box,
+                        {
+                            marginTop: stack ? 1 : 0,
+                            flexGrow: 1,
+                            flexDirection: 'column',
+                        },
+                        React.createElement(Knowledge, {
+                            stats,
+                            info,
+                            sessionId,
+                            width: stack
+                                ? inner
+                                : Math.max(1, inner - Math.min(LEFT_COLUMN, inner)),
+                        })
                     )
                 )
             )
