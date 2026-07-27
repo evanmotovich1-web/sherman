@@ -26,19 +26,25 @@ export function Thinking({ active, activity }) {
     const glyph = SPINNER[frame % SPINNER.length];
     const seconds = (time / 1000).toFixed(1);
 
-    // The label narrates the turn: a generic word held for thirty seconds tells
-    // the user nothing, so the newest reasoning/tool line replaces it as the
-    // engine works. When the backend reports no activity at all, this says
-    // "thinking…" and NOTHING more — the live line renders only what is real.
-    const what = activity && activity.length > 0 ? activity : 'thinking…';
-
-    // Indented and dim italic to sit flush with the committed trace lines above
-    // it — this is the trace's live tail, not a separate widget.
+    // A real in-flight tool sits above the persistent thinking tail. The tail
+    // never gets replaced: even a silent backend therefore has visible life,
+    // while the activity line still renders only what the engine actually sent.
     return React.createElement(
         Box,
-        null,
-        React.createElement(Text, { color: color.accent }, `  ${glyph} `),
-        React.createElement(Text, { dimColor: true, italic: true }, what),
-        React.createElement(Text, { dimColor: true, italic: true }, `  ${seconds}s`)
+        { flexDirection: 'column' },
+        activity && activity.length > 0
+            ? React.createElement(
+                  Text,
+                  { dimColor: true, italic: true, wrap: 'truncate' },
+                  `  ${activity}`
+              )
+            : null,
+        React.createElement(
+            Text,
+            null,
+            React.createElement(Text, { color: color.accent }, `  ${glyph} `),
+            React.createElement(Text, { dimColor: true, italic: true }, 'thinking…'),
+            React.createElement(Text, { dimColor: true, italic: true }, `  ${seconds}s`)
+        )
     );
 }

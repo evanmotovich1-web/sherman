@@ -65,6 +65,9 @@ export function App({ session, sessionId }) {
     const [busy, setBusy] = useState(false);
     const [activity, setActivity] = useState(null);
     const [usage, setUsage] = useState(() => session.usage ?? emptyUsage());
+    // Latest per-turn input, not the running total. Codex reports this on
+    // turn.completed and, for resumed threads, it is the current context size.
+    const [contextUsed, setContextUsed] = useState(null);
     const [info, setInfo] = useState(() => session.info);
 
     // Real clocks for the status bar: when this session started, and how long
@@ -109,12 +112,11 @@ export function App({ session, sessionId }) {
                             log.append('sherman', event.text);
                             break;
 
-                        // Reasoning summaries commit immediately and also become
-                        // the live tail. Tool starts stay dynamic; only their
-                        // measured completion commits below.
+                        // Reasoning summaries commit immediately. Tool starts
+                        // stay dynamic above the persistent thinking tail; only
+                        // their measured completion commits below.
                         case 'reasoning':
                             commit('reasoning', event.text);
-                            setActivity(event.text);
                             break;
 
                         case 'tool':
@@ -123,12 +125,15 @@ export function App({ session, sessionId }) {
                             } else {
                                 const line = formatTool(event, true);
                                 commit('tool', line);
-                                setActivity(line);
+                                setActivity(null);
                             }
                             break;
 
                         case 'turn-end':
                             setUsage(session.usage);
+                            setContextUsed(
+                                Number.isFinite(event.usage?.input) ? event.usage.input : null
+                            );
                             setInfo(session.info);
                             break;
 
@@ -190,7 +195,14 @@ export function App({ session, sessionId }) {
             Box,
             { flexDirection: 'column' },
             React.createElement(CompactHeader),
-            React.createElement(StatusBar, { info, usage, busy, sessionStart, lastTurnMs })
+            React.createElement(StatusBar, {
+                info,
+                usage,
+                contextUsed,
+                busy,
+                sessionStart,
+                lastTurnMs,
+            })
         ),
         React.createElement(Composer, { onSubmit: submit, busy })
     );

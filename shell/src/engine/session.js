@@ -19,6 +19,7 @@
  * @property {string} user
  * @property {string} vaultPath
  * @property {string|null} threadId null until the engine reports one
+ * @property {number|null} contextWindow known model limit, or null to omit meter
  */
 
 /**
@@ -41,7 +42,7 @@
  * @typedef {{kind:'message', text:string}} MessageEvent
  * @typedef {{kind:'tool', id:string, phase:'started'|'completed', glyph:string,
  *            label:string, durationMs:number|null}} ToolEvent
- * @typedef {{kind:'turn-end', usage:Usage}} TurnEndEvent
+ * @typedef {{kind:'turn-end', usage:Usage|null}} TurnEndEvent
  * @typedef {{kind:'interrupted'}} InterruptedEvent
  * @typedef {{kind:'error', message:string}} ErrorEvent
  *

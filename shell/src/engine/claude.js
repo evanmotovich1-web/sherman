@@ -29,6 +29,7 @@ export class ClaudeSession extends EngineSession {
             user: this._config.user,
             vaultPath: this._config.vaultPath,
             threadId: null,
+            contextWindow: this._config.contextWindowTokens ?? null,
         };
     }
 

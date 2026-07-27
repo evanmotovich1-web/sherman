@@ -84,7 +84,9 @@ export function Composer({ onSubmit, busy, columns }) {
             width,
             borderStyle: 'round',
             borderColor: color.accent,
+            borderDimColor: busy,
             paddingX: 1,
+            paddingY: 1,
             flexDirection: 'row',
         },
         busy
@@ -95,7 +97,7 @@ export function Composer({ onSubmit, busy, columns }) {
                   React.createElement(Text, { color: color.accent, bold: true }, '› '),
                   React.createElement(Text, null, value),
                   // Our own caret. Ink's useCursor is for IME positioning, not a text caret.
-                  React.createElement(Text, { inverse: true }, ' ')
+                  React.createElement(Text, { color: color.accent, inverse: true }, ' ')
               )
     );
 }

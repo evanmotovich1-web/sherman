@@ -18,7 +18,7 @@
 import React from 'react';
 import { Text, Box, Static, useWindowSize } from 'ink';
 
-import { color, markRamp } from './theme.js';
+import { color } from './theme.js';
 import { Banner } from './Header.js';
 import { LaunchScreen } from './LaunchScreen.js';
 
@@ -41,7 +41,7 @@ function Row({ label, labelColor, children, bold }) {
 
 /**
  * Sherman's reply, boxed and signed: the mark at one-character scale (three
- * dots in the mark's own colours) plus the word Sherman, set into the top
+ * dots plus the word Sherman, bold in the anchor accent) set into the top
  * border — the same composed-line + borderTop:false construction the launch
  * panel's version header uses.
  */
@@ -65,10 +65,7 @@ function ShermanBox({ text, width }) {
             Text,
             { wrap: 'truncate' },
             React.createElement(Text, { color: color.accent }, '╭─ '),
-            React.createElement(Text, { color: markRamp.dot.mid }, '●'),
-            React.createElement(Text, { color: markRamp.inner.mid }, '●'),
-            React.createElement(Text, { color: markRamp.outer.mid }, '●'),
-            React.createElement(Text, { color: color.accent, bold: true }, ' Sherman '),
+            React.createElement(Text, { color: color.accent, bold: true }, '●●● Sherman '),
             React.createElement(Text, { color: color.accent }, '─'.repeat(fill) + '╮')
         ),
         React.createElement(
@@ -78,7 +75,7 @@ function ShermanBox({ text, width }) {
                 borderStyle: 'round',
                 borderTop: false,
                 borderColor: color.accent,
-                paddingX: 1,
+                paddingX: 2,
                 paddingY: 1,
             },
             React.createElement(Text, null, text)

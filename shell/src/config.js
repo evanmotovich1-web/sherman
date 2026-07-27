@@ -8,6 +8,24 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+// Codex's model metadata reports these usable context windows. Keep the map
+// small and explicit: an unknown model gets no meter rather than a guessed
+// denominator. `context_window_tokens` can override a provider-specific limit.
+export const MODEL_CONTEXT_WINDOWS = Object.freeze({
+    'gpt-5.6-sol': 272000,
+    'gpt-5.6-terra': 272000,
+    'gpt-5.6-luna': 272000,
+    'gpt-5.5': 272000,
+    'gpt-5.4': 272000,
+    'gpt-5.4-mini': 272000,
+    'gpt-5.3-codex-spark': 128000,
+});
+
+export function contextWindowFor(model, override = null) {
+    if (Number.isInteger(override) && override > 0) return override;
+    return MODEL_CONTEXT_WINDOWS[model] ?? null;
+}
+
 // Resolve $HOME live on every call, never at import time. smoke.sh overrides
 // HOME to sandbox its run, and a value captured at module load would both
 // defeat the test and read Evan's real config instead of the sandbox one.
@@ -23,6 +41,7 @@ function shermanHome() {
  * @property {string} vaultPath     company knowledge base
  * @property {string} workspacePath engine cwd; holds the assembled adapter
  * @property {string} configPath    where this came from
+ * @property {number|null} contextWindowTokens optional operator override
  */
 
 /**
@@ -70,6 +89,16 @@ export function loadConfig() {
         );
     }
 
+    if (
+        parsed.context_window_tokens !== undefined &&
+        (!Number.isInteger(parsed.context_window_tokens) || parsed.context_window_tokens <= 0)
+    ) {
+        throw new Error(
+            `Config at ${configPath} has an invalid context_window_tokens value.\n` +
+            'Use a positive integer or remove the override.'
+        );
+    }
+
     // snake_case dies here. Mapping at this boundary means no other module has
     // to know the on-disk wire format, so changing the file shape later touches
     // exactly one function.
@@ -80,5 +109,6 @@ export function loadConfig() {
         vaultPath: parsed.vault_path,
         workspacePath: join(home, 'workspace'),
         configPath,
+        contextWindowTokens: parsed.context_window_tokens ?? null,
     };
 }

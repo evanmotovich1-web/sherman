@@ -425,6 +425,7 @@ import { PassThrough } from 'node:stream';
 import { App } from './src/ui/app.js';
 import { Composer } from './src/ui/Composer.js';
 import { LaunchScreen } from './src/ui/LaunchScreen.js';
+import { StatusBar } from './src/ui/StatusBar.js';
 import { Transcript } from './src/ui/Transcript.js';
 import { CodexSession } from './src/engine/codex.js';
 
@@ -531,6 +532,19 @@ const composerPlain = renderToString(
     React.createElement(Composer, { onSubmit() {}, busy: false }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '');
+const meterPlain = renderToString(
+    React.createElement(StatusBar, {
+        info: { engine: 'fake', model: 'fake-model', contextWindow: 272000 },
+        usage: { total: 68042 },
+        contextUsed: 68000,
+        busy: false,
+        columns: 80,
+    }),
+    { columns: 80 }
+).replace(/\x1b\[[0-9;]*m/g, '');
+if (!meterPlain.includes('68K/272K') || !meterPlain.includes('25%')) {
+    mappingMissing.push('real context meter');
+}
 
 const visualWidth = (line) => [...line.replace(/\x1b\[[0-9;]*m/g, '')].length;
 const maxWidth = (out) => Math.max(...out.split('\n').map(visualWidth));
@@ -585,11 +599,12 @@ const fakeSession = {
     info: {
         engine: 'fake',
         model: 'fake-model',
+        contextWindow: 272000,
         user: 'smoke-tester',
         vaultPath: '/tmp/smoke/sherman/vault',
         threadId: null,
     },
-    usage: { total: 42, input: 20, cachedInput: 0, output: 20, reasoning: 2 },
+    usage: { total: 68042, input: 68000, cachedInput: 0, output: 40, reasoning: 2 },
     async *send(text) {
         sent.push(text);
         yield { kind: 'turn-start' };
@@ -647,10 +662,12 @@ const poll = setInterval(() => {
 
     const composerLines = composerPlain.split('\n');
     if (
-        composerLines.length !== 3 ||
+        composerLines.length !== 5 ||
         composerLines.some((line) => width(line) !== 80) ||
-        !composerLines[1].startsWith('│ ›') ||
-        !composerLines[1].endsWith('│')
+        composerLines[1] !== '│' + ' '.repeat(78) + '│' ||
+        !composerLines[2].startsWith('│ ›') ||
+        !composerLines[2].endsWith('│') ||
+        composerLines[3] !== '│' + ' '.repeat(78) + '│'
     ) {
         missing.push('80-column composer border');
     }

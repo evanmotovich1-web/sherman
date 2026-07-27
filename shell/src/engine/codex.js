@@ -29,6 +29,7 @@ import { homedir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 
 import { EngineSession, ev, emptyUsage, addUsage } from './session.js';
+import { contextWindowFor } from '../config.js';
 
 const NOT_INSTALLED =
     'Codex is not installed. Install it with:\n' +
@@ -82,6 +83,10 @@ export class CodexSession extends EngineSession {
             user: this._config.user,
             vaultPath: this._config.vaultPath,
             threadId: this._threadId,
+            contextWindow: contextWindowFor(
+                this._model,
+                this._config.contextWindowTokens
+            ),
         };
     }
 
@@ -162,7 +167,7 @@ export class CodexSession extends EngineSession {
 
             case 'turn.completed': {
                 const usage = mapUsage(msg.usage);
-                this._usage = addUsage(this._usage, usage);
+                if (usage !== null) this._usage = addUsage(this._usage, usage);
                 this._toolStarts.clear();
                 return [ev.turnEnd(usage)];
             }
@@ -316,16 +321,19 @@ export class CodexSession extends EngineSession {
 
 /** Codex's snake_case usage payload → the normalized shape. */
 function mapUsage(u) {
-    const usage = u ?? {};
-    const input = usage.input_tokens ?? 0;
-    const output = usage.output_tokens ?? 0;
+    // Absence must stay absence. Converting a missing payload to zeros would let
+    // the UI render a confident 0% context meter from data Codex never sent.
+    if (!u || !Number.isFinite(u.input_tokens)) return null;
+
+    const input = u.input_tokens;
+    const output = u.output_tokens ?? 0;
     return {
         input,
-        cachedInput: usage.cached_input_tokens ?? 0,
+        cachedInput: u.cached_input_tokens ?? 0,
         output,
         // Reasoning tokens are a subset of output, so they are reported but not
         // added again -- double-counting would inflate the status bar.
-        reasoning: usage.reasoning_output_tokens ?? 0,
+        reasoning: u.reasoning_output_tokens ?? 0,
         total: input + output,
     };
 }
