@@ -29,8 +29,8 @@ function normalizeInput(input) {
  */
 export function Composer({ onSubmit, busy, columns }) {
     const [value, setValue] = useState('');
-    const measured = useWindowSize().columns;
-    const width = Math.max(1, typeof columns === 'number' ? columns : measured);
+    const size = useWindowSize();
+    const width = Math.max(1, typeof columns === 'number' ? columns : size.columns);
 
     useInput(
         (input, key) => {
@@ -88,6 +88,16 @@ export function Composer({ onSubmit, busy, columns }) {
             paddingX: 1,
             paddingY: 1,
             flexDirection: 'row',
+            // Chrome inside the fixed-height root: the transcript shrinks, the
+            // input bar never does (see app.js).
+            flexShrink: 0,
+            // A pasted block taller than the screen must not push the caret and
+            // bottom border past the viewport edge. Cap the bar and clip the
+            // paste from the top: the tail — where the caret lives and typing
+            // continues — stays visible, and the full value is intact in state.
+            maxHeight: Math.max(5, size.rows - 4),
+            overflowY: 'hidden',
+            alignItems: 'flex-end',
         },
         busy
             ? React.createElement(Text, { dimColor: true }, '… working, Ctrl+C to interrupt')

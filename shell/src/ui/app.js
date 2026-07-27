@@ -6,7 +6,7 @@
 // EngineSession — not a licence to reach into codex.js.
 
 import React, { useCallback, useRef, useState } from 'react';
-import { Box, useApp, useInput } from 'ink';
+import { Box, useApp, useInput, useWindowSize } from 'ink';
 
 import { Transcript } from './Transcript.js';
 import { CompactHeader } from './Header.js';
@@ -17,8 +17,8 @@ import { emptyUsage } from '../engine/session.js';
 import { readVaultStats } from '../vault.js';
 import { createSessionLog } from '../sessionlog.js';
 
-// Monotonic ids. <Static> needs a stable key per item, and array index is not
-// one — Ink would re-emit rows when the array grows.
+// Monotonic ids. React list keys must be stable per item, and array index is
+// not one — items keep their identity while the array in front of them grows.
 let seq = 0;
 const nextId = () => `i${seq++}`;
 
@@ -37,19 +37,25 @@ function formatTool(event, includeDuration) {
 export function App({ session, sessionId }) {
     const { exit } = useApp();
 
+    // The alternate screen has no scrollback, so the app owns the whole
+    // viewport: the root Box is exactly the terminal's height every frame.
+    // That keeps every Ink frame fullscreen (stable incremental redraws, no
+    // accidental scrolling of the alt buffer) and gives the transcript a hard
+    // edge to shrink against. The hook re-renders on resize.
+    const { rows } = useWindowSize();
+
     // One log per session, created once. useState, not useRef: the initialiser
     // contract ("runs once") is the same one the launch item already relies on.
     const [log] = useState(() => createSessionLog(sessionId));
 
-    // The launch screen rides in as the first committed item so it stays above the
-    // first message and only ever prints once (D12/D13 — one <Static> for
-    // everything).
+    // The launch screen rides in as the first transcript item so it stays above
+    // the first message and scrolls out of the viewport like anything else
+    // (D12/D13 — one history, the opener included).
     //
     // Its info and vault counts are captured HERE, at mount, and travel on the
     // item itself. Two reasons: the initialiser runs once, so the vault readdir
-    // is not repeated on every <Static> commit; and a committed transcript item
-    // should show what was true when it was written, not mutate as the session
-    // goes on.
+    // is not repeated on every render; and a committed transcript item should
+    // show what was true when it was written, not mutate as the session goes on.
     const [items, setItems] = useState(() => [
         {
             id: nextId(),
@@ -185,25 +191,36 @@ export function App({ session, sessionId }) {
 
     // Hermes stacking, top-anchored: transcript (launch panel + welcome),
     // activity, then the status region, then the prompt LAST — directly under
-    // the status bar, never pinned to the bottom of the screen with a gap.
+    // the status bar, never separated from it by a gap. While the session is
+    // short the whole stack reads from the top of the screen; once the turns
+    // outgrow the viewport the transcript shrinks (it is the only child allowed
+    // to), the oldest turns clip off the top edge, and the chrome ends up
+    // resting on the bottom row. flexShrink:0 on everything below the
+    // transcript is what stops Yoga from shaving rows off the chrome instead.
     return React.createElement(
         Box,
-        { flexDirection: 'column' },
+        { flexDirection: 'column', height: rows },
         React.createElement(Transcript, { items }),
         React.createElement(Thinking, { active: busy, activity }),
-        React.createElement(
-            Box,
-            { flexDirection: 'column' },
-            React.createElement(CompactHeader),
-            React.createElement(StatusBar, {
-                info,
-                usage,
-                contextUsed,
-                busy,
-                sessionStart,
-                lastTurnMs,
-            })
-        ),
+        // Below nine rows the rigid chrome would push the composer — the one
+        // indispensable row — off the bottom edge. Sacrifice the header and
+        // status bar first, the same degradation order as the composer's own
+        // narrow-terminal fallback.
+        rows >= 9
+            ? React.createElement(
+                  Box,
+                  { flexDirection: 'column', flexShrink: 0 },
+                  React.createElement(CompactHeader),
+                  React.createElement(StatusBar, {
+                      info,
+                      usage,
+                      contextUsed,
+                      busy,
+                      sessionStart,
+                      lastTurnMs,
+                  })
+              )
+            : null,
         React.createElement(Composer, { onSubmit: submit, busy })
     );
 }

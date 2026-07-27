@@ -274,12 +274,30 @@ perfectly healthy shell reads as hung on the very first thing a new user does.
 `useAnimation` supplies both the spinner frame and the elapsed milliseconds, so
 there is no manual timer to get wrong.
 
-**No alternate screen.** Ink can run in the terminal's alternate screen, which
-would give a tidier fixed layout — and would make the scrollback buffer
-unavailable. Instead history is committed through one `<Static>`, so the terminal
-itself owns the transcript and the mouse wheel behaves normally. There is exactly
-one `<Static>` in the tree, with the banner as its first item; Ink only reliably
-supports one, and it also guarantees the banner stays above the first message.
+**Alternate screen, viewport transcript.** The shell runs on the terminal's
+alternate screen buffer — the same switch that makes hermes, claude and codex
+appear to take the screen over (the brief black flash on launch *is* the
+switch; there is no splash animation). Ink enters it with `1049h` on start and
+restores the primary buffer with `1049l` on exit, and the restore is registered
+through signal-exit so it fires on **every** exit path — clean quit, double
+Ctrl+C, a crash, an engine failure, SIGTERM — leaving the scrollback exactly as
+it was. The escapes only emit when stdout is a real TTY, so piped runs (smoke,
+CI) are unaffected. `--raw` is untouched: the engines manage their own screens.
+
+Inside the alternate screen there is no scrollback to append into, so `<Static>`
+is gone: history renders inside the viewport. Every turn stays in memory for
+the session; the newest fill the screen and the oldest scroll out of the top
+edge. The one anchoring exception is the launch moment: while the opener is the
+only thing on screen it anchors to the *top*, so on a short terminal the
+wordmark and version border still paint from the top-left and it is the panel's
+tail that clips, never its head.
+
+**Known limitation:** there is no page-up browsing of what has left the screen —
+the visible tail is all you can see. That includes a single reply taller than
+the viewport, which shows its tail (as a terminal would); and at pathologically
+small windows a partially clipped panel border can render imperfectly at the cut
+line. The session JSONL log under `~/.sherman/sessions/` is the durable record
+either way.
 
 **The banner prints once, not pinned.** It is 18 lines. Pinning it would leave six
 rows for the conversation on a 24-row terminal, so the full mark is the launch

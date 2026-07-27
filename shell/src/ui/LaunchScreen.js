@@ -13,10 +13,12 @@
 // version from package.json, the sha from git — and when a source is absent
 // (no git on a future employee install), its segment is OMITTED, never faked.
 //
-// Like the banner it replaces, this commits once through <Static> and scrolls
-// away (D12/D13). That is also why it sizes at launch rather than reacting to
-// resize: a Static child cannot re-render without re-emitting itself into
-// scrollback.
+// Like the banner it replaces, this is the transcript's first item and scrolls
+// out of the viewport as the session grows (D12/D13). Its VALUES are frozen at
+// launch — info and vault counts travel on the item itself (see app.js), so the
+// panel keeps showing what was true when it appeared — while its geometry is
+// live like every other component's, since the viewport transcript re-renders
+// items on every frame.
 
 import React from 'react';
 import { Text, Box, useWindowSize } from 'ink';
@@ -72,8 +74,9 @@ function plural(n, singular, pluralForm) {
 }
 
 // ------------------------------------------------------------- build stamp --
-// Read once per process: the values cannot change mid-session, and <Static>
-// children may render more than once while committing.
+// Read once per process: the values cannot change mid-session, and the viewport
+// transcript renders this panel on every frame — an uncached readFileSync and
+// git exec per frame would be absurd.
 let cachedBuild;
 
 function readBuildInfo() {

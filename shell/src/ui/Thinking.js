@@ -29,9 +29,12 @@ export function Thinking({ active, activity }) {
     // A real in-flight tool sits above the persistent thinking tail. The tail
     // never gets replaced: even a silent backend therefore has visible life,
     // while the activity line still renders only what the engine actually sent.
+    //
+    // flexShrink:0 — the indicator is chrome inside the fixed-height root; only
+    // the transcript above it is allowed to give up rows (see app.js).
     return React.createElement(
         Box,
-        { flexDirection: 'column' },
+        { flexDirection: 'column', flexShrink: 0 },
         activity && activity.length > 0
             ? React.createElement(
                   Text,

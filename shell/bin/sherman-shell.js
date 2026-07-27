@@ -181,10 +181,38 @@ async function startShell() {
 
     // exitOnCtrlC:false is what makes the two-stage interrupt possible: Ink would
     // otherwise quit on the first press, before the app could abort the turn.
+    //
+    // alternateScreen:true is the whole screen contract. On start Ink enters the
+    // terminal's alternate buffer (1049h — cleared by definition, so the launch
+    // screen paints from the top-left; the brief black flash IS the switch). On
+    // exit Ink restores the primary buffer (1049l) and the cursor, and that
+    // restore is registered with signal-exit, which fires on clean unmount,
+    // double Ctrl+C, a thrown error, process.exit, SIGINT, SIGTERM and SIGHUP —
+    // every exit path, not just the happy one — so the scrollback comes back
+    // exactly as it was. A fault that reaches the catch in main() prints AFTER
+    // the unmount has already restored the screen, so the message lands on the
+    // primary buffer where it can be read. Ink emits the escapes only when
+    // stdout is a real TTY, which keeps piped runs (smoke, CI) byte-identical.
+    // --raw never reaches this file; the engines manage their own screens.
+    //
+    // incrementalRendering makes Ink rewrite only the lines that changed
+    // between frames. Without it, every spinner tick erases and repaints the
+    // whole fullscreen frame, which visibly flickers on terminals that ignore
+    // synchronized output (stock Terminal.app).
+    //
+    // interactive is pinned to the stdout TTY check rather than left to Ink's
+    // default, because the default also consults CI-marker env vars — and a
+    // stray CI=1 in someone's profile would silently defer every frame to exit,
+    // a blank screen on a perfectly good terminal. This function already
+    // refuses to run without a TTY; a TTY session always renders live. Piped
+    // fixtures still resolve non-interactive (isTTY is undefined there).
     const { waitUntilExit } = render(
         React.createElement(App, { session, sessionId: resolveSessionId() }),
         {
             exitOnCtrlC: false,
+            alternateScreen: true,
+            incrementalRendering: true,
+            interactive: Boolean(process.stdout.isTTY),
         }
     );
 

@@ -2,10 +2,10 @@
 //
 // Two exports, because they have different lifetimes (D13):
 //
-//   Banner        — 18 lines. Rendered ONCE through <Static> so it commits and
-//                   scrolls away, exactly as `bin/sherman` has always behaved.
-//                   Pinning it would leave six rows for the conversation on a
-//                   24-row terminal.
+//   Banner        — 18 lines. A committed transcript item that scrolls out of
+//                   the viewport like any other, exactly as `bin/sherman` has
+//                   always behaved. Pinning it would leave six rows for the
+//                   conversation on a 24-row terminal.
 //   CompactHeader — one line, always visible, so the screen still says whose
 //                   it is after the mark has scrolled off.
 

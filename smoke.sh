@@ -412,9 +412,13 @@ fi
 # The turn structure, proven off-TTY. Ink 7 reads stdin via 'readable'+read(),
 # so a PassThrough with isTTY/setRawMode stubs drives the REAL App: the check
 # types a prompt into the real composer, a fake EngineSession yields a scripted
-# turn, and the captured output must contain the user bullet, the signed
+# turn, and the final rendered screen must contain the user bullet, the signed
 # Sherman box border, a completed trace line that exists ONLY because the fake
-# backend emitted it, and the full-width composer bar.
+# backend emitted it, and the full-width composer bar. Off a TTY Ink defers the
+# viewport frame until unmount, so the check waits for the scripted turn to
+# finish, unmounts, then asserts on the capture. It also passes the same
+# alternateScreen option the real entry point uses and asserts the 1049 escapes
+# never reach piped output -- the alt screen is a TTY-only behavior.
 #
 # HOME is the sandbox so the session log writes there, never the real one.
 
@@ -595,6 +599,7 @@ const narrowComposer = renderToString(
 if (maxWidth(narrowComposer) > 3) mappingMissing.push('composer overflow below four columns');
 
 const sent = [];
+let turnComplete = false;
 const fakeSession = {
     info: {
         engine: 'fake',
@@ -613,6 +618,7 @@ const fakeSession = {
         yield { kind: 'tool', id: 'tool-1', phase: 'completed', glyph: '›', label: 'patch smoke.sh', durationMs: 900 };
         yield { kind: 'message', text: 'The intake SOP says to log the request first.' };
         yield { kind: 'turn-end', usage: this.usage };
+        turnComplete = true;
     },
     interrupt() {},
     dispose() {},
@@ -630,9 +636,11 @@ stdout.rows = 24;
 let captured = '';
 stdout.on('data', (d) => { captured += d.toString(); });
 
+// alternateScreen mirrors bin/sherman-shell.js. Ink must resolve it OFF here,
+// because this stdout is a pipe -- the leak assertion below proves it does.
 const inst = render(
     React.createElement(App, { session: fakeSession, sessionId: '20260726_120000_abc123' }),
-    { stdout, stdin, exitOnCtrlC: false, patchConsole: false }
+    { stdout, stdin, exitOnCtrlC: false, patchConsole: false, alternateScreen: true }
 );
 
 setTimeout(() => { stdin.write('read\nthe sop'); }, 40);
@@ -640,43 +648,56 @@ setTimeout(() => { stdin.write('\r'); }, 90);
 
 const startedAt = Date.now();
 const poll = setInterval(() => {
-    const plain = captured.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
-    const done = plain.includes('The intake SOP says');
-    if (!done && Date.now() - startedAt < 2000) return;
-
+    if (!turnComplete && Date.now() - startedAt < 2000) return;
     clearInterval(poll);
-    inst.unmount();
 
-    const missing = [...mappingMissing];
-    if (!plain.includes('● read') || !plain.includes('the sop')) missing.push('user bullet');
-    if (sent.length !== 1 || sent[0] !== 'read\nthe sop') {
-        missing.push('multi-line paste preserved until Enter');
-    }
-    if (!/╭─.*Sherman.*╮/.test(plain)) missing.push('Sherman box label');
-    if (!plain.includes('› patch smoke.sh  0.9s')) missing.push('completed trace line with duration');
+    // Off a TTY Ink writes the viewport frame only at unmount. Give React one
+    // beat to commit the completed turn, unmount, give the final write one
+    // beat to land in the capture, then assert on the rendered screen.
+    setTimeout(() => {
+        inst.unmount();
+        setTimeout(() => {
+            const plain = captured.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 
-    const width = (s) => [...s].length;
-    const lines = plain.split(/\r?\n/);
-    const signedTop = lines.find((line) => line.includes('●●● Sherman'));
-    if (!signedTop || width(signedTop) !== 80) missing.push('full-width Sherman box');
+            const missing = [...mappingMissing];
+            if (!plain.includes('The intake SOP says')) missing.push('Sherman reply text');
+            if (!plain.includes('● read') || !plain.includes('the sop')) missing.push('user bullet');
+            if (sent.length !== 1 || sent[0] !== 'read\nthe sop') {
+                missing.push('multi-line paste preserved until Enter');
+            }
+            if (!/╭─.*Sherman.*╮/.test(plain)) missing.push('Sherman box label');
+            if (!plain.includes('› patch smoke.sh  0.9s')) missing.push('completed trace line with duration');
 
-    const composerLines = composerPlain.split('\n');
-    if (
-        composerLines.length !== 5 ||
-        composerLines.some((line) => width(line) !== 80) ||
-        composerLines[1] !== '│' + ' '.repeat(78) + '│' ||
-        !composerLines[2].startsWith('│ ›') ||
-        !composerLines[2].endsWith('│') ||
-        composerLines[3] !== '│' + ' '.repeat(78) + '│'
-    ) {
-        missing.push('80-column composer border');
-    }
+            // The raw capture, not the stripped one: 1049h/1049l anywhere in
+            // piped output means the alt screen leaked off-TTY.
+            if (captured.includes(ESC + '[?1049')) {
+                missing.push('alt-screen escapes leaked into piped output');
+            }
 
-    if (missing.length > 0) {
-        console.error('missing: ' + missing.join(', '));
-        process.exit(1);
-    }
-    process.exit(0);
+            const width = (s) => [...s].length;
+            const lines = plain.split(/\r?\n/);
+            const signedTop = lines.find((line) => line.includes('●●● Sherman'));
+            if (!signedTop || width(signedTop) !== 80) missing.push('full-width Sherman box');
+
+            const composerLines = composerPlain.split('\n');
+            if (
+                composerLines.length !== 5 ||
+                composerLines.some((line) => width(line) !== 80) ||
+                composerLines[1] !== '│' + ' '.repeat(78) + '│' ||
+                !composerLines[2].startsWith('│ ›') ||
+                !composerLines[2].endsWith('│') ||
+                composerLines[3] !== '│' + ' '.repeat(78) + '│'
+            ) {
+                missing.push('80-column composer border');
+            }
+
+            if (missing.length > 0) {
+                console.error('missing: ' + missing.join(', '));
+                process.exit(1);
+            }
+            process.exit(0);
+        }, 60);
+    }, 120);
 }, 50);
 JS
 )
@@ -693,7 +714,7 @@ else
     turn_status=$?
 
     if [ "$turn_status" -eq 0 ]; then
-        pass "bullet, vivid reply, real timed trace, and composer bar all rendered"
+        pass "bullet, vivid reply, real timed trace, composer bar; no alt-screen leak off-TTY"
     else
         fail "$(printf '%s' "$turn_err" | head -3)"
     fi

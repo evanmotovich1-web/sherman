@@ -1,13 +1,23 @@
-// Committed conversation history.
+// Committed conversation history, rendered inside the viewport.
 //
-// Everything here goes through a single <Static> (D12). Ink writes those rows out
-// once and then stops managing them, which is what leaves them in the terminal's
-// OWN scrollback — so the mouse wheel and Cmd-F work the way people expect. The
-// alternate screen would give a tidier fixed layout and destroy exactly that.
+// The shell runs on the terminal's alternate screen (see bin/sherman-shell.js),
+// where there is no scrollback to append into — <Static>, which wrote rows once
+// and left them to the terminal, is meaningless there. So the transcript is an
+// ordinary component now: every turn stays in the `items` array for the life of
+// the session, and layout decides what is visible. The Box below shrinks
+// against the fixed-height root in app.js; while the turns fit, they read from
+// the top with the chrome directly beneath them, and once they outgrow the
+// space, justifyContent:'flex-end' anchors the newest content to the bottom
+// while overflowY:'hidden' clips the oldest off the top edge — the terminal's
+// own scroll behavior, reproduced without its buffer. There is no page-up
+// browsing of what scrolled off (README.md records the limitation); the session
+// JSONL log is the durable record.
 //
-// ONE <Static> for the whole history, with the launch screen as its first item.
-// Ink only reliably supports a single Static instance, and threading the opener
-// through the same list also guarantees it stays above the first message.
+// Every item wrapper is flexShrink:0, and that is load-bearing: Yoga's default
+// shrink of 1 applies to the ITEMS when the list overflows, compressing each by
+// a fraction of a row, and the rounding writes items over each other as
+// garbage. Rigid items overflow past the top instead, which is exactly what
+// the clip needs. Proven against ink 7.1.1 before this shipped.
 //
 // Turn structure (Phase 6): the user's line is a bullet, the work the engine
 // reported commits as a dim italic trace under it, and Sherman's reply arrives
@@ -16,7 +26,7 @@
 // the transcript, and one invented line poisons trust in all of them.
 
 import React from 'react';
-import { Text, Box, Static, useWindowSize } from 'ink';
+import { Text, Box, useWindowSize } from 'ink';
 
 import { color } from './theme.js';
 import { Banner } from './Header.js';
@@ -147,21 +157,43 @@ function Item({ item, width }) {
  * `columns` is injectable for off-TTY fixtures (D17); live, the hook wins.
  */
 export function Transcript({ items, columns }) {
-    const measured = useWindowSize().columns;
-    const width = typeof columns === 'number' ? columns : measured;
+    const size = useWindowSize();
+    const width = typeof columns === 'number' ? columns : size.columns;
 
-    return React.createElement(Static, { items }, (item) =>
-        React.createElement(
-            Box,
-            {
-                key: item.id,
-                flexDirection: 'column',
-                // Air above each user turn and below each reply — the rhythm
-                // that makes turns read as turns.
-                marginTop: item.kind === 'user' ? 1 : 0,
-                marginBottom: item.kind === 'message' ? 1 : 0,
-            },
-            React.createElement(Item, { item, width })
+    // Every item renders at least one line, so at most `rows` of them can be
+    // visible at once. Older items still live in `items` — they are simply not
+    // worth a Yoga layout pass on every frame of a long session.
+    const visible = items.slice(-size.rows);
+
+    return React.createElement(
+        Box,
+        {
+            flexDirection: 'column',
+            flexShrink: 1,
+            overflowY: 'hidden',
+            // Terminal-like scroll: once turns exist, anchor the NEWEST content
+            // to the bottom and clip the oldest off the top. The launch moment
+            // is the exception — while the opener is the only item, anchor to
+            // the top, so on a short terminal the wordmark and version border
+            // still paint from the top-left and it is the panel's tail that
+            // clips, never its head. Both anchors render identically whenever
+            // the content fits.
+            justifyContent: visible.length > 1 ? 'flex-end' : 'flex-start',
+        },
+        visible.map((item) =>
+            React.createElement(
+                Box,
+                {
+                    key: item.id,
+                    flexDirection: 'column',
+                    flexShrink: 0,
+                    // Air above each user turn and below each reply — the rhythm
+                    // that makes turns read as turns.
+                    marginTop: item.kind === 'user' ? 1 : 0,
+                    marginBottom: item.kind === 'message' ? 1 : 0,
+                },
+                React.createElement(Item, { item, width })
+            )
         )
     );
 }
