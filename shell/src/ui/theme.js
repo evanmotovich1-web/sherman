@@ -54,6 +54,21 @@ export const ramp = {
 };
 
 /**
+ * The one-line retro-3D lockup's two inks.
+ *
+ * `bands` paints the solid strokes in three horizontal bands of two rows each
+ * — pink over purple over blue, the brand translation of the reference
+ * lockup's yellow/yellow/orange. `echo` colours the thin box-drawing outline
+ * that traces every stroke down-right: one dim indigo, hue-wise between brand
+ * purple and brand blue but darker than both, so the echo reads as a line
+ * sitting behind the letterforms rather than as a fourth band.
+ */
+export const retro = {
+    bands: [c(205), c(205), c(135), c(135), c(39), c(39)],
+    echo: c(61),
+};
+
+/**
  * The three-circle mark's palette: one small ramp per shape, top to bottom.
  *
  * `mid` is the brand colour of each shape — pink 205, purple 135, blue 39,
