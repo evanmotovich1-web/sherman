@@ -714,6 +714,11 @@ const fakeSession = {
         yield { kind: 'reasoning', text: 'checking the vault' };
         yield { kind: 'tool', id: 'tool-1', phase: 'started', glyph: '›', label: 'patch smoke.sh' };
         yield { kind: 'tool', id: 'tool-1', phase: 'completed', glyph: '›', label: 'patch smoke.sh', durationMs: 900 };
+        // A real engine does not end the turn in the same tick a tool finishes.
+        // The gap matters here: a completed tool line is LIVE chrome now, shown
+        // for ACTIVITY_LINGER_MS and never committed, so without a beat for the
+        // frame to render there is nothing for the assertion below to observe.
+        await new Promise((resolve) => setTimeout(resolve, 120));
         yield {
             kind: 'message',
             text: `The intake SOP says${ESC}]0;pwn${BEL}${ESC}[31m to log the request first.`,
@@ -780,7 +785,15 @@ const poll = setInterval(() => {
             // The signature is ON the border now, not on a row of its own: the
             // top border row must literally read ╭─ Sherman ───…───╮.
             if (!/╭─ Sherman ─+╮/.test(plain)) missing.push('Sherman reply label');
-            if (!plain.includes('› patch smoke.sh  0.9s')) missing.push('completed trace line with duration');
+            // Asserted against the accumulated capture, which holds every frame
+            // written during the turn: the completed line with its measured
+            // duration must be RENDERED when the tool finishes. It is deliberately
+            // not asserted on the final screen -- these rows are transient by
+            // design and are gone a second later. That they actually go is pinned
+            // in shell/test/app-commands.test.js, where the timing is testable.
+            if (!plain.includes('› patch smoke.sh  0.9s')) {
+                missing.push('completed trace line with duration, while the turn is live');
+            }
 
             // The raw capture, not the stripped one: 1049h/1049l anywhere in
             // piped output means the alt screen leaked off-TTY.

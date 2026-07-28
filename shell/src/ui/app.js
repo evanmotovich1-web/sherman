@@ -41,13 +41,32 @@ const nextId = () => `i${seq++}`;
 // cannot travel past the oldest row either.
 const WHEEL_ROWS = 3;
 
+/**
+ * How long a finished task stays on screen before it goes.
+ *
+ * Completed tool lines are no longer committed to the transcript, so this is
+ * the ONLY window in which a finished task is visible. Long enough to register
+ * that the thing landed and read its duration; short enough that a burst of
+ * quick tasks does not queue up into a standing list. A turn ending sooner than
+ * this still clears everything -- the turn being over outranks the linger.
+ */
+export const ACTIVITY_LINGER_MS = 1000;
+
+/** Outcome marks, shared so a row's glyph and its text cannot disagree. */
+const OUTCOME_MARK = {
+    succeeded: '✓',
+    failed: '×',
+    declined: '–',
+    unknown: '?',
+};
+
+/** The mark for a completed tool, matching what formatTool renders. */
+function completionMark(event) {
+    return OUTCOME_MARK[event.outcome] ?? event.glyph ?? '›';
+}
+
 function formatTool(event, includeDuration) {
-    const outcomeGlyph = {
-        succeeded: '✓',
-        failed: '×',
-        declined: '–',
-        unknown: '?',
-    };
+    const outcomeGlyph = OUTCOME_MARK;
     const glyph = includeDuration ? outcomeGlyph[event.outcome] ?? event.glyph ?? '›' : event.glyph || '›';
     const duration =
         includeDuration && typeof event.durationMs === 'number'
@@ -219,6 +238,16 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
     // could stack a second compaction on top of the first.
     const compactingRef = useRef(false);
 
+    // Completed activities linger briefly before they disappear. The timers are
+    // tracked so turn end and unmount can cancel them -- an orphaned timer would
+    // fire setActivities on a dead tree, or resurrect a row into the next turn.
+    const lingerTimersRef = useRef(new Map());
+    const clearLingerTimers = useCallback(() => {
+        for (const timer of lingerTimersRef.current.values()) clearTimeout(timer);
+        lingerTimersRef.current.clear();
+    }, []);
+    useEffect(() => clearLingerTimers, [clearLingerTimers]);
+
     // `extra` carries structured payloads for kinds whose content is not a
     // string -- currently only 'diff', whose event is stored whole so the
     // renderer reads the engine's own fields instead of a re-serialized copy.
@@ -246,6 +275,7 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
             compactingRef.current = true;
 
             setBusyBoth(true);
+            clearLingerTimers();
             setActivities([]);
             setLifecycle(null);
             activeSessionRef.current = session;
@@ -272,6 +302,7 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                 failed = true;
             } finally {
                 setBusyBoth(false);
+                clearLingerTimers();
                 setActivities([]);
                 setLifecycle(null);
                 setLastTurnMs(Date.now() - turnStartRef.current);
@@ -302,7 +333,7 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                 commit('notice', 'summarized · this engine cannot start a new thread, so context was not reduced');
             }
         },
-        [commit, goal, log, session, setBusyBoth]
+        [clearLingerTimers, commit, goal, log, session, setBusyBoth]
     );
 
     const submit = useCallback(
@@ -389,6 +420,7 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
             // next render rather than waiting for the engine's first event. The
             // dead time at the start of a turn is exactly what it exists to cover.
             setBusyBoth(true);
+            clearLingerTimers();
             setActivities([]);
             setLifecycle(null);
             activeSessionRef.current = engine;
@@ -427,24 +459,46 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                             setLifecycle(event.text);
                             break;
 
-                        case 'tool':
-                            if (event.phase === 'started' || event.phase === 'updated') {
-                                const line = formatTool(event, false);
-                                setActivities((current) => [
-                                    ...current.filter((activity) => activity.id !== event.id),
-                                    // `line` carries the trace's own '›' prefix; `label` is the
-                                    // engine's raw text, which the one-line activity indicator
-                                    // uses so it does not print two glyphs for one event.
-                                    { id: event.id, line, label: event.label, category: event.category },
-                                ]);
-                            } else {
-                                const line = formatTool(event, true);
-                                commit('tool', line);
-                                setActivities((current) =>
-                                    current.filter((activity) => activity.id !== event.id)
-                                );
+                        // A tool row is live chrome, not transcript history: it
+                        // shows while the task runs, flips to its outcome and
+                        // duration when the engine reports completion, then
+                        // leaves after ACTIVITY_LINGER_MS. Nothing about it is
+                        // committed, so a turn's permanent record is the
+                        // messages and file diffs, not the tool trace.
+                        case 'tool': {
+                            const done = event.phase === 'completed';
+                            const entry = {
+                                id: event.id,
+                                // `line` carries the trace's own glyph prefix; `label` is
+                                // the engine's raw text, which the one-line activity
+                                // indicator uses so it does not print two glyphs for
+                                // one event.
+                                line: formatTool(event, done),
+                                label: event.label,
+                                category: event.category,
+                                mark: done ? completionMark(event) : null,
+                                durationMs: done ? event.durationMs ?? null : null,
+                            };
+                            // Replaced in place rather than moved to the end, so a
+                            // task finishing does not make the list jump around.
+                            setActivities((current) => {
+                                const index = current.findIndex((a) => a.id === event.id);
+                                if (index === -1) return [...current, entry];
+                                const next = current.slice();
+                                next[index] = entry;
+                                return next;
+                            });
+                            if (done) {
+                                const timer = setTimeout(() => {
+                                    lingerTimersRef.current.delete(event.id);
+                                    setActivities((current) =>
+                                        current.filter((a) => a.id !== event.id)
+                                    );
+                                }, ACTIVITY_LINGER_MS);
+                                lingerTimersRef.current.set(event.id, timer);
                             }
                             break;
+                        }
 
                         case 'turn-end':
                             if (isWorker && event.usage) {
@@ -490,6 +544,7 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                 commit('error', err?.message ?? String(err));
             } finally {
                 setBusyBoth(false);
+                clearLingerTimers();
                 setActivities([]);
                 setLifecycle(null);
                 activeSessionRef.current = session;
@@ -506,7 +561,7 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                 await compactSession('');
             }
         },
-        [carryOver, commit, compactSession, goal, session, sessionFactory, setBusyBoth, log]
+        [carryOver, clearLingerTimers, commit, compactSession, goal, session, sessionFactory, setBusyBoth, log]
     );
 
     // Two-stage Ctrl+C, proven in a pty at plan time. Ink is started with

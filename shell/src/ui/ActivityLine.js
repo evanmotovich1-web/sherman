@@ -102,15 +102,22 @@ export function activityDescriptor(activities = [], lifecycle = null) {
         ? last.label
         : last?.line;
     if (typeof text === 'string' && text.trim() !== '') {
+        // The duration is the engine's measured elapsed time, present only once
+        // the task has actually completed -- it is never shown for running work,
+        // because a running task has no duration yet.
+        const seconds = Number.isFinite(last.durationMs)
+            ? `  ${(last.durationMs / 1000).toFixed(1)}s`
+            : '';
         return {
-            words: text.trim(),
+            words: `${text.trim()}${seconds}`,
             glyph: ACTIVITY_GLYPH[last.category] ?? '',
+            mark: typeof last.mark === 'string' ? last.mark : '',
         };
     }
     if (typeof lifecycle === 'string' && lifecycle.trim() !== '') {
-        return { words: lifecycle.trim(), glyph: '' };
+        return { words: lifecycle.trim(), glyph: '', mark: '' };
     }
-    return { words: GENERIC, glyph: '' };
+    return { words: GENERIC, glyph: '', mark: '' };
 }
 
 /** Truncate to a column budget using measured width, not code-unit length. */
@@ -137,13 +144,13 @@ function clampWidth(text, budget) {
  * @param {{face:string, words:string, width:number}} input
  * @returns {string}
  */
-export function activityLine({ face, words, glyph = '', width }) {
+export function activityLine({ face, words, glyph = '', mark = '', width }) {
     if (!Number.isFinite(width) || width < 1) return '';
 
     // The glyph is measured, never assumed to be one cell. Emoji are width 2,
     // so a hand-counted prefix here would overrun the row by one column per
     // icon -- exactly the class of bug the face set was restricted to avoid.
-    const head = `─ ${face} ─ ${glyph === '' ? '' : `${glyph} `}`;
+    const head = `─ ${face} ─ ${mark === '' ? '' : `${mark} `}${glyph === '' ? '' : `${glyph} `}`;
     // Too narrow for the decoration to mean anything: degrade to a plain rule
     // rather than emitting a broken half-face.
     if (stringWidth(head) + 2 > width) return '─'.repeat(width);
@@ -177,8 +184,8 @@ export function ActivityLine({ active, activities = [], lifecycle = null, column
     if (!Number.isFinite(columns) || columns < 1) return null;
 
     const shown = face ?? FACES[tick % FACES.length];
-    const { words, glyph } = activityDescriptor(activities, lifecycle);
-    const text = activityLine({ face: shown, words, glyph, width: columns });
+    const { words, glyph, mark } = activityDescriptor(activities, lifecycle);
+    const text = activityLine({ face: shown, words, glyph, mark, width: columns });
     if (text === '') return null;
 
     // flexShrink:0, matching Thinking: this row is chrome inside the root's

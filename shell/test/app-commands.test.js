@@ -401,3 +401,93 @@ test('rows override preserves composer at one row and admits status at two', asy
         rmSync(home, { recursive: true, force: true });
     }
 });
+
+test('a finished task lingers, then leaves, and never enters the transcript', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-linger-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    // The turn is held open past the linger, so what is measured is the linger
+    // expiring on its own rather than turn-end clearing everything.
+    let releaseTurn;
+    const release = new Promise((resolve) => { releaseTurn = resolve; });
+    const usage = zeroUsage();
+    const session = {
+        info: {
+            engine: 'fake', model: 'fake-model', user: 'test-user',
+            vaultPath: join(home, 'vault'), threadId: null, contextWindow: 100000,
+        },
+        usage,
+        async *send() {
+            yield { kind: 'turn-start' };
+            yield {
+                kind: 'tool', id: 'tool-1', phase: 'started',
+                glyph: '›', label: 'read scanner.js', category: 'read',
+            };
+            yield {
+                kind: 'tool', id: 'tool-1', phase: 'completed', glyph: '›',
+                label: 'read scanner.js', category: 'read',
+                outcome: 'succeeded', durationMs: 900,
+            };
+            await release;
+            yield { kind: 'turn-end', usage };
+        },
+        interrupt() {}, dispose() {},
+    };
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+    const stdout = new PassThrough();
+    stdout.columns = 70;
+    stdout.rows = 24;
+    const writes = [];
+    stdout.on('data', (chunk) => { writes.push(chunk.toString()); });
+
+    const instance = render(
+        React.createElement(App, { session, sessionId: '20260728_010000_linger' }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false, debug: true }
+    );
+
+    try {
+        await until(() => writes.length > 0);
+        stdin.write('go');
+        await until(() => writes.some((write) => plain(write).includes('❯ go')));
+        stdin.write('\r');
+
+        // Completion is rendered: the outcome mark and the engine's measured
+        // duration both reach the screen.
+        await until(() => writes.some((write) => plain(write).includes('✓ read scanner.js  0.9s')));
+
+        // ...and then it goes, on its own, while the turn is still running. The
+        // face animates on a timer, so fresh frames keep arriving to observe.
+        writes.length = 0;
+        await until(
+            () => writes.length > 0 && !latestFrame(writes).includes('read scanner.js'),
+            4000
+        );
+        const settled = latestFrame(writes);
+        assert.ok(
+            !settled.includes('read scanner.js'),
+            'the finished task should have left the screen'
+        );
+        // Still busy, so the line stays -- with the honest generic, not a stale
+        // claim about a task that already finished.
+        assert.match(settled, /─ \(.+\) ─ working ─/);
+
+        releaseTurn();
+        await until(() => writes.some((write) => plain(write).includes('Ask about company operations')));
+
+        // The permanent record holds messages, not the tool trace: nothing about
+        // the finished task survives anywhere on the final screen.
+        const final = latestFrame(writes);
+        assert.ok(!final.includes('read scanner.js'), 'tool line must not be committed');
+        assert.ok(!final.includes('0.9s'), 'tool duration must not be committed');
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
