@@ -28,7 +28,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { color } from './theme.js';
-import { Wordmark } from './Wordmark.js';
+import { Wordmark, wordmarkRows } from './Wordmark.js';
 import { Mark } from './Mark.js';
 import { safeTerminalText } from './sanitize.js';
 
@@ -42,6 +42,54 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..'
 const LEFT_COLUMN = 16;
 const PANEL_PAD_X = 2;
 const LABEL = 9;
+
+// ------------------------------------------------------------- tall budget --
+// On a tall terminal the content-hugging panel left most of the screen empty
+// above the composer, which read as an unfinished frame rather than as space.
+// Above the threshold the panel claims a share of the height and its sections
+// spread into it; below it, nothing changes — the compact card stays canonical
+// for short terminals, which is the size most launches actually happen at.
+//
+// The threshold sits above the compact cutoffs (29/41) so the two never fight:
+// a terminal is either short enough for the compact card or tall enough to
+// stretch, never switching modes on the same row.
+const TALL_MIN_ROWS = 44;
+// Share of the terminal the whole launch frame may occupy. The remainder is
+// deliberate: the status rule, the composer, and the room a first turn needs.
+const TALL_SHARE = 0.75;
+// Rows the frame spends outside the panel body at every size: the marginTop
+// above the panel, the panel's own top and bottom border rows, the marginTop
+// above the welcome line, the welcome line, and the trailing marginBottom.
+const LAUNCH_FIXED_ROWS = 6;
+// The mark's 22-row pixel grid is drawn two pixel rows per text row.
+const MARK_ROWS = 11;
+
+/**
+ * Rows the right column occupies when it hugs its content: five identity
+ * fields, then the Vault and Keys sections, each a title plus its lines, with
+ * one blank row between sections. An unreadable vault renders one line where a
+ * readable one renders two, and the budget has to follow that or a blocked
+ * vault would stretch by one row more than it earned.
+ */
+function knowledgeRows(stats) {
+    const vaultLines = stats.ok ? 2 : 1;
+    return 5 + 1 + (1 + vaultLines) + 1 + (1 + 3);
+}
+
+/**
+ * Inner rows the panel body should stretch to, or `null` to hug its content.
+ *
+ * Returns null below the threshold so the existing behaviour is bit-for-bit
+ * unchanged there, and clamps to the natural height so the budget can only ever
+ * grow the panel — a terminal tall enough to trigger this but narrow enough to
+ * stack must never end up with a panel SHORTER than its own content.
+ */
+function tallPanelRows(width, height, naturalInnerRows) {
+    if (height < TALL_MIN_ROWS) return null;
+    const frame = Math.floor(height * TALL_SHARE);
+    const body = frame - wordmarkRows(width) - LAUNCH_FIXED_ROWS;
+    return body > naturalInnerRows ? body : null;
+}
 
 /**
  * Keep the tail of a path, cutting only at separators.
@@ -210,10 +258,12 @@ function IdentityFields({ info, sessionId, width }) {
 /**
  * Right column: what Sherman can reach and how to drive it.
  *
- * Identity and controls stay content-hugging at every height, matching Hermes:
- * extra terminal rows belong to the transcript viewport, not stretched cards.
+ * Identity and controls hug their content at every height the shell actually
+ * launches at. `stretch` is set only above the tall threshold, where the
+ * sections spread across the panel's extra rows instead of clumping at its top
+ * and leaving the rest of the box empty.
  */
-function Knowledge({ stats, info, sessionId, width }) {
+function Knowledge({ stats, info, sessionId, width, stretch = false }) {
     const vaultLines = stats.ok
         ? [
               `${plural(stats.wiki, 'wiki page')} · ${plural(stats.shared, 'shared fact')}`,
@@ -248,7 +298,7 @@ function Knowledge({ stats, info, sessionId, width }) {
         {
             flexGrow: 1,
             flexDirection: 'column',
-            justifyContent: 'flex-start',
+            justifyContent: stretch ? 'space-between' : 'flex-start',
         },
         ...sections.map((section, i) =>
             React.createElement(
@@ -359,6 +409,12 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
     const leftWidth = Math.min(LEFT_COLUMN, inner);
     const rightWidth = Math.max(1, inner - leftWidth);
 
+    // Stacked, the mark sits above the knowledge column and the two heights
+    // add; side by side, the taller of the two sets the natural height.
+    const known = knowledgeRows(stats);
+    const naturalInner = stack ? MARK_ROWS + 1 + known : Math.max(MARK_ROWS, known);
+    const bodyRows = compactPanel ? null : tallPanelRows(width, height, naturalInner);
+
     return React.createElement(
         Box,
         { flexDirection: 'column', marginBottom: 1 },
@@ -394,6 +450,9 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
                     Box,
                     {
                         flexDirection: stack ? 'column' : 'row',
+                        // minHeight, not height: the budget may only ever grow
+                        // the body past its content, never clip it.
+                        ...(bodyRows ? { minHeight: bodyRows } : {}),
                     },
                     React.createElement(
                         Box,
@@ -418,6 +477,7 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
                             info,
                             sessionId,
                             width: stack ? inner : rightWidth,
+                            stretch: Boolean(bodyRows),
                         })
                     )
                 )

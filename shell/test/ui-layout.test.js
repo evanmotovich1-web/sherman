@@ -120,13 +120,31 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         }),
         { columns: 120 }
     ));
+    const at43 = plain(renderToString(
+        React.createElement(LaunchScreen, {
+            info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 43,
+        }),
+        { columns: 120 }
+    ));
     const at60 = plain(renderToString(
         React.createElement(LaunchScreen, {
             info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 60,
         }),
         { columns: 120 }
     ));
-    assert.equal(at60, at40, 'launch cards must hug content instead of stretching with height');
+    // Below the tall threshold the panel still hugs its content, unchanged: 40
+    // and 43 rows must render the identical frame.
+    assert.equal(at43, at40, 'below the tall threshold the launch panel must still hug content');
+    // At and above it the panel claims a share of the height, so a 60-row
+    // terminal gets a visibly taller frame than a 40-row one — and still leaves
+    // room for the status rule and composer.
+    const rowsAt40 = at40.split('\n').length;
+    const rowsAt60 = at60.split('\n').length;
+    assert.ok(
+        rowsAt60 >= rowsAt40 + 6,
+        `tall terminals must stretch the launch panel (40 rows -> ${rowsAt40}, 60 -> ${rowsAt60})`
+    );
+    assert.ok(rowsAt60 <= 58, 'a stretched launch panel must not crowd out status and composer');
 
     const wideCompact = plain(renderToString(
         React.createElement(LaunchScreen, {
@@ -434,6 +452,30 @@ test('reply geometry is a signed box whose label lives in the top border', () =>
         ` │ Concise response.${' '.repeat(78 - 20)}│`,
         ` ╰${'─'.repeat(76)}╯`,
     ]);
+});
+
+// The launch frame is the transcript's only item before the first turn, and on
+// a tall terminal the viewport has far more rows than it fills. Those spare
+// rows must fall BELOW it: bottom-anchoring the launch frame pushes the
+// wordmark down the screen and opens a void above it, which reads as a broken
+// first frame. Asserted at 60 rows because that is where the gap is largest,
+// and against the wordmark's first row so it pins the top of the frame itself,
+// not merely the top of some content.
+test('the launch frame stays anchored to the top of a tall viewport', async () => {
+    const output = await renderTranscript([
+        { id: 'launch', kind: 'launch', info, stats, sessionId: '20260728_010000_anchor' },
+    ], 100, 60);
+
+    const frameRows = rawRows(output);
+    const firstContent = frameRows.findIndex((line) => line.trim() !== '');
+    assert.equal(firstContent, 0, 'a void opened above the launch frame');
+    // ...and the spare rows are genuinely below it, not absorbed by a stretch
+    // that swallowed the whole viewport.
+    const lastContent = frameRows.map((line) => line.trim() !== '').lastIndexOf(true);
+    assert.ok(
+        lastContent < frameRows.length - 1,
+        'the launch viewport should end in unused rows, not run to the last line'
+    );
 });
 
 test('live transcript geometry anchors the newest of two turns at 80x24', async () => {

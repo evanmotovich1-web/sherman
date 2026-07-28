@@ -461,7 +461,7 @@ fi
 
 TURN_JS=$(cat <<'JS'
 import React from 'react';
-import { render, renderToString } from 'ink';
+import { Box, render, renderToString } from 'ink';
 import { PassThrough } from 'node:stream';
 import { App } from './src/ui/app.js';
 import { Composer } from './src/ui/Composer.js';
@@ -602,6 +602,30 @@ for (const columns of [19, 20]) {
         { columns }
     );
     if (maxWidth(launch) > columns) mappingMissing.push(`launch overflow at ${columns} columns`);
+}
+// The launch frame is the transcript's only item before the first turn, so it
+// must sit at the TOP of the viewport with the spare rows below it. A void
+// above the wordmark is the failure this pins, and it is visible off a TTY:
+// the frame's first row must carry the wordmark, not blank padding.
+// The fixed-height wrapper is load-bearing: without it the transcript has no
+// spare rows to place the frame WITHIN, and the check would pass whichever way
+// the viewport anchors -- proving nothing.
+const anchored = renderToString(
+    React.createElement(
+        Box,
+        { width: 100, height: 50, flexDirection: 'column' },
+        React.createElement(Transcript, {
+            items: [{
+                id: 'anchor', kind: 'launch',
+                info: narrowInfo, stats: narrowStats, sessionId: 'smoke-session',
+            }],
+            columns: 100,
+        })
+    ),
+    { columns: 100 }
+).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
+if (anchored.findIndex((line) => line.trim() !== '') !== 0) {
+    mappingMissing.push('launch frame is not top-anchored');
 }
 const narrowReplyInput = '0123456789'.repeat(20);
 const narrowReply = renderToString(
