@@ -4,4 +4,4 @@
 node_modules/
 graphify-out/
 .hermes/
-.hermes/
+.claude/

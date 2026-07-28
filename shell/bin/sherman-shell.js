@@ -172,14 +172,40 @@ async function startShell() {
         return 2;
     }
 
-    const config = loadConfig();
-    const session = selectBackend(config);
+    // The load-in shimmers the wordmark over the real startup below. Each label
+    // is set immediately before the work it names, so what the screen says is
+    // happening is what is happening; it is a no-op unless stdout is a TTY; and
+    // it adds no delay of its own — `done()` fires the moment the shell is
+    // ready, however early that is. Imported here rather than at module scope so
+    // --version, --help and --probe keep paying nothing for it.
+    const { startLoadIn } = await import('../src/ui/loadin.js');
+    const loadIn = startLoadIn();
 
-    const [{ default: React }, { render }, { App }] = await Promise.all([
-        import('react'),
-        import('ink'),
-        import('../src/ui/app.js'),
-    ]);
+    let config;
+    let session;
+    let React;
+    let render;
+    let App;
+    try {
+        loadIn.step('reading config…');
+        config = loadConfig();
+
+        loadIn.step('preparing engine…');
+        session = selectBackend(config);
+
+        // Loading React and Ink is genuinely the slowest step here, and saying
+        // so is more honest than covering it with a vaguer word.
+        loadIn.step('loading interface…');
+        [{ default: React }, { render }, { App }] = await Promise.all([
+            import('react'),
+            import('ink'),
+            import('../src/ui/app.js'),
+        ]);
+    } finally {
+        // Erased on the failure path too: a config error must print onto a clean
+        // terminal with the cursor restored, not under a half-drawn wordmark.
+        loadIn.done();
+    }
 
     // exitOnCtrlC:false is what makes the two-stage interrupt possible: Ink would
     // otherwise quit on the first press, before the app could abort the turn.

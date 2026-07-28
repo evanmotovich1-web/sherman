@@ -134,6 +134,19 @@ export const STACK_ROWS = 15;
 /** 5 body rows + the tag line. */
 export const SMALL_ROWS = 6;
 
+/**
+ * The small SHERMAN lockup as plain, uncoloured rows.
+ *
+ * Exported for the pre-Ink load-in (`loadin.js`), which paints the wordmark
+ * with raw escapes before React and Ink have been imported and so cannot
+ * render the component. Deriving it from the same SMALL table is the point:
+ * the flicker and the frame it settles into can never drift into two
+ * different Shermans.
+ */
+export function smallWordmarkRows() {
+    return SMALL.S.map((_, r) => row(SMALL, WORD, r));
+}
+
 // Each threshold is its form's width plus a little air. A threshold at
 // exactly the rendered width would put the mark flush against both edges of
 // the terminal, which looks like an accident.

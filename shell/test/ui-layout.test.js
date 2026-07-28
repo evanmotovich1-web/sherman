@@ -13,6 +13,7 @@ import { LaunchScreen } from '../src/ui/LaunchScreen.js';
 import { StatusBar } from '../src/ui/StatusBar.js';
 import { Transcript } from '../src/ui/Transcript.js';
 import { safeTerminalText } from '../src/ui/sanitize.js';
+import { shimmerSegments, startLoadIn } from '../src/ui/loadin.js';
 import { SPINNER } from '../src/ui/theme.js';
 
 // Colour level is pinned, not inherited. Chalk resolves level 3 under a TTY (or
@@ -584,5 +585,134 @@ test('pathological widths and hostile terminal text fail cleanly', () => {
     } finally {
         if (previousMotion === undefined) delete process.env.SHERMAN_MOTION;
         else process.env.SHERMAN_MOTION = previousMotion;
+    }
+});
+
+// ------------------------------------------------------------- the load-in --
+// The startup shimmer. Its two hard contracts are that it writes NOTHING
+// without a TTY (so every renderToString fixture and piped smoke run stays
+// byte-identical) and that it never delays readiness. Both are asserted here
+// against injected stdout/clock/timers, so no test needs a terminal.
+
+test('the load-in writes nothing at all without a TTY', () => {
+    const writes = [];
+    const stdout = { isTTY: false, columns: 100, write: (s) => writes.push(s) };
+
+    const loadIn = startLoadIn({ stdout });
+    loadIn.step('reading config…');
+    loadIn.done();
+
+    assert.deepEqual(writes, [], 'the load-in emitted output off a TTY');
+});
+
+test('the load-in sweeps a band, settles at its budget, and erases on done', () => {
+    const writes = [];
+    const stdout = { isTTY: true, columns: 100, write: (s) => writes.push(s) };
+    let clock = 0;
+    let tick = null;
+
+    const loadIn = startLoadIn({
+        stdout,
+        budgetMs: 1000,
+        now: () => clock,
+        setTimer: (fn) => { tick = fn; return { unref() {} }; },
+        clearTimer: () => { tick = null; },
+    });
+
+    // The first frame carries the wordmark and hides the cursor.
+    assert.match(writes[0], /█/);
+    assert.match(writes[0], /\x1b\[\?25l/);
+
+    // Brand ramp only: pink 205, purple 135, blue 39 all present, and the
+    // retired red 196 nowhere on any frame. This is the same rule smoke check 9
+    // pins for the launch screen.
+    loadIn.step('reading config…');
+    clock = 200;
+    tick();
+    const swept = writes.join('');
+    for (const index of [205, 135, 39]) {
+        assert.ok(swept.includes(`\x1b[38;5;${index}m`), `brand colour ${index} missing`);
+    }
+    assert.ok(!swept.includes('38;5;196m'), 'the retired red ramp reappeared in the load-in');
+
+    // A frame mid-sweep is partly dim and partly vivid — that IS the band.
+    const midSweep = writes.at(-1);
+    assert.match(midSweep, /\x1b\[2m/, 'no dim ink: nothing for the band to sweep across');
+    assert.match(midSweep, /\x1b\[1m/, 'no vivid ink: the band is not lit');
+
+    // Past the budget it settles: fully vivid, no dim ink left, and the timer
+    // is cleared so it cannot animate on forever behind a slow engine start.
+    clock = 1200;
+    tick();
+    assert.equal(tick, null, 'the load-in kept animating past its budget');
+    // The five wordmark rows only: the status label under them stays muted by
+    // design at every phase, so it is not part of "settled to full vivid".
+    const settledArt = writes.at(-1).split('\n').slice(0, 5).join('\n');
+    assert.ok(!settledArt.includes('\x1b[2m'), 'the load-in never settled to full vivid');
+    assert.match(settledArt, /\x1b\[1m/);
+
+    // done() erases the block and gives the cursor back.
+    loadIn.done();
+    assert.match(writes.at(-1), /\x1b\[\?25h/, 'the cursor was not restored');
+    assert.ok(
+        writes.at(-2).includes('\x1b[0J'),
+        'the load-in did not erase itself'
+    );
+});
+
+test('the load-in reports only labels it was given, and never invents one', () => {
+    const writes = [];
+    const stdout = { isTTY: true, columns: 100, write: (s) => writes.push(s) };
+    let tick = null;
+
+    const loadIn = startLoadIn({
+        stdout, budgetMs: 1000, now: () => 0,
+        setTimer: (fn) => { tick = fn; return { unref() {} }; },
+        clearTimer: () => { tick = null; },
+    });
+
+    // Before any step() there is no status text at all — an unlabelled frame,
+    // not a placeholder stage.
+    assert.ok(!plain(writes[0]).includes('…'), 'the load-in invented a label');
+
+    loadIn.step('reading config…');
+    assert.match(plain(writes.at(-1)), /reading config…/);
+
+    // Ticking does NOT advance to some next scripted stage: the label only ever
+    // changes when the caller says the work changed.
+    tick();
+    tick();
+    assert.match(plain(writes.at(-1)), /reading config…/);
+    assert.ok(!plain(writes.at(-1)).includes('initializing'), 'the load-in narrated invented work');
+});
+
+test('the load-in adds no delay: done() is synchronous and terminal', () => {
+    const writes = [];
+    const stdout = { isTTY: true, columns: 100, write: (s) => writes.push(s) };
+    let tick = null;
+    const loadIn = startLoadIn({
+        stdout, budgetMs: 1000, now: () => 0,
+        setTimer: (fn) => { tick = fn; return { unref() {} }; },
+        clearTimer: () => { tick = null; },
+    });
+
+    // Ready 0ms in, mid-sweep: done() returns immediately, stops the clock, and
+    // every later call is inert.
+    loadIn.done();
+    assert.equal(tick, null);
+    const after = writes.length;
+    loadIn.step('too late');
+    loadIn.done();
+    assert.equal(writes.length, after, 'the load-in kept writing after done()');
+});
+
+test('shimmerSegments always partitions the run exactly', () => {
+    for (let width = 1; width <= 60; width++) {
+        for (let phase = -20; phase <= 80; phase++) {
+            const [before, band, after] = shimmerSegments(width, phase);
+            assert.equal(before + band + after, width, `${width}@${phase} lost cells`);
+            assert.ok(before >= 0 && band >= 0 && after >= 0, `${width}@${phase} went negative`);
+            assert.ok(band <= width);
+        }
     }
 });
