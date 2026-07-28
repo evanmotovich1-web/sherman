@@ -47,9 +47,20 @@
  * @typedef {{kind:'turn-end', usage:Usage|null}} TurnEndEvent
  * @typedef {{kind:'interrupted'}} InterruptedEvent
  * @typedef {{kind:'error', message:string}} ErrorEvent
+ * @typedef {{kind:'diff', path:string, changeKind:string, available:boolean,
+ *            reason:string|null, added:number, removed:number,
+ *            lines:Array<{sign:'+'|'-', text:string}>, more:number}} DiffEvent
  *
  * @typedef {TurnStartEvent|ReasoningEvent|StatusEvent|MessageEvent|ToolEvent
- *          |TurnEndEvent|InterruptedEvent|ErrorEvent} EngineEvent
+ *          |TurnEndEvent|InterruptedEvent|ErrorEvent|DiffEvent} EngineEvent
+ *
+ * A `diff` event reports one file change in the lines that actually changed.
+ * `available:false` is a first-class outcome, not a failure to paper over: no
+ * engine in this repo ships line content in its stream (see filediff.js), so
+ * the lines are read from disk and sometimes cannot be. When that happens the
+ * event still reports the path and the fact of the change, carries a `reason`,
+ * and the UI states plainly that line detail is unavailable. A `diff` event
+ * must never contain a line that was not read from a real file.
  *
  * `reasoning` and `status` are both interim signals, and they differ in what
  * they are evidence OF. A `reasoning` event carries the model's own words about
@@ -69,6 +80,7 @@ export const EVENT_KINDS = Object.freeze([
     'turn-end',
     'interrupted',
     'error',
+    'diff',
 ]);
 
 /** Constructors, so a typo becomes a missing function instead of a silent
@@ -95,6 +107,17 @@ export const ev = Object.freeze({
         category,
         outcome,
         durationMs,
+    }),
+    diff: ({ path, changeKind, available, reason = null, added = 0, removed = 0, lines = [], more = 0 }) => ({
+        kind: 'diff',
+        path,
+        changeKind,
+        available,
+        reason,
+        added,
+        removed,
+        lines,
+        more,
     }),
     turnEnd: (usage) => ({ kind: 'turn-end', usage }),
     interrupted: () => ({ kind: 'interrupted' }),

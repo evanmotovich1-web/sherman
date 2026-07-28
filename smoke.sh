@@ -36,7 +36,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
-TOTAL_CHECKS=14
+TOTAL_CHECKS=15
 SMOKE_USER="smoke-tester"
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
@@ -1078,6 +1078,105 @@ else
         fail "mouse reporting survived these exits:$mouse_bad"
     else
         pass "1006l/1000l written on clean exit, process.exit, fault, SIGINT, SIGTERM and SIGHUP"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 15 --
+# The diff inks are the ONE approved semantic exception to the retired red, and
+# an exception is only safe while it stays an exception. Two things can break:
+#
+#   1. The inks stop reaching the terminal. This is check 9's failure mode in a
+#      new place -- Ink silently ignores a colour string it does not recognise,
+#      so a well-meaning change to a bare '196' would render the diff in default
+#      white with no error anywhere, and a diff with no colour is a diff whose
+#      added and removed lines look identical.
+#   2. The exception smuggles the retired ramp back in. Diff red must be the
+#      semantic chalk red, not brand red 196/160/124 wearing a new hat.
+#
+# Check 9 remains the guard for the launch/brand surface and is deliberately
+# NOT loosened: it renders LaunchScreen alone, which contains no diff, so the
+# retired ramp is still an outright failure there. This check is the diff-only
+# counterpart, and it asserts the SAME retired ramp is absent here too.
+#
+# FORCE_COLOR=3 for the same reason as check 9: piped output is colourless to
+# chalk, which would make this a tautology.
+
+DIFF_JS=$(cat <<'JS'
+import React from 'react';
+import { renderToString } from 'ink';
+import { Diff } from './src/ui/Diff.js';
+
+// A payload in the exact shape engine/filediff.js produces.
+const out = renderToString(
+    React.createElement(Diff, {
+        diff: {
+            path: 'scanner.txt',
+            changeKind: 'update',
+            available: true,
+            reason: null,
+            added: 1,
+            removed: 1,
+            lines: [
+                { sign: '-', text: 'bravo' },
+                { sign: '+', text: 'BRAVO' },
+            ],
+            more: 7,
+        },
+    }),
+    { columns: 80 }
+);
+
+const problems = [];
+if (!out.includes('\u001b[32m')) problems.push('added lines are not green');
+if (!out.includes('\u001b[31m')) problems.push('removed lines are not red');
+
+// The retired brand ramp stays retired, inside the exception as well as outside.
+for (const [name, seq] of [
+    ['196', '38;5;196m'], ['160', '38;5;160m'], ['124', '38;5;124m'],
+]) {
+    if (out.includes(seq)) problems.push('retired red ' + name + ' used for diff');
+}
+
+// Truncation must be stated, or a capped hunk reads as a smaller change.
+if (!out.includes('+7 more lines')) problems.push('truncated hunk does not report the remainder');
+
+// The unavailable path must say so rather than render an empty, confident diff.
+const bare = renderToString(
+    React.createElement(Diff, {
+        diff: {
+            path: 'blob.bin', changeKind: 'update', available: false,
+            reason: 'binary file', added: 0, removed: 0, lines: [], more: 0,
+        },
+    }),
+    { columns: 80 }
+);
+if (!bare.includes('line detail unavailable')) {
+    problems.push('unsourceable change does not say line detail is unavailable');
+}
+
+if (problems.length > 0) {
+    console.error(problems.join('; '));
+    process.exit(1);
+}
+process.exit(0);
+JS
+)
+
+echo
+echo "15. diff inks are semantic, scoped, and honest about truncation"
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot render a diff"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    skip "shell/node_modules absent, run install.sh"
+else
+    diff_err=$(cd shell && env FORCE_COLOR=3 node --input-type=module -e "$DIFF_JS" 2>&1)
+    diff_status=$?
+
+    if [ "$diff_status" -eq 0 ]; then
+        pass "green/red reach the terminal, retired ramp absent, truncation and unavailability stated"
+    else
+        fail "$(printf '%s' "$diff_err" | head -3)"
     fi
 fi
 

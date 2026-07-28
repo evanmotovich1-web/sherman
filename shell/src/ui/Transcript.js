@@ -32,13 +32,14 @@ import { scrollWindow } from './scrollback.js';
 import { Banner } from './Header.js';
 import { LaunchScreen } from './LaunchScreen.js';
 import { safeTerminalText } from './sanitize.js';
+import { Diff } from './Diff.js';
 
 // Width of the speaker gutter for notice/error rows. A fixed column means
 // wrapped lines hang under the text rather than under the label.
 const GUTTER = 9;
 const DISPLAY_KINDS = new Set([
     'launch', 'banner', 'user', 'selftalk', 'reasoning', 'tool',
-    'message', 'worker-message', 'notice', 'error',
+    'message', 'worker-message', 'notice', 'error', 'diff',
 ]);
 
 function Row({ label, labelColor, children, bold, width }) {
@@ -216,6 +217,12 @@ function Item({ item, width, rows }) {
                 { color: color.tertiary, wrap: 'truncate' },
                 `  │ ${safeTerminalText(item.text)}`
             );
+
+        // A file change, in the lines that changed. The payload is the engine's
+        // `diff` event verbatim; Diff.js renders it and never sources anything
+        // of its own.
+        case 'diff':
+            return React.createElement(Diff, { diff: item.diff });
 
         case 'message':
             return React.createElement(ShermanMessage, { text: item.text, width });

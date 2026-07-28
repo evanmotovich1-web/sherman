@@ -47,6 +47,22 @@ export const color = {
 
     user: 'white',
     error: 'red',
+
+    // Diff inks — the one SEMANTIC exception to the retired red.
+    //
+    // The brand retired the ansi256 red ramp (196/160/124) from every launch and
+    // chrome surface, and smoke check 9 keeps it retired there. These two are a
+    // different thing: in a diff, green and red are not brand colours expressing
+    // taste, they are the universal notation for "added" and "removed". Rendering
+    // a deletion in brand pink would be a prettier lie about what the symbol
+    // means. They are scoped to Diff.js and appear nowhere else.
+    //
+    // Spelled as chalk names, not ansi256 indices, for two reasons: they inherit
+    // the operator's own terminal palette the way every other diff tool does, and
+    // they are provably not the retired ramp — `error: 'red'` above already set
+    // that precedent for semantic red.
+    diffAdded: 'green',
+    diffRemoved: 'red',
 };
 
 /**

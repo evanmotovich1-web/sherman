@@ -24,12 +24,13 @@
 
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 
 import { EngineSession, ev, emptyUsage, addUsage } from './session.js';
 import { contextWindowFor } from '../config.js';
+import { summarizeChange, MAX_SNAPSHOT_BYTES } from './filediff.js';
 
 const NOT_INSTALLED =
     'Codex is not installed. Install it with:\n' +
@@ -138,6 +139,8 @@ export class CodexSession extends EngineSession {
         this._child = null;
         this._interrupted = false;
         this._toolStarts = new Map();
+        // path -> pre-write bytes, captured at item.started. See _snapshotChanges.
+        this._fileSnapshots = new Map();
         this._configuredMcpServerKeys = configuredMcpServerKeys();
     }
 
@@ -337,8 +340,17 @@ export class CodexSession extends EngineSession {
             }
 
             case 'command_execution':
-            case 'file_change':
                 return this._mapTool(item, phase);
+
+            // A file_change is the one item whose interesting content is NOT in
+            // the stream. The tool line is mapped as usual; the line detail is
+            // sourced by bracketing the write with two reads.
+            case 'file_change': {
+                if (phase === 'started') this._snapshotChanges(item.changes);
+                const tool = this._mapTool(item, phase);
+                if (phase !== 'completed') return tool;
+                return [...tool, ...this._diffChanges(item.changes)];
+            }
 
             case 'mcp_tool_call':
             case 'web_search':
@@ -356,6 +368,59 @@ export class CodexSession extends EngineSession {
                 // is more honest than turning a vendor type into a fake tool line.
                 return [];
         }
+    }
+
+    /**
+     * Capture the pre-write bytes of every path in a starting file_change.
+     *
+     * Probed against codex 0.145.0: `item.started` for a file_change is emitted
+     * BEFORE the write lands — reading the path here returns the old content,
+     * and reading it again at `item.completed` returns the new content. That
+     * ordering is the entire basis for showing a real diff, so if a future
+     * codex reverses it this snapshot becomes wrong rather than merely absent.
+     * The check that protects it lives in shell/test/filediff.test.js.
+     */
+    _snapshotChanges(changes) {
+        if (!Array.isArray(changes)) return;
+        for (const change of changes) {
+            const path = change?.path;
+            if (typeof path !== 'string' || path === '') continue;
+            this._fileSnapshots.set(path, readTextFile(path));
+        }
+    }
+
+    /**
+     * Turn each completed change into a diff event, then drop its snapshot.
+     *
+     * `kind:'add'` legitimately has no before-image and `kind:'delete'` has no
+     * after-image; both are passed through as an explicit null rather than an
+     * empty string so summarizeChange can tell "no such side" from "empty file".
+     */
+    _diffChanges(changes) {
+        if (!Array.isArray(changes)) return [];
+        const events = [];
+        for (const change of changes) {
+            const path = change?.path;
+            if (typeof path !== 'string' || path === '') continue;
+
+            const changeKind = typeof change.kind === 'string' ? change.kind : 'update';
+            const before = this._fileSnapshots.get(path) ?? { text: null, reason: 'no pre-write snapshot' };
+            this._fileSnapshots.delete(path);
+            const after = changeKind === 'delete' ? { text: null, reason: null } : readTextFile(path);
+
+            events.push(
+                ev.diff(
+                    summarizeChange({
+                        path: displayPath(path, this._config) ?? safeLabel(path),
+                        changeKind,
+                        before: before.text,
+                        after: after.text,
+                        reason: before.reason ?? after.reason,
+                    })
+                )
+            );
+        }
+        return events;
     }
 
     _mapTool(item, phase) {
@@ -638,6 +703,34 @@ function commandLabel(value) {
     if (read) return `read ${firstLine(read[1])}`;
 
     return `exec ${firstLine(command)}`;
+}
+
+/**
+ * Read a file for diffing, refusing the cases where line detail would be a lie.
+ *
+ * Returns `{text, reason}`. A null `text` with a null `reason` means the side
+ * genuinely does not exist (the before-image of a create, the after-image of a
+ * delete) — that is not a failure and must not be reported as one. A null
+ * `text` WITH a reason means the content exists but could not be sourced, and
+ * that reason is shown to the operator instead of a fabricated diff.
+ *
+ * Binary files are refused outright: rendering NUL-bearing bytes as "lines"
+ * would produce plausible-looking garbage in the transcript.
+ */
+function readTextFile(path) {
+    try {
+        const size = statSync(path).size;
+        if (size > MAX_SNAPSHOT_BYTES) {
+            return { text: null, reason: 'file too large to diff' };
+        }
+        const text = readFileSync(path, 'utf8');
+        if (text.includes('\u0000')) return { text: null, reason: 'binary file' };
+        return { text, reason: null };
+    } catch (err) {
+        // ENOENT is the expected shape for the missing side of a create.
+        if (err?.code === 'ENOENT') return { text: null, reason: null };
+        return { text: null, reason: 'file could not be read' };
+    }
 }
 
 function displayPath(value, config) {

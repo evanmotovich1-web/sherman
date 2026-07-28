@@ -218,8 +218,11 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
     // could stack a second compaction on top of the first.
     const compactingRef = useRef(false);
 
-    const commit = useCallback((kind, text) => {
-        setItems((prev) => [...prev, { id: nextId(), kind, text }]);
+    // `extra` carries structured payloads for kinds whose content is not a
+    // string -- currently only 'diff', whose event is stored whole so the
+    // renderer reads the engine's own fields instead of a re-serialized copy.
+    const commit = useCallback((kind, text, extra = null) => {
+        setItems((prev) => [...prev, { id: nextId(), kind, text, ...(extra ?? {}) }]);
     }, []);
 
     const setBusyBoth = useCallback((value) => {
@@ -456,6 +459,13 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                                     autoCompactPercent = Math.round((used / window) * 100);
                                 }
                             }
+                            break;
+
+                        // Committed, not transient: a file change is part of
+                        // the record of what the turn DID, the same way a
+                        // completed tool line is.
+                        case 'diff':
+                            commit('diff', '', { diff: event });
                             break;
 
                         case 'interrupted':
