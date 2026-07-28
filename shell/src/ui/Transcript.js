@@ -116,6 +116,18 @@ function Item({ item, width }) {
                 React.createElement(Text, { color: color.user }, item.text)
             );
 
+        // Self-talk: the model's own interim summary of what it is doing. Same
+        // dim italic weight as the tool trace, because it belongs to the same
+        // "work in progress" register -- but carrying `⋯` where a tool line
+        // carries `›`, so a glance can tell an action Sherman TOOK from a
+        // thought it reported. Both are engine events; neither is narration.
+        case 'selftalk':
+            return React.createElement(
+                Text,
+                { dimColor: true, italic: true, wrap: 'truncate' },
+                `  ⋯ ${item.text}`
+            );
+
         // The committed activity trace. Dim italic, indented under the bullet,
         // and sourced only from normalized engine events. Tool glyphs, labels,
         // and measured durations are formatted by App; none are simulated here.

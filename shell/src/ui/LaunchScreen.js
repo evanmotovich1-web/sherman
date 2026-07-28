@@ -41,6 +41,50 @@ const SKILLS_DIR = join(REPO_ROOT, 'skills');
 const LEFT_COLUMN = 16;
 const LABEL = 9;
 
+// ------------------------------------------------------------- tall layout --
+// v6.1: on a tall terminal the panel stops hugging its content and takes real
+// vertical presence, Hermes-style -- the two columns spread their sections down
+// a taller box instead of stacking at the top over a void.
+//
+// Three numbers govern it, and the layout collapses to the v5.1 compact one the
+// moment any of them is not met. That collapse is the point: the compact layout
+// is not a degraded mode, it is the correct layout for a short terminal, and a
+// panel that ate a 24-row screen would push the composer off the bottom.
+
+/** Share of the terminal the panel may claim. The remaining 40% is what keeps
+ *  the welcome line, status bar, and composer on screen. */
+const TALL_SHARE = 0.6;
+
+/**
+ * Below this many rows the panel simply hugs its content.
+ *
+ * The compact panel's natural body is ~13-15 rows, so a threshold of 22 means
+ * tall mode only ever engages when there is genuinely slack to distribute --
+ * never to stretch a box by two rows and call it presence. In practice this is
+ * the difference between a 24-row terminal (compact) and a 40-row one (tall).
+ */
+const TALL_MIN_ROWS = 22;
+
+/** In tall mode the left column also carries identity, so it must fit a label
+ *  plus a readable value rather than just the 12-column mark. */
+const LEFT_COLUMN_TALL = 34;
+
+/** Border top, border bottom, and one row of padding at each end. */
+const PANEL_CHROME_ROWS = 4;
+
+/**
+ * Rows the launch frame owes to everything that is not the panel.
+ *
+ * The wordmark above it (~15), the welcome line and its margins (~3), and the
+ * shell chrome below the transcript -- compact header, status bar, and the
+ * four-row composer (~9). The panel may only spread into what is left after
+ * those, because the transcript clips from the edge: a panel that claimed 60%
+ * of a 40-row terminal would not push the composer down, it would silently
+ * shear the wordmark off the top. Growing into a void is the goal; growing
+ * over the rest of the screen is the bug this constant prevents.
+ */
+const LAUNCH_FIXED_ROWS = 27;
+
 /**
  * Keep the tail of a path, cutting only at separators.
  *
@@ -205,8 +249,19 @@ function IdentityFields({ info, sessionId, width }) {
     );
 }
 
-/** Right column: what Sherman can reach, how to drive it, and who is running. */
-function Knowledge({ stats, info, sessionId, width }) {
+/**
+ * Right column: what Sherman can reach and how to drive it.
+ *
+ * `spread` distributes the sections down the column instead of stacking them
+ * under one another. The one-row gaps between sections become the spacing
+ * mechanism's job, so they are dropped when spreading -- keeping both would
+ * double the air above every section but the first.
+ *
+ * In compact mode identity rides here, at the bottom, so the column ends with
+ * information. In tall mode it moves to the left column under the mark, which
+ * is why it arrives as a prop rather than being built unconditionally.
+ */
+function Knowledge({ stats, info, sessionId, width, spread = false, includeIdentity = true }) {
     const vaultLines = stats.ok
         ? [
               `${plural(stats.wiki, 'wiki page')} · ${plural(stats.shared, 'shared fact')}`,
@@ -216,35 +271,62 @@ function Knowledge({ stats, info, sessionId, width }) {
           // not let them look the same.
           ['unreadable — check vault_path in ~/.sherman/config.json'];
 
+    // Built as a list so `spread` can decide the spacing mechanism once, rather
+    // than every branch below repeating a marginTop it might not want.
+    const sections = [
+        React.createElement(Section, { key: 'vault', title: 'Vault', lines: vaultLines }),
+        React.createElement(Section, {
+            key: 'keys',
+            title: 'Keys',
+            // What actually exists. There are no slash commands in the shell
+            // today, so this lists the real affordances rather than inventing
+            // a Commands section to fill the space.
+            lines: ['enter    send', 'ctrl+c   interrupt, again to exit'],
+        }),
+    ];
+
+    if (includeIdentity) {
+        sections.push(
+            React.createElement(IdentityFields, { key: 'identity', info, sessionId, width })
+        );
+    }
+
+    // Skills is absent, not empty. A "coming soon" placeholder would be the
+    // one invented thing on an otherwise entirely true panel.
+    if (existsSync(SKILLS_DIR)) {
+        sections.push(
+            React.createElement(Section, {
+                key: 'skills',
+                title: 'Skills',
+                lines: ['see skills/'],
+            })
+        );
+    }
+
     return React.createElement(
         Box,
-        { flexGrow: 1, flexDirection: 'column' },
-        React.createElement(Section, { title: 'Vault', lines: vaultLines }),
-        React.createElement(
-            Box,
-            { marginTop: 1 },
-            React.createElement(Section, {
-                title: 'Keys',
-                // What actually exists. There are no slash commands in the shell
-                // today, so this lists the real affordances rather than inventing
-                // a Commands section to fill the space.
-                lines: ['enter    send', 'ctrl+c   interrupt, again to exit'],
-            })
-        ),
-        React.createElement(
-            Box,
-            { marginTop: 1, flexDirection: 'column' },
-            React.createElement(IdentityFields, { info, sessionId, width })
-        ),
-        // Skills is absent, not empty. A "coming soon" placeholder would be the
-        // one invented thing on an otherwise entirely true panel.
-        existsSync(SKILLS_DIR)
-            ? React.createElement(
-                  Box,
-                  { marginTop: 1 },
-                  React.createElement(Section, { title: 'Skills', lines: ['see skills/'] })
-              )
-            : null
+        {
+            flexGrow: 1,
+            flexDirection: 'column',
+            // space-evenly, not space-between: with only two real sections
+            // today (Skills does not exist yet) space-between pins Vault to the
+            // ceiling and Keys to the floor with a dozen dead rows between
+            // them, which trades one void for a worse one. Even spacing keeps
+            // the sections reading as a set however many there are.
+            justifyContent: spread ? 'space-evenly' : 'flex-start',
+        },
+        ...sections.map((section, i) =>
+            React.createElement(
+                Box,
+                {
+                    key: section.key,
+                    flexDirection: 'column',
+                    flexShrink: 0,
+                    marginTop: !spread && i > 0 ? 1 : 0,
+                },
+                section
+            )
+        )
     );
 }
 
@@ -266,12 +348,15 @@ function welcome(stats) {
  * because `useWindowSize()` reports a fixed 80x24 under `renderToString`
  * (D17), so the narrow fallback and the full-bleed border could not be tested
  * off a TTY without injection. Resolved once here and passed down, so no two
- * parts of the screen can disagree about the terminal. `rows` is accepted for
- * call-site compatibility but unused: v3 is top-anchored, not viewport-filled.
+ * parts of the screen can disagree about the terminal.
+ *
+ * `rows` is injectable for the same reason and, since v6.1, is load-bearing:
+ * it is what decides whether the panel spreads (tall) or hugs (compact).
  */
-export function LaunchScreen({ info, stats, sessionId, columns }) {
+export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
     const measured = useWindowSize();
     const width = typeof columns === 'number' ? columns : measured.columns;
+    const height = typeof rows === 'number' ? rows : measured.rows;
 
     // Full bleed: the panel spans the terminal, like Hermes. Never a fixed
     // constant — the border is composed to the measured width, so a narrow
@@ -281,6 +366,25 @@ export function LaunchScreen({ info, stats, sessionId, columns }) {
     // two-column layout, stack identity above knowledge and let both shrink.
     const inner = Math.max(1, panel - 4);
     const stack = inner < LEFT_COLUMN + 20;
+
+    // Tall mode needs BOTH a terminal with rows to spare and a panel wide
+    // enough for a left column that carries identity as well as the mark.
+    // Stacked (very narrow) never goes tall: with one column there is nothing
+    // to distribute against, and spreading would just scatter the sections.
+    // Two ceilings, and the panel respects the lower: the 60% share, and
+    // whatever the frame has left after the wordmark, welcome, and chrome.
+    const budget = Math.min(
+        Math.floor(height * TALL_SHARE),
+        height - LAUNCH_FIXED_ROWS
+    );
+    const tall = !stack && budget >= TALL_MIN_ROWS && inner >= LEFT_COLUMN_TALL + 22;
+
+    const leftWidth = Math.min(tall ? LEFT_COLUMN_TALL : LEFT_COLUMN, inner);
+    const rightWidth = Math.max(1, inner - leftWidth);
+    // minHeight, never height: it lets the panel GROW into the budget while
+    // guaranteeing content that happens to be taller (a wrapped vault error,
+    // a long path) is never clipped by the number we picked.
+    const bodyRows = Math.max(0, budget - PANEL_CHROME_ROWS);
 
     return React.createElement(
         Box,
@@ -304,15 +408,36 @@ export function LaunchScreen({ info, stats, sessionId, columns }) {
                 },
                 React.createElement(
                     Box,
-                    { flexDirection: stack ? 'column' : 'row' },
+                    {
+                        flexDirection: stack ? 'column' : 'row',
+                        // The one line that gives the panel its height. In
+                        // compact mode bodyRows is below the natural content
+                        // height, so this is inert and the layout is v5.1's
+                        // exactly -- no separate compact branch to drift.
+                        minHeight: tall ? bodyRows : 0,
+                    },
                     React.createElement(
                         Box,
                         {
                             flexShrink: 0,
-                            width: Math.min(LEFT_COLUMN, inner),
+                            width: leftWidth,
                             flexDirection: 'column',
+                            // Mark at the top, identity at the foot, the gap
+                            // between them carrying the panel's new height.
+                            justifyContent: tall ? 'space-between' : 'flex-start',
                         },
-                        React.createElement(Mark)
+                        React.createElement(Mark),
+                        tall
+                            ? React.createElement(
+                                  Box,
+                                  { flexDirection: 'column', flexShrink: 0, marginTop: 1 },
+                                  React.createElement(IdentityFields, {
+                                      info,
+                                      sessionId,
+                                      width: leftWidth,
+                                  })
+                              )
+                            : null
                     ),
                     React.createElement(
                         Box,
@@ -325,9 +450,9 @@ export function LaunchScreen({ info, stats, sessionId, columns }) {
                             stats,
                             info,
                             sessionId,
-                            width: stack
-                                ? inner
-                                : Math.max(1, inner - Math.min(LEFT_COLUMN, inner)),
+                            spread: tall,
+                            includeIdentity: !tall,
+                            width: stack ? inner : rightWidth,
                         })
                     )
                 )

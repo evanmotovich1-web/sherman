@@ -39,6 +39,7 @@
  *
  * @typedef {{kind:'turn-start'}} TurnStartEvent
  * @typedef {{kind:'reasoning', text:string}} ReasoningEvent
+ * @typedef {{kind:'status', text:string}} StatusEvent
  * @typedef {{kind:'message', text:string}} MessageEvent
  * @typedef {{kind:'tool', id:string, phase:'started'|'completed', glyph:string,
  *            label:string, durationMs:number|null}} ToolEvent
@@ -46,14 +47,22 @@
  * @typedef {{kind:'interrupted'}} InterruptedEvent
  * @typedef {{kind:'error', message:string}} ErrorEvent
  *
- * @typedef {TurnStartEvent|ReasoningEvent|MessageEvent|ToolEvent
+ * @typedef {TurnStartEvent|ReasoningEvent|StatusEvent|MessageEvent|ToolEvent
  *          |TurnEndEvent|InterruptedEvent|ErrorEvent} EngineEvent
+ *
+ * `reasoning` and `status` are both interim signals, and they differ in what
+ * they are evidence OF. A `reasoning` event carries the model's own words about
+ * what it is doing, so it earns a place in the committed trace. A `status`
+ * event is a lifecycle fact the transport reported ("the turn started"), which
+ * is worth showing while it is true and worth nothing afterward -- so it is
+ * transient and never commits. Neither may be synthesized: see codex.js.
  */
 
 /** Every event kind, for exhaustiveness checks in a UI switch. */
 export const EVENT_KINDS = Object.freeze([
     'turn-start',
     'reasoning',
+    'status',
     'message',
     'tool',
     'turn-end',
@@ -66,6 +75,7 @@ export const EVENT_KINDS = Object.freeze([
 export const ev = Object.freeze({
     turnStart: () => ({ kind: 'turn-start' }),
     reasoning: (text) => ({ kind: 'reasoning', text }),
+    status: (text) => ({ kind: 'status', text }),
     message: (text) => ({ kind: 'message', text }),
     tool: ({ id, phase, glyph = '›', label, durationMs = null }) => ({
         kind: 'tool',

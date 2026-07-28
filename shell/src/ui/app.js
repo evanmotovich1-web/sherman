@@ -118,11 +118,22 @@ export function App({ session, sessionId }) {
                             log.append('sherman', event.text);
                             break;
 
-                        // Reasoning summaries commit immediately. Tool starts
-                        // stay dynamic above the persistent thinking tail; only
-                        // their measured completion commits below.
+                        // Self-talk commits immediately, so it appears in the
+                        // trace WHILE the turn runs and stays there afterward:
+                        // it is the model's own account of what it was doing,
+                        // which is part of the record of the turn.
                         case 'reasoning':
-                            commit('reasoning', event.text);
+                            commit('selftalk', event.text);
+                            setActivity(null);
+                            break;
+
+                        // Lifecycle, by contrast, is transient. "starting…" is
+                        // true for a moment and worthless once the turn has
+                        // visibly moved on, so it rides the same activity slot
+                        // the in-flight tool uses and is overwritten by it --
+                        // never committed, never scrolled past as history.
+                        case 'status':
+                            setActivity(event.text);
                             break;
 
                         case 'tool':

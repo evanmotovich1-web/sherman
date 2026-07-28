@@ -47,20 +47,32 @@ const NOT_INSTALLED =
  * A wrong label is a cosmetic bug; a hijacked model choice is not.
  */
 function detectModel() {
+    return readCodexSetting('model') ?? 'codex default';
+}
+
+/**
+ * Read one TOP-LEVEL key out of the user's codex config.toml.
+ *
+ * Top-level only, deliberately: a `model` key inside [some.section] is that
+ * section's setting, not the default, and treating it as one would report a
+ * model the user never selected.
+ *
+ * @param {string} key
+ * @returns {string|null} the string value, or null if absent/unreadable
+ */
+function readCodexSetting(key) {
     const codexHome = process.env.CODEX_HOME || join(process.env.HOME || homedir(), '.codex');
     try {
         const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
         for (const line of toml.split('\n')) {
-            // Stop at the first table header -- a `model` key inside
-            // [some.section] is not the top-level default.
             if (line.trimStart().startsWith('[')) break;
-            const m = line.match(/^\s*model\s*=\s*"([^"]+)"/);
+            const m = line.match(new RegExp(`^\\s*${key}\\s*=\\s*"([^"]+)"`));
             if (m) return m[1];
         }
     } catch {
-        // No config, unreadable, whatever. A missing label is not an error.
+        // No config, unreadable, whatever. A missing value is not an error.
     }
-    return 'codex default';
+    return null;
 }
 
 export class CodexSession extends EngineSession {
@@ -123,11 +135,33 @@ export class CodexSession extends EngineSession {
         ];
     }
 
+    /**
+     * Settings that shape what the STREAM contains, as opposed to what the
+     * process is allowed to do. Kept apart from _postureArgs so nobody editing
+     * a display concern is editing the safety boundary in the same breath.
+     *
+     * Probed against codex 0.145.0: with no `model_reasoning_summary` set,
+     * `codex exec --json` emits ZERO `reasoning` items -- only agent_message,
+     * command_execution, and the turn/thread lifecycle. Set it to "auto" and
+     * the same prompt yields `item.completed` events of type `reasoning`
+     * carrying a short title ("**Planning alternative awk command**"). That
+     * opt-in is the entire difference between Sherman having self-talk and not.
+     *
+     * An explicit setting in the user's own config.toml WINS -- including
+     * "none". Sherman turning a deliberate opt-out back on to make its own UI
+     * livelier would be exactly the hijack detectModel refuses to do with `-m`.
+     */
+    _streamArgs() {
+        if (readCodexSetting('model_reasoning_summary') !== null) return [];
+        return ['-c', 'model_reasoning_summary="auto"'];
+    }
+
     /** Turn 1 opens a thread; later turns resume it by id. */
     _argsFor(text) {
+        const shared = [...this._postureArgs(), ...this._streamArgs()];
         return this._threadId === null
-            ? ['exec', ...this._postureArgs(), text]
-            : ['exec', 'resume', this._threadId, ...this._postureArgs(), text];
+            ? ['exec', ...shared, text]
+            : ['exec', 'resume', this._threadId, ...shared, text];
     }
 
     /**
@@ -149,15 +183,23 @@ export class CodexSession extends EngineSession {
         }
 
         switch (msg.type) {
-            case 'thread.started':
-                // Captured, not surfaced. This is what makes turn 2 a resume,
-                // and what lets an interrupted session continue where it was.
+            case 'thread.started': {
+                // The id is captured, not surfaced: it is what makes turn 2 a
+                // resume, and what lets an interrupted session continue.
+                //
+                // The FACT of it is surfaced, once, because "opening a thread"
+                // and "picking one back up" are genuinely different waits and
+                // this is the only event that distinguishes them. Which branch
+                // is read from _threadId BEFORE assignment -- after it, every
+                // thread looks new.
+                const opening = this._threadId === null;
                 if (msg.thread_id) this._threadId = msg.thread_id;
-                return [];
+                return [ev.status(opening ? 'opening a thread…' : 'resuming the thread…')];
+            }
 
             case 'turn.started':
                 this._toolStarts.clear();
-                return [ev.turnStart()];
+                return [ev.turnStart(), ev.status('starting…')];
 
             case 'item.started':
                 return this._mapItem(msg.item, 'started');
@@ -193,8 +235,11 @@ export class CodexSession extends EngineSession {
             case 'agent_message':
                 return phase === 'completed' && text ? [ev.message(text)] : [];
 
-            case 'reasoning':
-                return phase === 'completed' && text ? [ev.reasoning(text)] : [];
+            case 'reasoning': {
+                if (phase !== 'completed') return [];
+                const summary = selfTalk(text);
+                return summary ? [ev.reasoning(summary)] : [];
+            }
 
             case 'command_execution':
             case 'file_change':
@@ -351,6 +396,27 @@ function firstLine(value) {
     if (typeof value !== 'string') return '';
     const line = value.split('\n')[0].trim();
     return line.length > 60 ? `${line.slice(0, 57)}...` : line;
+}
+
+/**
+ * A reasoning summary, reduced to one line of self-talk.
+ *
+ * Codex writes these as Markdown with a bolded title -- the real 0.145.0
+ * payload is literally `**Planning alternative awk command**`, and at
+ * `model_reasoning_summary="detailed"` that title is followed by prose. The
+ * title alone is the line worth showing next to the tool trace, so this takes
+ * the first non-empty line and undresses it.
+ *
+ * Emphasis markers are stripped rather than rendered because the trace area is
+ * plain dim italic text, not a Markdown surface: leaving them in would print
+ * literal asterisks. The text is otherwise the model's own words, unedited --
+ * nothing here rewrites, summarizes, or invents a phrasing.
+ */
+function selfTalk(value) {
+    if (typeof value !== 'string') return '';
+    const line = value.split('\n').map((l) => l.trim()).find((l) => l !== '') ?? '';
+    const bare = safeLabel(line.replace(/^#{1,6}\s*/, '').replace(/\*+|_{2,}|`/g, '')).trim();
+    return bare.length > 120 ? `${bare.slice(0, 117)}...` : bare;
 }
 
 /** Tool labels are terminal output. Remove control protocols before rendering. */

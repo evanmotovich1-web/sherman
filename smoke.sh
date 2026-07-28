@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — eleven checks, no framework.
+# smoke.sh — twelve checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -10,12 +10,13 @@
 #   4. The shell entry point launches and exits clean on --version.
 #   5. Backend selection follows config.json's engine field.
 #   6. The --raw path still execs the engine.
-#   7. The launch screen renders at 80 columns without overflowing.
-#   8. The launch screen renders at 200 columns without overflowing.
+#   7. The launch screen renders at 80 columns, compact and tall, no overflow.
+#   8. The launch screen renders at 200 columns, compact and tall, no overflow.
 #   9. The launch screen's colours are emitted as real ANSI sequences.
 #  10. `sherman update` exits honestly in this repo's state.
 #  11. A scripted turn through a fake backend renders the turn structure:
 #      user bullet, signed Sherman box, and a trace line from a real event.
+#  12. A real codex reasoning payload renders as a dimmed italic self-talk line.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -238,6 +239,12 @@ import { renderToString } from 'ink';
 import { LaunchScreen } from './src/ui/LaunchScreen.js';
 
 const cols = Number(process.env.SMOKE_COLS);
+// Both layouts, at every width. 24 rows keeps the panel compact (it hugs its
+// content); 50 rows crosses into v6.1 tall mode, where the panel spreads its
+// columns down a taller box. Tall mode is exactly where a width bug would
+// hide, because the left column widens to carry identity -- so the overflow
+// and full-bleed assertions below have to run against both.
+const ROWS = [24, 50];
 const info = {
     engine: 'codex',
     model: 'smoke-model',
@@ -247,37 +254,64 @@ const info = {
 };
 const stats = { wiki: 2, shared: 1, private: 0, inbox: 3, ok: true };
 
-const out = renderToString(
-    React.createElement(LaunchScreen, {
-        info,
-        stats,
-        sessionId: '20260726_120000_abc123',
-        columns: cols,
-        rows: 24,
-    }),
-    { columns: cols }
-);
-
 const width = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, '')].length;
-const lines = out.split('\n');
-const over = lines.filter((line) => width(line) > cols);
-
-if (over.length > 0) {
-    console.error(over.length + ' line(s) wider than ' + cols);
-    process.exit(1);
-}
-
-// v3 full-bleed: the panel top border must span the full render width.
 // NOTE: no apostrophes in this heredoc -- bash 3.2 tracks quotes inside
 // $( ) command substitution and an unbalanced one breaks the parse.
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
-const border = lines.map(strip).find((l) => l.startsWith('╭─') && l.trimEnd().endsWith('╮'));
-if (!border) {
-    console.error('panel top border not found');
-    process.exit(1);
+
+const panelRows = [];
+
+for (const rows of ROWS) {
+    const out = renderToString(
+        React.createElement(LaunchScreen, {
+            info,
+            stats,
+            sessionId: '20260726_120000_abc123',
+            columns: cols,
+            rows,
+        }),
+        { columns: cols }
+    );
+
+    const lines = out.split('\n');
+    const over = lines.filter((line) => width(line) > cols);
+
+    if (over.length > 0) {
+        console.error(over.length + ' line(s) wider than ' + cols + ' at ' + rows + ' rows');
+        process.exit(1);
+    }
+
+    // v3 full-bleed: the panel top border must span the full render width.
+    const plain = lines.map(strip);
+    const top = plain.findIndex((l) => l.startsWith('╭─') && l.trimEnd().endsWith('╮'));
+    if (top < 0) {
+        console.error('panel top border not found at ' + rows + ' rows');
+        process.exit(1);
+    }
+    if (width(plain[top].trimEnd()) !== cols) {
+        console.error(
+            'panel border is ' + width(plain[top].trimEnd()) + ' cols, expected ' + cols
+        );
+        process.exit(1);
+    }
+
+    const bottom = plain.findIndex((l, i) => i > top && l.startsWith('╰'));
+    if (bottom < 0) {
+        console.error('panel bottom border not found at ' + rows + ' rows');
+        process.exit(1);
+    }
+    panelRows.push(bottom - top + 1);
 }
-if (width(border.trimEnd()) !== cols) {
-    console.error('panel border is ' + width(border.trimEnd()) + ' cols, expected ' + cols);
+
+// v6.1: the tall terminal must actually produce a TALLER panel, and the short
+// one must be left alone. Asserting the difference (not an absolute height)
+// keeps this from breaking every time a true line is added to the panel.
+const [shortPanel, tallPanel] = panelRows;
+if (cols >= 80 && !(tallPanel > shortPanel)) {
+    console.error(
+        'panel did not grow on a tall terminal: ' + shortPanel + ' rows at 24, ' +
+        tallPanel + ' rows at 50'
+    );
     process.exit(1);
 }
 process.exit(0);
@@ -720,10 +754,150 @@ else
     fi
 fi
 
+# ----------------------------------------------------------------- check 12 --
+# Self-talk, end to end. The input is a REAL codex 0.145.0 reasoning payload --
+# `item.completed` carrying `{type:"reasoning", text:"**Planning ...**"}`, the
+# exact shape captured when probing `codex exec --json` with
+# model_reasoning_summary set -- and it is fed through CodexSession._mapLine, so
+# this exercises the whole chain rather than a hand-built event:
+#
+#   codex JSON -> ev.reasoning -> App commits 'selftalk' -> dim italic ⋯ line
+#
+# FORCE_COLOR=3 because dim and italic are styles chalk strips when it sees a
+# pipe. Without it the escape assertions would pass on plain text and prove
+# nothing about the line being dimmed.
+#
+# It also pins the honest half of the probe: a turn that emits NO reasoning item
+# must produce no self-talk line. Rendering one anyway would be the invented
+# activity line the transcript exists to not have.
+
+SELFTALK_JS=$(cat <<'JS'
+import React from 'react';
+import { render } from 'ink';
+import { PassThrough } from 'node:stream';
+import { App } from './src/ui/app.js';
+import { CodexSession } from './src/engine/codex.js';
+
+const mapper = new CodexSession({
+    engine: 'codex', user: 'smoke-tester',
+    vaultPath: '/tmp/smoke/vault', workspacePath: '/tmp/smoke/workspace',
+});
+
+// The captured payload, verbatim: a Markdown-bolded title on one line.
+const reasoningEvents = mapper._mapLine(JSON.stringify({
+    type: 'item.completed',
+    item: { id: 'rs-1', type: 'reasoning', text: '**Planning alternative awk command**' },
+}));
+const lifecycleEvents = mapper._mapLine(JSON.stringify({ type: 'turn.started' }));
+
+const problems = [];
+if (reasoningEvents.length !== 1 || reasoningEvents[0].kind !== 'reasoning') {
+    problems.push('codex reasoning item maps to a reasoning event');
+}
+// The asterisks must be stripped: the trace is plain text, not Markdown.
+if (reasoningEvents[0]?.text !== 'Planning alternative awk command') {
+    problems.push('reasoning summary undressed of Markdown emphasis');
+}
+if (!lifecycleEvents.some((e) => e.kind === 'status')) {
+    problems.push('turn.started yields a lifecycle status event');
+}
+
+let turnComplete = false;
+const fakeSession = {
+    info: {
+        engine: 'fake', model: 'fake-model', contextWindow: 272000,
+        user: 'smoke-tester', vaultPath: '/tmp/smoke/sherman/vault', threadId: null,
+    },
+    usage: { total: 10, input: 8, cachedInput: 0, output: 2, reasoning: 1 },
+    async *send() {
+        yield { kind: 'turn-start' };
+        for (const e of lifecycleEvents) if (e.kind === 'status') yield e;
+        for (const e of reasoningEvents) yield e;
+        yield { kind: 'message', text: 'Two lines.' };
+        yield { kind: 'turn-end', usage: this.usage };
+        turnComplete = true;
+    },
+    interrupt() {}, dispose() {},
+};
+
+const stdin = new PassThrough();
+stdin.isTTY = true;
+stdin.setRawMode = () => {};
+stdin.ref = () => {};
+stdin.unref = () => {};
+
+const stdout = new PassThrough();
+stdout.columns = 80;
+stdout.rows = 24;
+let captured = '';
+stdout.on('data', (d) => { captured += d.toString(); });
+
+const inst = render(
+    React.createElement(App, { session: fakeSession, sessionId: '20260726_120000_abc123' }),
+    { stdout, stdin, exitOnCtrlC: false, patchConsole: false }
+);
+
+// Two writes, like check 11: the composer commits on a carriage return that
+// arrives as its own input event, not one buried in the same chunk as the text.
+setTimeout(() => { stdin.write('count the lines'); }, 40);
+setTimeout(() => { stdin.write('\r'); }, 90);
+
+const startedAt = Date.now();
+const poll = setInterval(() => {
+    if (!turnComplete && Date.now() - startedAt < 2000) return;
+    clearInterval(poll);
+    setTimeout(() => {
+        inst.unmount();
+        setTimeout(() => {
+            const plain = captured.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+
+            if (!plain.includes('⋯ Planning alternative awk command')) {
+                problems.push('self-talk line rendered with the ⋯ marker');
+            }
+            if (plain.includes('**Planning')) {
+                problems.push('Markdown asterisks kept out of the trace');
+            }
+            // Dim (2) and italic (3), on the same styled run as the text.
+            const styled = captured
+                .split('\n')
+                .find((l) => l.includes('Planning alternative awk command'));
+            if (!styled || !/\x1b\[2m/.test(styled) || !/\x1b\[3m/.test(styled)) {
+                problems.push('self-talk line is dimmed and italic');
+            }
+
+            if (problems.length > 0) {
+                console.error('missing: ' + problems.join(', '));
+                process.exit(1);
+            }
+            process.exit(0);
+        }, 60);
+    }, 120);
+}, 50);
+JS
+)
+
+echo
+echo "12. a reasoning item renders as a dimmed self-talk line"
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot drive the shell"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    pass "skipped -- shell/node_modules absent, run install.sh"
+else
+    st_err=$(cd shell && env HOME="$TMPHOME" FORCE_COLOR=3 node --input-type=module -e "$SELFTALK_JS" 2>&1)
+    st_status=$?
+
+    if [ "$st_status" -eq 0 ]; then
+        pass "codex reasoning payload becomes a dim italic ⋯ self-talk line"
+    else
+        fail "$(printf '%s' "$st_err" | head -3)"
+    fi
+fi
+
 # -------------------------------------------------------------------- result --
 echo
 if [ "$FAILURES" -eq 0 ]; then
-    echo "11 checks, all green."
+    echo "12 checks, all green."
     echo
     exit 0
 fi
