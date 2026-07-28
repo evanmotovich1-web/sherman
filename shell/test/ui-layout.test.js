@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream';
 import React from 'react';
 import { Box, render, renderToString } from 'ink';
 import stringWidth from 'string-width';
+import chalk from 'chalk';
 
 import { COMMANDS } from '../src/commands.js';
 import { CommandMenu } from '../src/ui/CommandMenu.js';
@@ -13,6 +14,15 @@ import { StatusBar } from '../src/ui/StatusBar.js';
 import { Transcript } from '../src/ui/Transcript.js';
 import { safeTerminalText } from '../src/ui/sanitize.js';
 import { SPINNER } from '../src/ui/theme.js';
+
+// Colour level is pinned, not inherited. Chalk resolves level 3 under a TTY (or
+// FORCE_COLOR) and 0 behind a pipe, and several assertions here compare rendered
+// output against escape-free expectations — most visibly the hostile-payload
+// check, which reads "no ESC byte reached the terminal" and would otherwise trip
+// on Ink's OWN styling rather than on leaked control sequences. At level 0 Ink
+// emits no escapes of its own, so any ESC in the output is genuine leakage and
+// the check means exactly what it says, on a TTY and off one alike.
+chalk.level = 0;
 
 const ansi = /\x1b\[[0-9;]*m/g;
 const plain = (value) => value.replace(ansi, '');
@@ -200,14 +210,22 @@ test('unreadable vault state admits ignorance without contradictory claims or ma
     assert.doesNotMatch(output, /no PHI/);
 });
 
-test('persistent chrome matches Hermes two-row footprint', () => {
+test('persistent chrome matches Hermes bordered-composer footprint', () => {
     const composer = contentRows(renderToString(
         React.createElement(Composer, { onSubmit() {}, busy: false, columns: 120 }),
         { columns: 120 }
     ));
-    assert.equal(composer.length, 1);
-    assert.match(composer[0], /^ ❯ Ask about company operations…/);
-    assert.ok([...composer[0]].length <= 120);
+    // Three rows now: rounded top border, the prompt row, rounded bottom border.
+    assert.equal(composer.length, 3);
+    assert.match(composer[0], /^╭─+╮$/, 'composer lost its rounded top border');
+    assert.match(
+        composer[1],
+        /^│ ❯ Ask about company operations… +│$/,
+        'placeholder must render inside the bordered field, behind the ❯ gutter'
+    );
+    assert.match(composer[2], /^╰─+╯$/, 'composer lost its rounded bottom border');
+    for (const row of composer) assert.ok([...row].length <= 120);
+    assert.equal(maxWidth(composer.join('\n')), 120, 'composer box must span the full width');
 
     for (const columns of [60, 80, 100, 120]) {
         const status = contentRows(renderToString(
@@ -221,11 +239,16 @@ test('persistent chrome matches Hermes two-row footprint', () => {
             { columns }
         ));
         assert.equal(status.length, 1);
-        assert.equal(
-            maxWidth(status[0]), columns - 1,
-            'status rule fills the gutter-inset width'
+        // Chips deliberately stop after the last segment instead of ruling to
+        // the right edge, so the surviving property is the bound: the strip is
+        // never allowed past the gutter-inset width.
+        assert.ok(
+            maxWidth(status[0]) <= columns - 1,
+            'status strip overflowed the gutter-inset width'
         );
-        assert.match(status[0], /^ ─ ready │ codex·/);
+        // Gutter space, then the state chip's left padding, then the segments,
+        // each pair separated by exactly one gap space plus two padding spaces.
+        assert.match(status[0], /^ {2}ready {3}codex·gpt-5\.6-sol {3}session \d+[smh]/);
     }
 });
 
@@ -284,8 +307,20 @@ test('command palette branch boundaries and row budgets stay explicit', () => {
 test('composer echoes non-empty input and clips oldest pasted rows', async () => {
     for (let columns = 8; columns <= 40; columns++) {
         const output = await renderComposer('x', columns, 24);
-        assert.equal(rawRows(output).length, 1, `${columns}-column non-empty composer wrapped`);
+        // Below width 10 the box cannot be drawn and the bare-text fallback
+        // paints a single row; at or above it the box costs two border rows.
+        const expectedRows = columns < 10 ? 1 : 3;
+        assert.equal(
+            rawRows(output).length, expectedRows,
+            `${columns}-column non-empty composer wrapped`
+        );
         assert.match(output, /❯ x/);
+        if (expectedRows === 3) {
+            const rows = rawRows(output);
+            assert.match(rows[0], /^╭─*╮$/, `${columns}-column composer lost its top border`);
+            assert.match(rows[1], /^│ ❯ x/, `${columns}-column composer lost its framed prompt`);
+            assert.match(rows[2], /^╰─*╯$/, `${columns}-column composer lost its bottom border`);
+        }
     }
 
     const pasted = Array.from({ length: 7 }, (_, index) => `line-${index + 1}`).join('\n');
@@ -294,6 +329,9 @@ test('composer echoes non-empty input and clips oldest pasted rows', async () =>
     assert.doesNotMatch(clipped, /\bline-1\b/);
     assert.match(clipped, /\bline-7\b/);
     assert.match(clipped, /❯/);
+    // Two of those six rows are the box; the clip budget owns the other four.
+    assert.match(rawRows(clipped)[0], /^╭─+╮$/);
+    assert.match(rawRows(clipped).at(-1), /^╰─+╯$/);
 });
 
 test('status reports vault and motion truth with terminal-cell width', () => {
@@ -345,7 +383,16 @@ test('status reports vault and motion truth with terminal-cell width', () => {
             }),
             { columns }
         );
-        assert.equal(maxWidth(output), columns - 1);
+        // The chip strip no longer rules to the right edge, so the property
+        // this pinned is the bound, not the fill: hostile CJK/emoji model text
+        // must still be truncated inside the gutter-inset width.
+        assert.ok(
+            maxWidth(output) <= columns - 1,
+            `${columns}-column hostile status overflowed the inset width`
+        );
+        const strip = contentRows(output)[0];
+        assert.match(strip, /^ {2}ready {3}引擎/);
+        assert.match(strip, /…$/, 'hostile model text must be truncated, not clipped away');
     }
 
     for (const contextUsed of [999, 1000, 1001]) {
@@ -371,7 +418,7 @@ test('multiline user prompts align continuation rows under the body', () => {
     assert.deepEqual(output, [' ❯ line one', '   line two', '   line three']);
 });
 
-test('reply margins remain part of the rendered geometry', () => {
+test('reply geometry is a signed box whose label lives in the top border', () => {
     const reply = rawRows(renderToString(
         React.createElement(Transcript, {
             items: [{ id: 'reply', kind: 'message', text: 'Concise response.' }],
@@ -379,7 +426,14 @@ test('reply margins remain part of the rendered geometry', () => {
         }),
         { columns: 80 }
     ));
-    assert.deepEqual(reply, [' ◆ Sherman', '   Concise response.', '']);
+    // 80 columns, one column of transcript gutter each side => a 78-cell box.
+    // The signature is embedded in the top border after a single dash, and the
+    // bottom border — not a trailing blank row — terminates the reply.
+    assert.deepEqual(reply, [
+        ` ╭─ Sherman ${'─'.repeat(78 - 12)}╮`,
+        ` │ Concise response.${' '.repeat(78 - 20)}│`,
+        ` ╰${'─'.repeat(76)}╯`,
+    ]);
 });
 
 test('live transcript geometry anchors the newest of two turns at 80x24', async () => {
@@ -443,9 +497,9 @@ test('pathological widths and hostile terminal text fail cleanly', () => {
             { columns: width }
         );
         assert.ok(maxWidth(composer) <= width);
-        assert.ok(
-            rawRows(composer).length <= 1,
-            `${width}-column composer painted more than one row`
+        assert.equal(
+            rawRows(composer).length, width < 10 ? 1 : 3,
+            `${width}-column composer painted the wrong row count`
         );
     }
 

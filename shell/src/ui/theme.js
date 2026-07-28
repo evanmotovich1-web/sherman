@@ -35,6 +35,16 @@ export const color = {
     // Secondary structural text.
     muted: 'gray',
 
+    // The status strip's chip fill. Every existing foreground in that strip is
+    // either gray, pink 205, purple 135, or blue 39, so the chip has to sit
+    // below all four without introducing a fifth hue. 236 is a neutral dark
+    // grey two steps up from the terminal's black: dark enough that gray text
+    // and the dim 53 meter track still read as foreground, light enough that
+    // the one-space gap between chips is a visible seam on a dark background.
+    // An in-family dark pink (53) was rejected — it is already the meter's
+    // empty track, and reusing it as a background would flatten the meter.
+    chipBg: c(236),
+
     user: 'white',
     error: 'red',
 };

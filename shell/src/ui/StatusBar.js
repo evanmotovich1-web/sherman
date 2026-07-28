@@ -11,7 +11,13 @@ import stringWidth from 'string-width';
 import { color, SPINNER } from './theme.js';
 import { safeTerminalText } from './sanitize.js';
 
-const SEP = ' │ ';
+// Chip geometry. Each segment sits on its own background chip with one space
+// of padding on each side, and chips are separated by a single space on the
+// default background — that gap is the only thing dividing them, so it is
+// never spent on anything else. Total cost of a strip of N segments is
+// therefore sum(stringWidth(plain) + CHIP_PADDING) + (N - 1) * CHIP_GAP.
+const CHIP_PADDING = 2;
+const CHIP_GAP = 1;
 const METER_CELLS = 10;
 const MIN_STATUS_COLUMNS = 9;
 
@@ -198,7 +204,11 @@ export function StatusBar({
         });
     }
 
-    const fits = (list) => stringWidth(list.map((segment) => segment.plain).join(SEP)) <= available;
+    const stripWidth = (list) => (list.length === 0 ? 0 : list.reduce(
+        (total, segment) => total + stringWidth(segment.plain) + CHIP_PADDING,
+        (list.length - 1) * CHIP_GAP
+    ));
+    const fits = (list) => stripWidth(list) <= available;
     let visible = segments;
     if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'last');
     if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'duration');
@@ -234,8 +244,11 @@ export function StatusBar({
     }
     if (!fits(visible)) {
         const withoutModel = visible.filter((segment) => segment.key !== 'model');
-        const usedWithoutModel = stringWidth(withoutModel.map((segment) => segment.plain).join(SEP));
-        const modelBudget = Math.max(0, available - usedWithoutModel - stringWidth(SEP));
+        // What is left for the model chip's text once the other chips, their
+        // padding, and the gap in front of this one are paid for.
+        const usedWithoutModel = stripWidth(withoutModel)
+            + (withoutModel.length > 0 ? CHIP_GAP : 0);
+        const modelBudget = Math.max(0, available - usedWithoutModel - CHIP_PADDING);
         visible = visible.map((segment) => {
             if (segment.key !== 'model' || modelBudget < 1) return segment;
             const text = truncateText(segment.plain, modelBudget);
@@ -249,13 +262,23 @@ export function StatusBar({
     if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'model');
     if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'goal');
 
+    // Chips, in order, each one its own run of background-filled Text nodes.
+    // Ink applies backgroundColor per Text node, so the padding spaces carry
+    // the chip fill too; the single-space gap between chips deliberately does
+    // not, which is what makes the separation visible. There is no opener and
+    // no filler rule — the strip simply ends after the last chip.
     const children = [];
     visible.forEach((segment, index) => {
         if (index > 0) {
-            children.push(
-                React.createElement(Text, { key: `sep${index}`, color: color.frame }, SEP)
-            );
+            children.push(React.createElement(Text, { key: `gap${index}` }, ' '.repeat(CHIP_GAP)));
         }
+        children.push(
+            React.createElement(
+                Text,
+                { key: `pad-l${index}`, backgroundColor: color.chipBg },
+                ' '
+            )
+        );
         segment.spans.forEach((span, spanIndex) => {
             children.push(
                 React.createElement(
@@ -263,6 +286,7 @@ export function StatusBar({
                     {
                         key: `s${index}.${spanIndex}`,
                         color: span.tint,
+                        backgroundColor: color.chipBg,
                         dimColor: span.dim === true,
                         bold: span.bold === true,
                     },
@@ -270,20 +294,18 @@ export function StatusBar({
                 )
             );
         });
+        children.push(
+            React.createElement(
+                Text,
+                { key: `pad-r${index}`, backgroundColor: color.chipBg },
+                ' '
+            )
+        );
     });
-
-    const visiblePlain = visible.map((segment) => segment.plain).join(SEP);
-    const filler = '─'.repeat(Math.max(0, available - stringWidth(visiblePlain)));
 
     return React.createElement(
         Box,
         { width: viewportWidth, paddingX: gutter, flexShrink: 0 },
-        React.createElement(
-            Text,
-            { wrap: 'truncate' },
-            React.createElement(Text, { color: color.frame }, '─ '),
-            ...children,
-            React.createElement(Text, { color: color.frame }, filler)
-        )
+        React.createElement(Text, { wrap: 'truncate' }, ...children)
     );
 }

@@ -57,24 +57,103 @@ function Row({ label, labelColor, children, bold, width }) {
     );
 }
 
-/** Hermes-sized reply: a compact signed label plus an indented body. */
+// The `round` box glyphs, matching cli-boxes' `round` style — the same set
+// Ink itself draws for borderStyle:'round', so the hand-built top row and the
+// Ink-drawn sides and bottom are the same alphabet.
+const ROUND = { topLeft: '╭', top: '─', topRight: '╮' };
+
+// One dash between the corner and the label, so the row reads
+// `╭─ Sherman ─────╮`. Hermes' embedTextInBorder adds NO padding of its own:
+// the spaces flanking the name are part of the label string, and the single
+// leading dash is the `offset`.
+const BORDER_LABEL_OFFSET = 1;
+
+/**
+ * Hermes' `embedTextInBorder`, ported cell-for-cell from
+ * `hermes-ink/src/ink/render-border.ts:33-66`, specialised to `align:'start'`.
+ *
+ * The virtual border line is `╭` + `─`×(width-2) + `╮`, i.e. exactly `width`
+ * cells. Splitting it never changes that total:
+ *
+ *   before = borderLine[0]              + `─` × (position - 1)
+ *   text   = the label, unpadded
+ *   after  = `─` × (borderLength - position - textLength - 1) + borderLine[last]
+ *
+ * with `position = offset + 1` (+1 for the corner), clamped to
+ * `[1, borderLength - textLength - 1]` so the label can never overrun `╮`.
+ *
+ * Returns null when the label cannot fit — Hermes drops the corners and
+ * truncates there, which would make the row read as garbage in a transcript,
+ * so callers fall back to an undecorated top border instead.
+ */
+function embedTextInBorder(width, text, offset = BORDER_LABEL_OFFSET) {
+    const borderLength = width;
+    const textLength = text.length;
+    if (textLength >= borderLength - 2) {
+        return null;
+    }
+    let position = offset + 1;
+    position = Math.max(1, Math.min(position, borderLength - textLength - 1));
+    return {
+        before: ROUND.topLeft + ROUND.top.repeat(position - 1),
+        text,
+        after: ROUND.top.repeat(borderLength - position - textLength - 1) + ROUND.topRight,
+    };
+}
+
+/**
+ * The top border row, with the speaker name embedded in it.
+ *
+ * Recomputed on every render from the live `width`, never cached: the
+ * transcript width tracks the terminal, and a stale fill would push the row
+ * past the viewport. The row is always exactly `width` cells, matching the
+ * bottom border Ink draws for the same box.
+ */
+function TitledTopBorder({ width, label, labelColor }) {
+    const parts = embedTextInBorder(width, label);
+    if (!parts) {
+        // Too narrow for corners + label: a plain, undecorated top border.
+        return React.createElement(
+            Text,
+            { color: color.frame, wrap: 'truncate' },
+            ROUND.topLeft + ROUND.top.repeat(Math.max(0, width - 2)) + ROUND.topRight
+        );
+    }
+    // Border runs carry the border colour; the label carries its own, exactly
+    // as render-border.ts:126-131 passes `text` through unstyled between two
+    // styled runs.
+    return React.createElement(
+        Text,
+        { wrap: 'truncate' },
+        React.createElement(Text, { color: color.frame }, parts.before),
+        React.createElement(Text, { color: labelColor, bold: true }, parts.text),
+        React.createElement(Text, { color: color.frame }, parts.after)
+    );
+}
+
+/** Hermes-sized reply: a box whose top border carries the signature. */
 function ShermanMessage({ text, width, worker = false }) {
     const safeText = safeTerminalText(text, { preserveNewlines: true });
     if (width < 6) {
         return React.createElement(Text, { wrap: 'truncate' }, safeText);
     }
+    const labelColor = worker ? color.secondary : color.accent;
     return React.createElement(
         Box,
         { flexDirection: 'column', width: Math.max(1, width) },
-        React.createElement(
-            Text,
-            { color: worker ? color.secondary : color.accent, bold: true, wrap: 'truncate' },
-            worker ? '◇ Worker 01' : '◆ Sherman'
-        ),
+        React.createElement(TitledTopBorder, {
+            width: Math.max(1, width),
+            label: worker ? ' ◇ Worker 01 ' : ' Sherman ',
+            labelColor,
+        }),
         React.createElement(
             Box,
             {
-                paddingLeft: width >= 4 ? 2 : 0,
+                borderStyle: 'round',
+                borderColor: color.frame,
+                borderTop: false,
+                width: Math.max(1, width),
+                paddingX: 1,
                 // Yoga stretches this body to its explicit-width parent. Keep
                 // horizontal overflow visible so geometry errors fail loudly.
             },
@@ -205,7 +284,12 @@ export function Transcript({ items, columns }) {
                     // Air above each user turn and below each reply — the rhythm
                     // that makes turns read as turns.
                     marginTop: item.kind === 'user' ? 1 : 0,
-                    marginBottom: item.kind === 'message' || item.kind === 'worker-message' ? 1 : 0,
+                    // Replies used to need a trailing blank row to separate them
+                    // from the next turn. The reply box now closes itself with a
+                    // bottom border, so that row would be a second terminator —
+                    // and it would cost a transcript row that the border already
+                    // spends, pushing one more item off the top of the clip.
+                    marginBottom: 0,
                 },
                 React.createElement(Item, { item, width, rows: size.rows })
             )

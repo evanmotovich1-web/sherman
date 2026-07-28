@@ -117,22 +117,39 @@ export function Composer({ onSubmit, busy, columns, initialValue = '' }) {
         { isActive: !busy }
     );
 
-    // Below eight columns the padded prompt, value, and caret cannot reliably
-    // share one row. Use one truncating text node instead.
-    if (width < 8) {
+    // Width budget for the bordered box:
+    //   border      2 columns (│ … │)
+    //   paddingX: 1 2 columns
+    //   => inner content width = width - 4
+    // The prompt gutter is Hermes' '❯' + COMPOSER_PROMPT_GAP_WIDTH (1) = 2
+    // cells, and the block cursor is 1 more, so text room = width - 7.
+    //
+    // The old bare-text layout had paddingX: 1 only, i.e. inner = width - 2,
+    // and refused to draw below width 8 (inner 6). Preserving that same
+    // minimum inner width of 6 through a border costs two more columns, so
+    // the box cannot be drawn below width 10.
+    if (width < 10) {
         return React.createElement(
             Text,
             { color: color.promptLive, wrap: 'truncate' },
-            busy ? '…' : `❯${value}`
+            // Same gutter as inside the box (Hermes' '❯' plus one space), so
+            // the fallback reads as the same prompt, just unframed. The node
+            // truncates, so the extra cell is safe at any width.
+            busy ? '…' : `❯ ${value}`
         );
     }
 
-    const placeholder = width >= 34
+    // Same two strings as before, re-derived from the new text room. The long
+    // placeholder is 29 cells and used to appear at width 34 (room = 34-5);
+    // the short one is 21 cells and appeared at width 26. Text room is now
+    // width - 7 rather than width - 5, so both thresholds move up by 2.
+    const placeholder = width >= 36
         ? 'Ask about company operations…'
-        : width >= 26 ? 'Ask about operations…' : '';
-    // Reserve one row for status and one for the input itself. The palette owns
-    // only the remainder, so suggestions can never evict the composer.
-    const menuRows = Math.max(0, size.rows - 2);
+        : width >= 28 ? 'Ask about operations…' : '';
+    // Reserve one row for status and three for the bordered composer (top
+    // border, one prompt row, bottom border). The palette owns only the
+    // remainder, so suggestions can never evict the composer.
+    const menuRows = Math.max(0, size.rows - 4);
 
     return React.createElement(
         Box,
@@ -147,13 +164,24 @@ export function Composer({ onSubmit, busy, columns, initialValue = '' }) {
             Box,
             {
                 width,
+                borderStyle: 'round',
+                borderColor: color.frame,
                 paddingX: 1,
+                flexDirection: 'column',
+                flexShrink: 0,
+            },
+            React.createElement(
+            Box,
+            {
                 flexDirection: 'column',
                 flexShrink: 0,
                 // Hermes-sized at rest: one prompt row. Pasted input may use
                 // every row not reserved for Thinking's worst-case three rows
-                // and StatusBar's one row, then clips at the top.
-                maxHeight: Math.max(1, size.rows - 4),
+                // and StatusBar's one row, then clips at the top. The border
+                // adds two rows of its own, so the content budget that used to
+                // be rows - 4 for the whole composer is rows - 6 here and the
+                // bordered box still totals rows - 4.
+                maxHeight: Math.max(1, size.rows - 6),
                 overflowY: 'hidden',
                 justifyContent: 'flex-end',
             },
@@ -186,6 +214,7 @@ export function Composer({ onSubmit, busy, columns, initialValue = '' }) {
                           React.createElement(Text, { color: color.accent, inverse: true }, ' ')
                       ),
                   ])
+            )
         )
     );
 }

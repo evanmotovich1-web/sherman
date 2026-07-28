@@ -6,8 +6,15 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import React from 'react';
 import { render } from 'ink';
+import chalk from 'chalk';
 
 import { App } from '../src/ui/app.js';
+
+// Colour level is pinned, not inherited: chalk resolves 3 under a TTY (or an
+// inherited FORCE_COLOR) and 0 behind a pipe, and a styled chip keeps its
+// trailing padding cell that an unstyled one has trimmed away. Pinning level 0
+// makes these frame assertions mean the same thing in both environments.
+chalk.level = 0;
 
 const zeroUsage = () => ({ input: 0, cachedInput: 0, output: 0, reasoning: 0, total: 0 });
 const ansi = /\x1b\[[0-9;?]*[A-Za-z]/g;
@@ -158,7 +165,11 @@ test('slash palette settles within the 100x30 viewport', async () => {
         assert.equal(openRows.length, 30);
         assert.ok(maxWidth(openFrame) <= 100);
         assert.match(openFrame, /\/ commands/);
-        assert.match(openRows[29], /❯ \/$/);
+        // The composer now owns the last three rows: top border, prompt, bottom
+        // border. The typed '/' still has to be the final thing on the prompt row.
+        assert.match(openRows[27], /^╭─+╮$/);
+        assert.match(openRows[28], /^│ ❯ \/ +│$/);
+        assert.match(openRows[29], /^╰─+╯$/);
         assert.match(openFrame, /Sherman Abrams v/);
 
         writes.length = 0;
@@ -221,7 +232,9 @@ test('slash palette remains bounded on short terminals', async () => {
                     `${terminalRows}-row palette painted ${frameRows.length} rows`
                 );
                 assert.ok(maxWidth(frame) <= 100);
-                assert.match(frameRows.at(-1), /❯ \/$/);
+                assert.match(frameRows.at(-1), /^╰─+╯$/);
+                assert.match(frameRows.at(-2), /^│ ❯ \/ +│$/);
+                assert.match(frameRows.at(-3), /^╭─+╮$/);
                 if (terminalRows >= 9) assert.match(frame, /\/ commands/);
             } finally {
                 instance.unmount();
@@ -283,18 +296,61 @@ test('composed busy chrome reserves activity, status, goal, and composer rows', 
                 stdin.write('run');
                 await until(() => writes.some((write) => plain(write).includes('❯ run')));
                 stdin.write('\r');
+                // The activity budget is what is left after the status row and
+                // the composer's reserved height: the composer now draws a
+                // three-row rounded box at this width, so a 24-row terminal
+                // still affords the full three activity rows while a 5-row one
+                // affords exactly one — and it must be the NEWEST, tool-3.
+                const expectedActivityRows = Math.min(
+                    3, Math.max(0, terminalRows - 1 - 3)
+                );
+                const expectedTools = [1, 2, 3].slice(-expectedActivityRows);
                 await until(() => writes.some((write) => {
                     const frame = plain(write);
-                    return frame.includes('tool-1') && frame.includes('tool-2') && frame.includes('tool-3');
+                    return expectedTools.every((index) => frame.includes(`tool-${index}`));
                 }));
 
                 const frame = latestFrame(writes, (value) => value.includes('tool-3'));
                 const frameRows = frame.split('\n');
                 assert.equal(frameRows.length, terminalRows);
-                assert.equal(frameRows.filter((row) => /│ › tool-[123]/.test(row)).length, 3);
-                assert.equal(frameRows.filter((row) => row.startsWith(' ─ ')).length, 1);
+                assert.equal(
+                    frameRows.filter((row) => /│ › tool-[123]/.test(row)).length,
+                    expectedActivityRows,
+                    `${terminalRows}-row frame painted the wrong activity-row count`
+                );
+                for (const index of expectedTools) {
+                    assert.match(frame, new RegExp(`│ › tool-${index}\\b`));
+                }
+                // Exactly one status strip. It no longer opens with ' ─ ', so it
+                // is identified by the gutter space plus the state chip's own
+                // padded busy segment — still one row, still exactly once.
+                const statusRows = frameRows.filter(
+                    (row) => /^ {2}\S+ working · \d+\.\d+s(?: |$)/.test(row)
+                );
+                assert.equal(statusRows.length, 1);
                 assert.match(frame, /goal set/);
-                assert.match(frameRows.at(-1), /❯ Ctrl\+C to interrupt…/);
+                // Anchored at the last chip's text: the chips stop after the
+                // final segment instead of ruling to the right edge. (Its right
+                // padding cell exists but is only materialised when the chip
+                // carries a background, i.e. at a non-zero colour level.)
+                assert.match(statusRows[0], /goal set$/);
+                // The composer is reserved chrome at every height: its prompt
+                // row must exist, framed by its own rounded borders, and it must
+                // be the last thing in the frame.
+                const promptRow = frameRows.findIndex(
+                    (row) => /^│ ❯ Ctrl\+C to interrupt… +│$/.test(row)
+                );
+                assert.ok(
+                    promptRow > 0,
+                    `${terminalRows}-row frame lost the reserved composer prompt row`
+                );
+                assert.match(frameRows[promptRow - 1], /^╭─+╮$/);
+                assert.match(
+                    frameRows[promptRow + 1] ?? '',
+                    /^╰─+╯$/,
+                    `${terminalRows}-row frame clipped the composer's bottom border`
+                );
+                assert.equal(promptRow + 1, frameRows.length - 1);
             } finally {
                 releaseTurn();
                 instance.unmount();

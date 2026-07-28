@@ -619,11 +619,15 @@ const fullReplyLines = renderToString(
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
+// 80 columns, one gutter column each side => a 78-cell reply box. The
+// signature is embedded in the top border one dash in, the body sits inside
+// the side borders, and the bottom border replaces the old trailing blank row
+// as the thing that terminates the reply.
 if (
     fullReplyLines.length !== 3 ||
-    fullReplyLines[0] !== ' ◆ Sherman' ||
-    fullReplyLines[1] !== '   reply body' ||
-    fullReplyLines[2] !== ''
+    fullReplyLines[0] !== ' ╭─ Sherman ' + '─'.repeat(66) + '╮' ||
+    fullReplyLines[1] !== ' │ reply body' + ' '.repeat(65) + '│' ||
+    fullReplyLines[2] !== ' ╰' + '─'.repeat(76) + '╯'
 ) {
     mappingMissing.push('signed Sherman reply geometry and trailing rhythm');
 }
@@ -637,14 +641,31 @@ const longReplyLines = renderToString(
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
 const longBodyLines = longReplyLines.slice(1, -1);
+// Body rows now live inside the box: gutter, '│', one padding space, the
+// wrapped chunk, padding out to the closing '│'. Every row is exactly the
+// 79 cells of gutter + box, and the chunks still reassemble the input.
 if (
     longBodyLines.length < 3 ||
-    longBodyLines.some((line) => !line.startsWith('   ')) ||
-    longBodyLines.some((line) => [...line].length > 79) ||
-    longBodyLines.map((line) => line.slice(3)).join('') !== longReplyInput
+    longBodyLines.some((line) => !line.startsWith(' │ ')) ||
+    longBodyLines.some((line) => !line.endsWith('│')) ||
+    longBodyLines.some((line) => [...line].length !== 79) ||
+    longBodyLines.map((line) => line.slice(3).replace(/ *│$/, '')).join('') !== longReplyInput
 ) {
     mappingMissing.push('long Sherman reply wraps without overflow or dropped text');
 }
+// The composer is a full-width rounded box now: ╭─…─╮ / │ ❯ … │ / ╰─…─╯, with
+// the prompt gutter, the input and the placeholder all inside it.
+const composerLines = composerPlain.split('\n');
+if (
+    composerLines.length !== 3 ||
+    !/^╭─+╮$/.test(composerLines[0]) ||
+    !/^│ ❯ Ask about company operations… +│$/.test(composerLines[1]) ||
+    !/^╰─+╯$/.test(composerLines[2]) ||
+    maxWidth(composerPlain) !== 80
+) {
+    mappingMissing.push('rounded full-width composer box with the placeholder inside it');
+}
+
 const narrowComposer = renderToString(
     React.createElement(Composer, { onSubmit() {}, busy: false, columns: 3 }),
     { columns: 3 }
@@ -732,7 +753,9 @@ const poll = setInterval(() => {
             if (sent.length !== 1 || sent[0] !== 'read\nthe sop') {
                 missing.push('multi-line paste preserved until Enter');
             }
-            if (!plain.includes('◆ Sherman')) missing.push('Sherman reply label');
+            // The signature is ON the border now, not on a row of its own: the
+            // top border row must literally read ╭─ Sherman ───…───╮.
+            if (!/╭─ Sherman ─+╮/.test(plain)) missing.push('Sherman reply label');
             if (!plain.includes('› patch smoke.sh  0.9s')) missing.push('completed trace line with duration');
 
             // The raw capture, not the stripped one: 1049h/1049l anywhere in
@@ -752,12 +775,27 @@ const poll = setInterval(() => {
             const statusLine = lines.find(
                 (line) => line.includes('blocked') && line.includes('fake-model')
             );
-            if (!statusLine || width(statusLine) !== stdout.columns - 1) {
-                missing.push('full-bleed status line');
+            // The chips deliberately stop after the last segment instead of
+            // ruling to the right edge, so what is asserted is the bound the
+            // old full-bleed check protected -- the strip never exceeds the
+            // gutter-inset width -- plus the chip shape and every real segment:
+            // state, engine·model, reported tokens, and session time.
+            if (
+                !statusLine ||
+                width(statusLine) > stdout.columns - 1 ||
+                !/^ {2}blocked {3}fake·fake-model {3}68\.0k tok {3}session \d+[smh]$/
+                    .test(statusLine)
+            ) {
+                missing.push('status chip strip with every real segment, inside the viewport');
             }
 
-            const finalComposer = lines.findLast((line) => line.trim().length > 0);
-            if (!finalComposer?.startsWith(' ❯ Ask about company operations…')) {
+            const finalLines = lines.filter((line) => line.trim().length > 0);
+            const finalComposer = finalLines.slice(-3);
+            if (
+                !/^╭─+╮$/.test(finalComposer[0] ?? '') ||
+                !/^│ ❯ Ask about company operations… +│$/.test(finalComposer[1] ?? '') ||
+                !/^╰─+╯$/.test(finalComposer[2] ?? '')
+            ) {
                 missing.push('composer cleared to final placeholder');
             }
 
@@ -780,7 +818,14 @@ if ! command -v node >/dev/null 2>&1; then
 elif [ ! -d "shell/node_modules/ink" ]; then
     skip "shell/node_modules absent, run install.sh"
 else
-    turn_err=$(cd shell && env HOME="$TMPHOME" node --input-type=module -e "$TURN_JS" 2>&1)
+    # FORCE_COLOR=0 pins chalk's colour level instead of inheriting it. This
+    # check reads the RAW capture for hostile control sequences, and Ink's own
+    # styling emits the very bytes the payload does (ESC[31m) -- with colour on,
+    # the leak check would trip on Sherman's own red text and the chip strip
+    # would carry uncollapsed padding. At level 0 Ink emits no escapes of its
+    # own, so any ESC in the capture is genuine leakage. Colour output itself is
+    # covered by check 9, which pins FORCE_COLOR=3.
+    turn_err=$(cd shell && env HOME="$TMPHOME" FORCE_COLOR=0 node --input-type=module -e "$TURN_JS" 2>&1)
     turn_status=$?
 
     if [ "$turn_status" -eq 0 ]; then
