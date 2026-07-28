@@ -128,3 +128,27 @@ test('does not call redirected cat a read and preserves completion-only patches'
     assert.equal(patch.outcome, 'succeeded');
     assert.equal(patch.durationMs, null);
 });
+
+test('a read command and a shell command report different categories', () => {
+    // Same evidence the label already used: `cat file` is the read shape seen in
+    // the real 0.145.0 stream, anything with shell operators stays an exec.
+    const codex = session();
+
+    const [read] = map(codex, 'item.started', {
+        id: 'r1', type: 'command_execution', command: '/bin/bash -lc "cat scanner.js"',
+    });
+    assert.equal(read.category, 'read');
+    assert.equal(read.label, 'read scanner.js');
+
+    const [exec] = map(codex, 'item.started', {
+        id: 'c1', type: 'command_execution', command: '/bin/bash -lc "npm test"',
+    });
+    assert.equal(exec.category, 'command');
+    assert.equal(exec.label, 'exec npm test');
+
+    // A pipe is not a simple read, so it must not be softened into one.
+    const [piped] = map(codex, 'item.started', {
+        id: 'p1', type: 'command_execution', command: '/bin/bash -lc "cat a | rm -rf b"',
+    });
+    assert.equal(piped.category, 'command');
+});

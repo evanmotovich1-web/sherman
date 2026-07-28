@@ -432,7 +432,10 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                                 const line = formatTool(event, false);
                                 setActivities((current) => [
                                     ...current.filter((activity) => activity.id !== event.id),
-                                    { id: event.id, line, category: event.category },
+                                    // `line` carries the trace's own '›' prefix; `label` is the
+                                    // engine's raw text, which the one-line activity indicator
+                                    // uses so it does not print two glyphs for one event.
+                                    { id: event.id, line, label: event.label, category: event.category },
                                 ]);
                             } else {
                                 const line = formatTool(event, true);

@@ -26,7 +26,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
 import stringWidth from 'string-width';
 
-import { color } from './theme.js';
+import { color, ACTIVITY_GLYPH } from './theme.js';
 import { safeTerminalText } from './sanitize.js';
 
 /** Every face is exactly this wide. Enforced, not assumed. */
@@ -75,12 +75,42 @@ export function assertFaceWidths() {
  * @returns {string}
  */
 export function activityWords(activities = [], lifecycle = null) {
+    return activityDescriptor(activities, lifecycle).words;
+}
+
+/**
+ * The words AND the glyph for the line, from the same single source event.
+ *
+ * The glyph is keyed on the engine's own `category`, so a book means codex
+ * reported a read and a computer means it reported a shell command. Two rules
+ * keep it honest:
+ *
+ *   - A glyph is only ever taken from the in-flight activity that also supplies
+ *     the words. It never describes a different event than the text does.
+ *   - Lifecycle statuses and the "working" generic get NO glyph. They are not a
+ *     kind of work, and picking an icon for them would be decoration pretending
+ *     to be classification.
+ *
+ * @returns {{words:string, glyph:string}} glyph is '' when none applies
+ */
+export function activityDescriptor(activities = [], lifecycle = null) {
     const last = Array.isArray(activities) ? activities[activities.length - 1] : null;
-    if (last && typeof last.line === 'string' && last.line.trim() !== '') {
-        return last.line.trim();
+    // `label` is the engine's own text; `line` is the trace's rendering of it and
+    // carries a leading glyph. Prefer the label so the row does not show two
+    // glyphs for one event, and fall back so either shape works.
+    const text = typeof last?.label === 'string' && last.label.trim() !== ''
+        ? last.label
+        : last?.line;
+    if (typeof text === 'string' && text.trim() !== '') {
+        return {
+            words: text.trim(),
+            glyph: ACTIVITY_GLYPH[last.category] ?? '',
+        };
     }
-    if (typeof lifecycle === 'string' && lifecycle.trim() !== '') return lifecycle.trim();
-    return GENERIC;
+    if (typeof lifecycle === 'string' && lifecycle.trim() !== '') {
+        return { words: lifecycle.trim(), glyph: '' };
+    }
+    return { words: GENERIC, glyph: '' };
 }
 
 /** Truncate to a column budget using measured width, not code-unit length. */
@@ -107,10 +137,13 @@ function clampWidth(text, budget) {
  * @param {{face:string, words:string, width:number}} input
  * @returns {string}
  */
-export function activityLine({ face, words, width }) {
+export function activityLine({ face, words, glyph = '', width }) {
     if (!Number.isFinite(width) || width < 1) return '';
 
-    const head = `─ ${face} ─ `;
+    // The glyph is measured, never assumed to be one cell. Emoji are width 2,
+    // so a hand-counted prefix here would overrun the row by one column per
+    // icon -- exactly the class of bug the face set was restricted to avoid.
+    const head = `─ ${face} ─ ${glyph === '' ? '' : `${glyph} `}`;
     // Too narrow for the decoration to mean anything: degrade to a plain rule
     // rather than emitting a broken half-face.
     if (stringWidth(head) + 2 > width) return '─'.repeat(width);
@@ -144,11 +177,8 @@ export function ActivityLine({ active, activities = [], lifecycle = null, column
     if (!Number.isFinite(columns) || columns < 1) return null;
 
     const shown = face ?? FACES[tick % FACES.length];
-    const text = activityLine({
-        face: shown,
-        words: activityWords(activities, lifecycle),
-        width: columns,
-    });
+    const { words, glyph } = activityDescriptor(activities, lifecycle);
+    const text = activityLine({ face: shown, words, glyph, width: columns });
     if (text === '') return null;
 
     // flexShrink:0, matching Thinking: this row is chrome inside the root's

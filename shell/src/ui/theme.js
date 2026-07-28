@@ -113,6 +113,35 @@ export const markRamp = {
  *  size without stealing attention the way ASCII spinners do. */
 export const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
+/**
+ * One glyph per activity CATEGORY, for the activity line.
+ *
+ * These are keyed on the `category` the engine already puts on every tool
+ * event, so the glyph is a rendering of a reported fact: a book appears because
+ * codex reported a read, not because a filename looked readable. A category
+ * with no entry here gets no glyph at all — see ACTIVITY_GLYPH's use in
+ * ActivityLine.js. Silence is the honest default for work we cannot name.
+ *
+ * EVERY glyph here is a SINGLE code point that measures 2 columns. Emoji that
+ * need a VS16 variation selector (⌨️, ✏️, ⚙️) are deliberately excluded: they
+ * measure 2 under string-width but real terminals disagree about them, and a
+ * glyph whose width the layout cannot trust corrupts every row below it. The
+ * invariant is asserted in test/activity-line.test.js rather than eyeballed.
+ */
+export const ACTIVITY_GLYPH = Object.freeze({
+    read: '📖',
+    command: '💻',
+    'file-change': '📝',
+    'web-search': '🔍',
+    mcp: '🔌',
+    subagent: '🤖',
+    plan: '📋',
+    tool: '🔧',
+});
+
+/** Every glyph above occupies exactly this many columns. */
+export const GLYPH_WIDTH = 2;
+
 /** Speaker labels, padded to a common width so message bodies line up. */
 export const label = {
     user: 'you',

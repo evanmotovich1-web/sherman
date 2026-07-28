@@ -576,7 +576,7 @@ function toolOutcome(status, phase) {
 function toolPresentation(item, config) {
     switch (item.type) {
         case 'command_execution':
-            return { category: 'command', label: commandLabel(item.command) };
+            return commandPresentation(item.command);
         case 'file_change':
             return { category: 'file-change', label: fileChangeLabel(item.changes, config) };
         case 'mcp_tool_call': {
@@ -691,8 +691,15 @@ function shellCommand(value) {
     return safeLabel(command.replace(/'\\''/g, "'"));
 }
 
-/** `cat file` is the read shape observed in the real 0.145.0 stream. */
-function commandLabel(value) {
+/**
+ * `cat file` is the read shape observed in the real 0.145.0 stream.
+ *
+ * The read/exec split was already made here to choose the LABEL; it is now also
+ * reported as the category, so the UI can mark a read differently from a shell
+ * command. That is the same classification on the same evidence, carried one
+ * level further out — not a new inference about what the command did.
+ */
+function commandPresentation(value) {
     const command = shellCommand(value);
     if (command === '') return null;
 
@@ -700,9 +707,9 @@ function commandLabel(value) {
     // Redirects, pipes, substitutions, and compound forms stay honest `exec`s.
     const unsafe = /[|;&<>`]|\$\(|\n/.test(command);
     const read = unsafe ? null : command.match(/^(?:cat|head|tail)\s+(?:--\s+)?([^\s]+)$/);
-    if (read) return `read ${firstLine(read[1])}`;
+    if (read) return { category: 'read', label: `read ${firstLine(read[1])}` };
 
-    return `exec ${firstLine(command)}`;
+    return { category: 'command', label: `exec ${firstLine(command)}` };
 }
 
 /**
