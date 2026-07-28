@@ -9,7 +9,8 @@ import chalk from 'chalk';
 import { COMMANDS } from '../src/commands.js';
 import { CommandMenu } from '../src/ui/CommandMenu.js';
 import { Composer } from '../src/ui/Composer.js';
-import { LaunchScreen } from '../src/ui/LaunchScreen.js';
+import { LaunchScreen, markScaleFor } from '../src/ui/LaunchScreen.js';
+import { markSize } from '../src/ui/Mark.js';
 import { StatusBar } from '../src/ui/StatusBar.js';
 import { Transcript } from '../src/ui/Transcript.js';
 import { safeTerminalText } from '../src/ui/sanitize.js';
@@ -176,6 +177,74 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     ));
     assert.doesNotMatch(stackedCompact, /\bVault\b/);
     assert.match(stackedFull, /\bVault\b/);
+});
+
+// The widest contiguous run of mark pixels *inside the panel border*. The
+// wordmark is block art too and sits above the border, so restricting to
+// bordered rows is what makes this a read of the mark specifically rather than
+// of whichever piece of art happens to be widest.
+const markRun = (output) =>
+    rawRows(output).filter((line) => line.startsWith('│')).reduce((widest, line) => {
+        let run = 0;
+        let best = 0;
+        for (const ch of line) {
+            if (ch === '▀' || ch === '▄' || ch === '█') best = Math.max(best, ++run);
+            else run = 0;
+        }
+        return Math.max(widest, best);
+    }, 0);
+
+test('the mark scales with the tall panel and stays compact below it', () => {
+    // markSize is derived from the authored grid, so these are the art's real
+    // dimensions rather than a second copy of them that could drift.
+    assert.deepEqual(markSize(1), { columns: 12, rows: 11 });
+    assert.deepEqual(markSize(2), { columns: 24, rows: 22 });
+
+    // The scale rule itself, independent of rendering. A stretched body with
+    // room in both axes earns 2; every other case is the compact rendition.
+    assert.equal(markScaleFor({ bodyRows: 24, stack: false, inner: 100 }), 2);
+    assert.equal(markScaleFor({ bodyRows: null, stack: false, inner: 100 }), 1);
+    assert.equal(markScaleFor({ bodyRows: 24, stack: true, inner: 100 }), 1);
+    // One row short of the doubled art, and one column short of leaving the
+    // knowledge column its 20 — both must refuse rather than clip.
+    assert.equal(markScaleFor({ bodyRows: 21, stack: false, inner: 100 }), 1);
+    assert.equal(markScaleFor({ bodyRows: 24, stack: false, inner: 47 }), 1);
+
+    const frame = (rows) => renderToString(
+        React.createElement(LaunchScreen, {
+            info, stats, sessionId: '20260728_010000_markscale', columns: 120, rows,
+        }),
+        { columns: 120 }
+    );
+
+    // The compact card carries no mark at all, so there is nothing to scale.
+    assert.equal(markRun(frame(24)), 0, 'the compact card renders no mark');
+    // A hugging panel and the first stretched sizes keep the 12-column mark;
+    // only a panel with 22 inner rows to spare doubles it.
+    assert.equal(markRun(frame(40)), 10, 'a hugging panel must keep the compact mark');
+    assert.equal(markRun(frame(44)), 10, 'the first stretched size has no room to double');
+    assert.equal(markRun(frame(60)), 20, 'a tall panel must render the doubled mark');
+
+    // Doubled means magnified, not redrawn: twice the rows as well as twice the
+    // columns, and the rings still read as rings — hollow centres with the
+    // outer ring's shoulders stepping in, exactly as at scale 1. (At an even
+    // vertical factor both pixels of every pair match, so the half-block glyphs
+    // resolve to full blocks. That is the same picture at twice the size, not
+    // different art.)
+    const markRows = (output) =>
+        rawRows(output).filter((line) => line.startsWith('│') && /[▀▄█]/.test(line)).length;
+    assert.equal(markRows(frame(40)), 9);
+    assert.equal(markRows(frame(60)), 18);
+    assert.match(plain(frame(60)), /████ {16}████/);
+    assert.match(plain(frame(60)), /██████ {12}██████/);
+
+    // The scale flips between 45 and 46 rows, where the stretched body first
+    // reaches the doubled art's 22 rows. Across that flip the frame grows by
+    // exactly the one row the height budget bought — growing the mark may never
+    // grow the panel, because the budget was settled before the mark was sized.
+    assert.equal(markRun(frame(45)), 10);
+    assert.equal(markRun(frame(46)), 20);
+    assert.equal(rawRows(frame(46)).length, rawRows(frame(45)).length + 1);
 });
 
 test('launch matrix preserves borders and budgets across stack boundaries', () => {

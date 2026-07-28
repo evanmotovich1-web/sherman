@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 
 import { color } from './theme.js';
 import { Wordmark, wordmarkRows } from './Wordmark.js';
-import { Mark } from './Mark.js';
+import { Mark, markSize } from './Mark.js';
 import { safeTerminalText } from './sanitize.js';
 
 // Resolved from THIS file, never process.cwd() — at runtime the cwd is the
@@ -40,6 +40,8 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..'
 // The mark is 12 columns; four columns of breathing room separate it from the
 // information column without making narrow terminals pay for oversized art.
 const LEFT_COLUMN = 16;
+// The same four columns of breathing room, around the doubled mark.
+const LEFT_COLUMN_LARGE = markSize(2).columns + 4;
 const PANEL_PAD_X = 2;
 const LABEL = 9;
 
@@ -62,7 +64,9 @@ const TALL_SHARE = 0.75;
 // above the welcome line, the welcome line, and the trailing marginBottom.
 const LAUNCH_FIXED_ROWS = 6;
 // The mark's 22-row pixel grid is drawn two pixel rows per text row.
-const MARK_ROWS = 11;
+const MARK_ROWS = markSize(1).rows;
+// The doubled rendition used in the tall panel, in text rows.
+const MARK_ROWS_LARGE = markSize(2).rows;
 
 /**
  * Rows the right column occupies when it hugs its content: five identity
@@ -89,6 +93,25 @@ function tallPanelRows(width, height, naturalInnerRows) {
     const frame = Math.floor(height * TALL_SHARE);
     const body = frame - wordmarkRows(width) - LAUNCH_FIXED_ROWS;
     return body > naturalInnerRows ? body : null;
+}
+
+/**
+ * Integer scale for the mark: 2 in a tall panel with room for it, else 1.
+ *
+ * The doubled mark is only ever *added* room the panel already claimed, so it
+ * can never push the body past the budget `tallPanelRows` computed: it needs
+ * both the rows (the stretched body is already at least 22 inner rows) and the
+ * columns (the wider left column must still leave the knowledge column its 20).
+ * Every other case — compact card, hugging panel, stacked narrow layout — falls
+ * through to 1, which is the compact rendition, byte-identical to before.
+ *
+ * Exported so the scale rule is testable without rendering a whole screen.
+ */
+export function markScaleFor({ bodyRows, stack, inner }) {
+    if (!bodyRows || stack) return 1;
+    if (bodyRows < MARK_ROWS_LARGE) return 1;
+    if (inner < LEFT_COLUMN_LARGE + 20) return 1;
+    return 2;
 }
 
 /**
@@ -406,14 +429,18 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
     // The welcome sentence and its margin cost two rows after either panel.
     const compactPanel = height < (stack ? 41 : 29);
 
-    const leftWidth = Math.min(LEFT_COLUMN, inner);
-    const rightWidth = Math.max(1, inner - leftWidth);
-
     // Stacked, the mark sits above the knowledge column and the two heights
     // add; side by side, the taller of the two sets the natural height.
     const known = knowledgeRows(stats);
     const naturalInner = stack ? MARK_ROWS + 1 + known : Math.max(MARK_ROWS, known);
     const bodyRows = compactPanel ? null : tallPanelRows(width, height, naturalInner);
+
+    // The budget is settled before the mark is sized, so the larger rendition
+    // can only ever fill room the panel had already claimed.
+    const markScale = markScaleFor({ bodyRows, stack, inner });
+    const leftColumn = markScale > 1 ? LEFT_COLUMN_LARGE : LEFT_COLUMN;
+    const leftWidth = Math.min(leftColumn, inner);
+    const rightWidth = Math.max(1, inner - leftWidth);
 
     return React.createElement(
         Box,
@@ -463,7 +490,7 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
                             justifyContent: 'flex-start',
                             alignItems: 'center',
                         },
-                        React.createElement(Mark)
+                        React.createElement(Mark, { scale: markScale })
                     ),
                     React.createElement(
                         Box,

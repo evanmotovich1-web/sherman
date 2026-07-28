@@ -131,11 +131,56 @@ function Row({ runs }) {
     );
 }
 
-/** 12 x 11. Pink dot, purple ring, blue ring, top to bottom, with gaps. */
-export function Mark() {
+/**
+ * Nearest-neighbour magnify the pixel grid by an integer factor.
+ *
+ * Hermes has no equivalent — its `branding.tsx` says outright that terminals
+ * cannot scale glyphs, and its pet sprite is downscaled in Python before it
+ * ever reaches the TUI. So a larger mark can only be a larger *grid*: each
+ * pixel becomes an n x n block of the same pixel. That keeps the art identical
+ * — same shapes, same ramp stops, same proportions — instead of redrawing it,
+ * and it keeps the row count even, which `spans` requires.
+ */
+function magnify(grid, factor) {
+    if (factor <= 1) return grid;
+    const out = [];
+    for (const row of grid) {
+        let wide = '';
+        for (const px of row) wide += px.repeat(factor);
+        for (let i = 0; i < factor; i++) out.push(wide);
+    }
+    return out;
+}
+
+/** Pixel dimensions of the authored art, before any scaling. */
+export const MARK_PIXELS = { width: GRID[0].length, height: GRID.length };
+
+/**
+ * Character-cell size of the mark at a given integer scale.
+ *
+ * Two pixel rows per text row, so height halves; width is one cell per pixel.
+ * Callers size the left column from this rather than from a second constant
+ * that could drift away from the art.
+ */
+export function markSize(scale = 1) {
+    const s = Math.max(1, Math.floor(scale));
+    return {
+        columns: MARK_PIXELS.width * s,
+        rows: (MARK_PIXELS.height * s) / 2,
+    };
+}
+
+/**
+ * Pink dot, purple ring, blue ring, top to bottom, with gaps.
+ *
+ * `scale` is an integer magnification of the same art: 1 is 12 x 11 (the
+ * compact rendition, unchanged), 2 is 24 x 22 for the tall launch panel.
+ */
+export function Mark({ scale = 1 }) {
+    const grid = magnify(GRID, Math.max(1, Math.floor(scale)));
     const rows = [];
-    for (let y = 0; y < GRID.length; y += 2) {
-        rows.push(spans(GRID[y], GRID[y + 1] ?? '.'.repeat(GRID[y].length)));
+    for (let y = 0; y < grid.length; y += 2) {
+        rows.push(spans(grid[y], grid[y + 1] ?? '.'.repeat(grid[y].length)));
     }
 
     return React.createElement(
