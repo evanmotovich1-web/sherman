@@ -14,7 +14,8 @@ import { enableMouse, parseMouse } from './mouse.js';
 import { color } from './theme.js';
 import { StatusBar } from './StatusBar.js';
 import { Composer } from './Composer.js';
-import { Thinking } from './Thinking.js';
+import { Thinking, activityBudget } from './Thinking.js';
+import { ActivityLine } from './ActivityLine.js';
 import { addUsage, emptyUsage } from '../engine/session.js';
 import { readVaultStats } from '../vault.js';
 import { createSessionLog } from '../sessionlog.js';
@@ -535,6 +536,12 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
         exit();
     });
 
+    // One row for the activity line, and only from surplus: the tool trace has
+    // priority for the last available row. The trace names a specific action the
+    // engine reported, which beats a decorated one-line summary of the same
+    // thing when there is only room for one of them.
+    const showActivityLine = busy && activityBudget(columns, rows) >= 2;
+
     // Launch-only remains top-anchored. Once conversation items exist, the
     // transcript owns the available height and anchors newest content above the
     // factual activity, status, and reserved composer rows.
@@ -556,7 +563,20 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                   )
               )
             : null,
-        React.createElement(Thinking, { active: busy, activities, lifecycle, columns, rows }),
+        // The activity line takes one row out of the same budget the tool trace
+        // draws from, and only when there is a row to take. Both clear together
+        // on turn end, because `busy` is the only thing gating either.
+        React.createElement(Thinking, {
+            active: busy,
+            activities,
+            lifecycle,
+            columns,
+            rows,
+            reserveRows: showActivityLine ? 1 : 0,
+        }),
+        showActivityLine
+            ? React.createElement(ActivityLine, { active: busy, activities, lifecycle, columns })
+            : null,
         // Worst-case activity occupies three rows; reserve the composer before
         // admitting the one-row status rule. Thinking budgets itself below that.
         rows >= 2

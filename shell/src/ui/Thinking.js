@@ -18,19 +18,33 @@ import { safeTerminalText } from './sanitize.js';
 /**
  * @param {{active: boolean, activities?: Array<{id:string,line:string,category?:string}>, lifecycle?: string|null, columns?: number, rows?: number}} props
  */
-export function Thinking({ active, activities = [], lifecycle = null, columns, rows }) {
+/**
+ * Rows left for the activity region after the chrome below it is reserved.
+ *
+ * Exported because two components now share this budget -- the tool trace here
+ * and the one-row ActivityLine beneath it. Computing it in one place is what
+ * stops the two from each believing they have the last row.
+ *
+ * The composer is reserved chrome, so its resting height comes out of the
+ * budget before activity rows do. It draws a rounded box — top border, prompt
+ * row, bottom border — whenever it has the columns for it, and collapses to a
+ * single truncating text node below Composer.js's width-10 floor.
+ */
+export function activityBudget(viewportWidth, viewportRows) {
+    const statusRows = viewportRows >= 2 ? 1 : 0;
+    const composerRows = viewportWidth >= 10 ? 3 : 1;
+    return Math.max(0, viewportRows - statusRows - composerRows);
+}
+
+export function Thinking({ active, activities = [], lifecycle = null, columns, rows, reserveRows = 0 }) {
     const measured = useWindowSize();
     const viewportWidth = typeof columns === 'number' ? columns : measured.columns;
     const viewportRows = typeof rows === 'number' ? rows : measured.rows;
     const gutter = viewportWidth >= 4 ? 1 : 0;
-    const statusRows = viewportRows >= 2 ? 1 : 0;
-    // The composer is reserved chrome below this component, so its resting
-    // height comes out of the budget before activity rows do. It draws a
-    // rounded box — top border, prompt row, bottom border — whenever it has the
-    // columns for it, and collapses to a single truncating text node below
-    // Composer.js's width-10 floor.
-    const composerRows = viewportWidth >= 10 ? 3 : 1;
-    const maxRows = Math.min(3, Math.max(0, viewportRows - statusRows - composerRows));
+    const maxRows = Math.min(
+        3,
+        Math.max(0, activityBudget(viewportWidth, viewportRows) - reserveRows)
+    );
     if (!active || maxRows === 0 || (activities.length === 0 && !lifecycle)) return null;
 
     // The activity line renders only what the engine actually sent. A silent
