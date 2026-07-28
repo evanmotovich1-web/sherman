@@ -1,4 +1,4 @@
-// engine · model | tokens | real context meter | session minutes | turn timer
+// Hermes-sized status rule: state · engine/model · real context · session
 //
 // Every segment has a real source. Context appears only when both values exist:
 // the latest turn's reported input tokens and a known/overridden model window.
@@ -6,11 +6,14 @@
 
 import React from 'react';
 import { Text, Box, useWindowSize, useAnimation } from 'ink';
+import stringWidth from 'string-width';
 
-import { color } from './theme.js';
+import { color, SPINNER } from './theme.js';
+import { safeTerminalText } from './sanitize.js';
 
-const SEP = ' | ';
+const SEP = ' │ ';
 const METER_CELLS = 10;
+const MIN_STATUS_COLUMNS = 9;
 
 function formatTokens(total) {
     if (!total) return '0';
@@ -19,8 +22,27 @@ function formatTokens(total) {
 }
 
 function formatK(total) {
-    const value = total / 1000;
-    return `${Number.isInteger(value) ? value : value.toFixed(1)}K`;
+    return `${(total / 1000).toFixed(1)}k`;
+}
+
+function truncateText(text, maxWidth) {
+    if (stringWidth(text) <= maxWidth) return text;
+    if (maxWidth < 1) return '';
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    let visible = '';
+    for (const { segment } of segmenter.segment(text)) {
+        if (stringWidth(visible + segment) > maxWidth - 1) break;
+        visible += segment;
+    }
+    return `${visible}…`;
+}
+
+function formatDuration(ms) {
+    const seconds = Math.max(0, Math.floor(ms / 1000));
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
 function contextSegment(used, window, busy) {
@@ -28,34 +50,38 @@ function contextSegment(used, window, busy) {
         return null;
     }
 
-    const percent = Math.max(0, Math.min(100, Math.round((used / window) * 100)));
-    const filled = Math.max(0, Math.min(METER_CELLS, Math.round(percent / 10)));
+    const ratio = used / window;
+    const percent = Math.max(0, Math.round(ratio * 100));
+    const filled = ratio >= 1
+        ? METER_CELLS
+        : Math.max(0, Math.floor(ratio * METER_CELLS));
+    const contextTint = ratio > 1 ? color.error : color.accent;
     const label = `${formatK(used)}/${formatK(window)}`;
     const bar = `${'█'.repeat(filled)}${'░'.repeat(METER_CELLS - filled)}`;
 
     return {
         key: 'context',
-        plain: `${label} | [${bar}] ${percent}%`,
+        plain: `${label} · [${bar}] ${percent}%`,
         compactPlain: `[${bar}] ${percent}%`,
         tinyPlain: `${percent}%`,
         spans: [
-            { text: `${label} | [`, tint: color.muted },
-            { text: '█'.repeat(filled), tint: color.accent, dim: !busy, bold: busy },
-            { text: '░'.repeat(METER_CELLS - filled), tint: color.frame, dim: true },
-            { text: `] ${percent}%`, tint: color.accent, dim: !busy, bold: busy },
+            { text: `${label} · [`, tint: color.muted },
+            { text: '█'.repeat(filled), tint: contextTint, dim: !busy, bold: busy },
+            { text: '░'.repeat(METER_CELLS - filled), tint: color.meterEmpty, dim: true },
+            { text: `] ${percent}%`, tint: contextTint, dim: !busy, bold: busy },
         ],
         compactSpans: [
             { text: '[', tint: color.frame, dim: !busy },
-            { text: '█'.repeat(filled), tint: color.accent, dim: !busy, bold: busy },
-            { text: '░'.repeat(METER_CELLS - filled), tint: color.frame, dim: true },
-            { text: `] ${percent}%`, tint: color.accent, dim: !busy, bold: busy },
+            { text: '█'.repeat(filled), tint: contextTint, dim: !busy, bold: busy },
+            { text: '░'.repeat(METER_CELLS - filled), tint: color.meterEmpty, dim: true },
+            { text: `] ${percent}%`, tint: contextTint, dim: !busy, bold: busy },
         ],
-        tinySpans: [{ text: `${percent}%`, tint: color.accent, dim: !busy, bold: busy }],
+        tinySpans: [{ text: `${percent}%`, tint: contextTint, dim: !busy, bold: busy }],
     };
 }
 
 /**
- * @param {{info: object, usage: object, contextUsed?: number|null, busy?: boolean, sessionStart?: number, lastTurnMs?: number|null, columns?: number}} props
+ * @param {{info: object, usage: object, contextUsed?: number|null, busy?: boolean, sessionStart?: number, lastTurnMs?: number|null, columns?: number, goal?: string, vaultOk?: boolean}} props
  */
 export function StatusBar({
     info,
@@ -65,81 +91,125 @@ export function StatusBar({
     sessionStart,
     lastTurnMs = null,
     columns,
+    goal = '',
+    vaultOk = true,
 }) {
     const measured = useWindowSize().columns;
-    const width = typeof columns === 'number' ? columns : measured;
+    const viewportWidth = typeof columns === 'number' ? columns : measured;
+    const gutter = viewportWidth >= 4 ? 1 : 0;
+    const width = Math.max(1, viewportWidth - gutter * 2);
+    const configuredMotion = process.env.SHERMAN_MOTION;
+    const reducedMotion = configuredMotion !== undefined
+        && configuredMotion.trim().toLowerCase() !== 'on';
+    // useAnimation resets frame and time when isActive flips false -> true.
+    // This busy-only 10 Hz hook therefore reports this turn's elapsed time.
+    // It knowingly repaints inside the fixed-height root because, during a
+    // silent turn, this status indicator is the sole moving liveness signal.
+    const { frame, time } = useAnimation({ interval: reducedMotion ? 1000 : 100, isActive: busy });
+    // Return intentionally unused: this hook repaints the idle session clock.
+    useAnimation({ interval: 1000, isActive: !busy });
 
-    // Only the factual timer ticks here. The trace owns the sole spinner.
-    const { time } = useAnimation({ interval: 1000, isActive: busy });
-    useAnimation({ interval: 30000, isActive: !busy });
+    if (viewportWidth < MIN_STATUS_COLUMNS) return null;
 
-    const available = Math.max(1, width - 1);
-    const minutes =
-        typeof sessionStart === 'number'
-            ? Math.max(0, Math.floor((Date.now() - sessionStart) / 60000))
-            : null;
+    const available = Math.max(1, width - 2);
+    const elapsed = typeof sessionStart === 'number' ? Date.now() - sessionStart : null;
+    const spinner = reducedMotion ? '●' : SPINNER[frame % SPINNER.length];
+    const statusText = busy
+        ? width < 40
+            ? `${spinner} ${(time / 1000).toFixed(1)}s`
+            : `${spinner} working · ${(time / 1000).toFixed(1)}s`
+        : vaultOk === false ? 'blocked' : 'ready';
+    const safeEngine = safeTerminalText(info.engine);
+    const safeModel = safeTerminalText(info.model);
+    const compactModel = truncateText(safeModel, 16);
+    const modelText = safeEngine ? `${safeEngine}·${safeModel}` : safeModel;
+    const compactModelText = safeEngine ? `${safeEngine}·${compactModel}` : compactModel;
+    const modelSpans = [
+        ...(safeEngine
+            ? [
+                  { text: safeEngine, tint: color.muted },
+                  { text: '·', tint: color.frame, dim: !busy },
+              ]
+            : []),
+        { text: safeModel, tint: color.valueModel, bold: true },
+    ];
+    const compactModelSpans = [
+        ...(safeEngine
+            ? [
+                  { text: safeEngine, tint: color.muted },
+                  { text: '·', tint: color.frame, dim: !busy },
+              ]
+            : []),
+        { text: compactModel, tint: color.valueModel, bold: true },
+    ];
 
     const segments = [
         {
-            key: 'id',
-            plain: `${info.engine} · ${info.model}`,
-            spans: [
-                { text: info.engine, tint: color.muted },
-                { text: ' · ', tint: color.frame, dim: !busy },
-                { text: info.model, tint: color.valueModel, bold: true },
-            ],
-        },
-        {
-            key: 'tokens',
-            plain: `${formatTokens(usage?.total ?? 0)} tok`,
-            spans: [{ text: `${formatTokens(usage?.total ?? 0)} tok`, tint: color.muted }],
+            key: 'status',
+            plain: statusText,
+            spans: [{
+                text: statusText,
+                tint: busy ? color.accent : vaultOk === false ? color.error : color.tertiary,
+                bold: busy || vaultOk === false,
+            }],
         },
     ];
+    if (safeModel) {
+        segments.push({
+            key: 'model',
+            plain: modelText,
+            compactPlain: compactModelText,
+            spans: modelSpans,
+            compactSpans: compactModelSpans,
+        });
+    }
 
     const context = contextSegment(contextUsed, info.contextWindow, busy);
-    if (context) segments.push(context);
-
-    if (minutes !== null) {
+    if (context) {
+        segments.push(context);
+    } else if ((usage?.total ?? 0) > 0) {
         segments.push({
-            key: 'session',
-            plain: `session ${minutes}m`,
-            spans: [{ text: `session ${minutes}m`, tint: color.muted }],
+            key: 'tokens',
+            plain: `${formatTokens(usage.total)} tok`,
+            spans: [{ text: `${formatTokens(usage.total)} tok`, tint: color.muted }],
         });
     }
 
-    if (busy) {
-        const seconds = (time / 1000).toFixed(1);
+    if (elapsed !== null) {
+        const duration = `session ${formatDuration(elapsed)}`;
         segments.push({
-            key: 'turn',
-            plain: `turn ${seconds}s`,
-            spans: [{ text: `turn ${seconds}s`, tint: color.accent, bold: true }],
+            key: 'duration',
+            plain: duration,
+            spans: [{ text: duration, tint: color.muted }],
         });
-    } else if (typeof lastTurnMs === 'number') {
-        const seconds = (lastTurnMs / 1000).toFixed(1);
+    }
+    if (!busy && typeof lastTurnMs === 'number') {
+        const last = `last ${(lastTurnMs / 1000).toFixed(1)}s`;
+        segments.push({ key: 'last', plain: last, spans: [{ text: last, tint: color.tertiary }] });
+    }
+    const safeGoal = truncateText(safeTerminalText(goal), 40);
+    if (safeGoal) {
         segments.push({
-            key: 'turn',
-            plain: `last ${seconds}s`,
-            spans: [{ text: `last ${seconds}s`, dim: true }],
+            key: 'goal',
+            plain: 'goal set',
+            compactPlain: 'goal set',
+            spans: [{ text: 'goal set', tint: color.secondary }],
+            compactSpans: [{ text: 'goal set', tint: color.secondary }],
         });
     }
 
-    const fits = (list) => list.map((segment) => segment.plain).join(SEP).length <= available;
+    const fits = (list) => stringWidth(list.map((segment) => segment.plain).join(SEP)) <= available;
     let visible = segments;
-
-    if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'session');
+    if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'last');
+    if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'duration');
+    if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'tokens');
     if (!fits(visible)) {
         visible = visible.map((segment) =>
-            segment.key === 'id'
-                ? {
-                      ...segment,
-                      plain: info.engine,
-                      spans: [{ text: info.engine, tint: color.muted }],
-                  }
+            segment.key === 'model'
+                ? { ...segment, plain: segment.compactPlain, spans: segment.compactSpans }
                 : segment
         );
     }
-    if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'tokens');
-    if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'id');
     if (!fits(visible)) {
         visible = visible.map((segment) =>
             segment.key === 'context'
@@ -154,16 +224,36 @@ export function StatusBar({
                 : segment
         );
     }
+    if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'context');
+    if (!fits(visible)) {
+        visible = visible.map((segment) =>
+            segment.key === 'goal'
+                ? { ...segment, plain: segment.compactPlain, spans: segment.compactSpans }
+                : segment
+        );
+    }
+    if (!fits(visible)) {
+        const withoutModel = visible.filter((segment) => segment.key !== 'model');
+        const usedWithoutModel = stringWidth(withoutModel.map((segment) => segment.plain).join(SEP));
+        const modelBudget = Math.max(0, available - usedWithoutModel - stringWidth(SEP));
+        visible = visible.map((segment) => {
+            if (segment.key !== 'model' || modelBudget < 1) return segment;
+            const text = truncateText(segment.plain, modelBudget);
+            return {
+                ...segment,
+                plain: text,
+                spans: [{ text, tint: color.valueModel, bold: true }],
+            };
+        });
+    }
+    if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'model');
+    if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'goal');
 
     const children = [];
     visible.forEach((segment, index) => {
         if (index > 0) {
             children.push(
-                React.createElement(
-                    Text,
-                    { key: `sep${index}`, color: color.frame, dimColor: !busy },
-                    SEP
-                )
+                React.createElement(Text, { key: `sep${index}`, color: color.frame }, SEP)
             );
         }
         segment.spans.forEach((span, spanIndex) => {
@@ -182,9 +272,18 @@ export function StatusBar({
         });
     });
 
+    const visiblePlain = visible.map((segment) => segment.plain).join(SEP);
+    const filler = '─'.repeat(Math.max(0, available - stringWidth(visiblePlain)));
+
     return React.createElement(
         Box,
-        null,
-        React.createElement(Text, { wrap: 'truncate' }, ...children)
+        { width: viewportWidth, paddingX: gutter, flexShrink: 0 },
+        React.createElement(
+            Text,
+            { wrap: 'truncate' },
+            React.createElement(Text, { color: color.frame }, '─ '),
+            ...children,
+            React.createElement(Text, { color: color.frame }, filler)
+        )
     );
 }

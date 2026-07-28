@@ -10,6 +10,23 @@ import { render } from 'ink';
 import { App } from '../src/ui/app.js';
 
 const zeroUsage = () => ({ input: 0, cachedInput: 0, output: 0, reasoning: 0, total: 0 });
+const ansi = /\x1b\[[0-9;?]*[A-Za-z]/g;
+const plain = (value) => value.replace(ansi, '');
+const maxWidth = (value) => Math.max(0, ...plain(value).split('\n').map((row) => [...row].length));
+const latestFrame = (writes, predicate = () => true) => {
+    for (let index = writes.length - 1; index >= 0; index--) {
+        const frame = plain(writes[index]).replace(/\n$/, '');
+        if (predicate(frame)) return frame;
+    }
+    return '';
+};
+const until = async (predicate, deadline = 2000) => {
+    const started = Date.now();
+    while (!predicate()) {
+        if (Date.now() - started >= deadline) throw new Error('timed out waiting for rendered state');
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+};
 
 function fakeSession(requests, label = 'main') {
     let disposed = 0;
@@ -77,14 +94,14 @@ test('App dispatches goals, read-only plans, and isolated workers', async () => 
     type(stdin, '/plan release steps', 300);
     type(stdin, '/subagent audit command UX', 450);
 
-    await new Promise((resolve) => setTimeout(resolve, 750));
+    await until(() => mainRequests.length === 2 && workerRequests.length === 1);
     instance.unmount();
-    await new Promise((resolve) => setTimeout(resolve, 80));
 
     try {
         assert.equal(mainRequests.length, 2);
         assert.equal(typeof mainRequests[0], 'string');
         assert.match(mainRequests[0], /SHERMAN SHELL SESSION GOAL/);
+        assert.match(mainRequests[0], /launch command system/);
         assert.match(mainRequests[0], /check status/);
         assert.equal(mainRequests[1].mode, 'isolated-read-only');
         assert.equal(mainRequests[1].source, 'plan');
@@ -96,9 +113,233 @@ test('App dispatches goals, read-only plans, and isolated workers', async () => 
         assert.equal(workers.length, 1);
         assert.equal(workers[0].disposed(), 1);
 
-        const plain = captured.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
-        assert.match(plain, /goal: launch command system/);
-        assert.match(plain, /Worker 01/);
+        const output = plain(captured);
+        assert.match(output, /Session goal set: launch command system/);
+    } finally {
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('slash palette settles within the 100x30 viewport', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-shell-palette-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+
+    const stdout = new PassThrough();
+    stdout.columns = 100;
+    stdout.rows = 30;
+    const writes = [];
+    stdout.on('data', (chunk) => { writes.push(chunk.toString()); });
+
+    const session = fakeSession([], 'palette');
+    const instance = render(
+        React.createElement(App, {
+            session,
+            sessionId: '20260728_010000_palette',
+        }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false, debug: true }
+    );
+
+    try {
+        await until(() => writes.some((write) => plain(write).includes('Sherman Abrams v')));
+        writes.length = 0;
+        stdin.write('/');
+        await until(() => writes.some((write) => plain(write).includes('/ commands')));
+
+        const openFrame = latestFrame(writes, (frame) => frame.includes('/ commands'));
+        const openRows = openFrame.split('\n');
+        assert.equal(openRows.length, 30);
+        assert.ok(maxWidth(openFrame) <= 100);
+        assert.match(openFrame, /\/ commands/);
+        assert.match(openRows[29], /❯ \/$/);
+        assert.match(openFrame, /Sherman Abrams v/);
+
+        writes.length = 0;
+        stdin.write('\x1b');
+        await until(() => writes.some((write) => {
+            const frame = plain(write);
+            return frame.includes('Sherman Abrams v') && !frame.includes('/ commands');
+        }));
+        const closedFrame = latestFrame(writes, (frame) => frame.includes('Sherman Abrams v'));
+        const closedRows = closedFrame.split('\n');
+        assert.equal(closedRows.length, 30);
+        assert.ok(maxWidth(closedFrame) <= 100);
+        assert.match(closedFrame, /Sherman Abrams v/);
+        assert.doesNotMatch(closedFrame, /\/ commands/);
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('slash palette remains bounded on short terminals', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-shell-short-palette-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    try {
+        for (const terminalRows of [12, 10, 9, 8]) {
+            const stdin = new PassThrough();
+            stdin.isTTY = true;
+            stdin.setRawMode = () => {};
+            stdin.ref = () => {};
+            stdin.unref = () => {};
+
+            const stdout = new PassThrough();
+            stdout.columns = 100;
+            stdout.rows = terminalRows;
+            const writes = [];
+            stdout.on('data', (chunk) => { writes.push(chunk.toString()); });
+
+            const session = fakeSession([], `palette-${terminalRows}`);
+            const instance = render(
+                React.createElement(App, {
+                    session,
+                    sessionId: `20260728_010000_palette_${terminalRows}`,
+                }),
+                { stdin, stdout, exitOnCtrlC: false, patchConsole: false, debug: true }
+            );
+
+            try {
+                await until(() => writes.length > 0);
+                writes.length = 0;
+                stdin.write('/');
+                await until(() => writes.some((write) => plain(write).includes('❯ /')));
+
+                const frame = latestFrame(writes, (value) => value.includes('❯ /'));
+                const frameRows = frame.split('\n');
+                assert.ok(
+                    frameRows.length <= terminalRows,
+                    `${terminalRows}-row palette painted ${frameRows.length} rows`
+                );
+                assert.ok(maxWidth(frame) <= 100);
+                assert.match(frameRows.at(-1), /❯ \/$/);
+                if (terminalRows >= 9) assert.match(frame, /\/ commands/);
+            } finally {
+                instance.unmount();
+            }
+        }
+    } finally {
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('composed busy chrome reserves activity, status, goal, and composer rows', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-shell-busy-layout-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    try {
+        for (const terminalRows of [24, 5]) {
+            let releaseTurn;
+            const release = new Promise((resolve) => { releaseTurn = resolve; });
+            const session = fakeSession([], `busy-${terminalRows}`);
+            session.send = async function* () {
+                yield { kind: 'turn-start' };
+                for (let index = 1; index <= 3; index++) {
+                    yield {
+                        kind: 'tool', id: `tool-${index}`, phase: 'started',
+                        glyph: '›', label: `tool-${index}`,
+                    };
+                }
+                await release;
+            };
+
+            const stdin = new PassThrough();
+            stdin.isTTY = true;
+            stdin.setRawMode = () => {};
+            stdin.ref = () => {};
+            stdin.unref = () => {};
+            const stdout = new PassThrough();
+            stdout.columns = 80;
+            stdout.rows = terminalRows;
+            const writes = [];
+            stdout.on('data', (chunk) => { writes.push(chunk.toString()); });
+
+            const instance = render(
+                React.createElement(App, {
+                    session,
+                    sessionId: `20260728_010000_busy_${terminalRows}`,
+                }),
+                { stdin, stdout, exitOnCtrlC: false, patchConsole: false, debug: true }
+            );
+
+            try {
+                await until(() => writes.length > 0);
+                stdin.write('/goal focused layout');
+                await until(() => writes.some((write) => plain(write).includes('/goal focused layout')));
+                stdin.write('\r');
+                await until(() => writes.some((write) => plain(write).includes('goal set')));
+                writes.length = 0;
+                stdin.write('run');
+                await until(() => writes.some((write) => plain(write).includes('❯ run')));
+                stdin.write('\r');
+                await until(() => writes.some((write) => {
+                    const frame = plain(write);
+                    return frame.includes('tool-1') && frame.includes('tool-2') && frame.includes('tool-3');
+                }));
+
+                const frame = latestFrame(writes, (value) => value.includes('tool-3'));
+                const frameRows = frame.split('\n');
+                assert.equal(frameRows.length, terminalRows);
+                assert.equal(frameRows.filter((row) => /│ › tool-[123]/.test(row)).length, 3);
+                assert.equal(frameRows.filter((row) => row.startsWith(' ─ ')).length, 1);
+                assert.match(frame, /goal set/);
+                assert.match(frameRows.at(-1), /❯ Ctrl\+C to interrupt…/);
+            } finally {
+                releaseTurn();
+                instance.unmount();
+            }
+        }
+    } finally {
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('rows override preserves composer at one row and admits status at two', async () => {
+    const oldHome = process.env.HOME;
+    const home = mkdtempSync(join(tmpdir(), 'sherman-app-rows-'));
+    process.env.HOME = home;
+    try {
+        for (const rows of [1, 2]) {
+            const stdin = new PassThrough();
+            stdin.isTTY = true;
+            stdin.setRawMode = () => {};
+            stdin.ref = () => {};
+            stdin.unref = () => {};
+            const stdout = new PassThrough();
+            stdout.columns = 80;
+            stdout.rows = 24;
+            const writes = [];
+            stdout.on('data', (chunk) => { writes.push(chunk.toString()); });
+            const instance = render(
+                React.createElement(App, {
+                    session: fakeSession([], []), sessionId: `rows-${rows}`, rows,
+                }),
+                { stdin, stdout, exitOnCtrlC: false, patchConsole: false, debug: true }
+            );
+            try {
+                await until(() => writes.length > 0);
+                const frame = plain(writes.at(-1) ?? '').replace(/\n$/, '');
+                assert.equal(frame.split('\n').length, rows);
+                if (rows === 1) assert.doesNotMatch(frame, /blocked/);
+                else assert.match(frame, /blocked/);
+            } finally {
+                instance.unmount();
+                stdin.end();
+                stdout.end();
+            }
+        }
     } finally {
         process.env.HOME = oldHome;
         rmSync(home, { recursive: true, force: true });

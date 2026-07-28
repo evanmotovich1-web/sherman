@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — twelve checks, no framework.
+# smoke.sh — thirteen checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -10,13 +10,14 @@
 #   4. The shell entry point launches and exits clean on --version.
 #   5. Backend selection follows config.json's engine field.
 #   6. The --raw path still execs the engine.
-#   7. The launch screen renders at 80 columns, compact and tall, no overflow.
-#   8. The launch screen renders at 200 columns, compact and tall, no overflow.
+#   7. The launch screen crosses its compact/full boundary at 80 columns, no overflow.
+#   8. The launch screen crosses its compact/full boundary at 200 columns, no overflow.
 #   9. The launch screen's colours are emitted as real ANSI sequences.
 #  10. `sherman update` exits honestly in this repo's state.
-#  11. A scripted turn through a fake backend renders the turn structure:
-#      user bullet, signed Sherman box, and a trace line from a real event.
+#  11. A scripted turn through a fake backend renders the prompt marker,
+#      signed reply, factual trace, composer placeholder, and persistent status.
 #  12. A real codex reasoning payload renders as an explicit purple summary line.
+#  13. The Sherman Shell node:test suite passes.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -32,10 +33,14 @@ set -uo pipefail
 ROOT=$(cd -P "$(dirname "$0")" && pwd)
 cd "$ROOT"
 
+PASSES=0
+SKIPPED=0
 FAILURES=0
+TOTAL_CHECKS=13
 SMOKE_USER="smoke-tester"
 
-pass() { echo "  PASS  $*"; }
+pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
+skip() { echo "  SKIP  $*"; SKIPPED=$((SKIPPED + 1)); }
 fail() { echo "  FAIL  $*"; FAILURES=$((FAILURES + 1)); }
 
 TMPHOME=""
@@ -123,9 +128,13 @@ if [ ! -f "$ADAPTER" ]; then
 else
     vault_path=$(/usr/bin/jq -r '.vault_path // empty' "$CONFIG" 2>/dev/null)
 
-    grep -qF "$vault_path" "$ADAPTER" \
-        && pass "contains the vault path" \
-        || fail "vault path missing from adapter"
+    if [ -z "$vault_path" ]; then
+        fail "vault_path empty"
+    elif grep -qF "$vault_path" "$ADAPTER"; then
+        pass "contains the vault path"
+    else
+        fail "vault path missing from adapter"
+    fi
 
     grep -qF "$SMOKE_USER" "$ADAPTER" \
         && pass "contains the user name" \
@@ -195,9 +204,13 @@ else
         && pass "engine 'claude' selects the Claude stub" \
         || fail "engine 'claude' did not select the stub; got: $(printf '%s' "$sel_out" | head -1)"
 
-    printf '%s' "$sel_out" | grep -qi "Traceback\|at Object\.\|node:internal" \
-        && fail "stub path leaked a stack trace" \
-        || pass "stub reports cleanly, no stack trace"
+    if [ -z "$sel_out" ]; then
+        fail "engine probe produced no output"
+    elif printf '%s' "$sel_out" | grep -qi "Traceback\|at Object\.\|node:internal"; then
+        fail "stub path leaked a stack trace"
+    else
+        pass "stub reports cleanly, no stack trace"
+    fi
 fi
 
 # ------------------------------------------------------------------ check 6 --
@@ -230,8 +243,8 @@ env HOME="$TMPHOME" PATH="$STUBDIR:$PATH" ./bin/sherman --raw >/dev/null 2>&1
 # useWindowSize() reports a fixed 80x24 off a TTY -- without the prop the narrow
 # and wide cases would both silently render at 80 and prove nothing.
 #
-# Unlike checks 4 and 5 these need ink and react, so they skip (not fail) on a
-# checkout that has never run install.sh.
+# Unlike checks 4 and 5 these need ink and react. A missing installation is
+# reported as SKIP and makes the commit gate fail unless explicitly allowed.
 
 RENDER_JS=$(cat <<'JS'
 import React from 'react';
@@ -239,12 +252,9 @@ import { renderToString } from 'ink';
 import { LaunchScreen } from './src/ui/LaunchScreen.js';
 
 const cols = Number(process.env.SMOKE_COLS);
-// Both layouts, at every width. 24 rows keeps the panel compact (it hugs its
-// content); 50 rows crosses into v6.1 tall mode, where the panel spreads its
-// columns down a taller box. Tall mode is exactly where a width bug would
-// hide, because the left column widens to carry identity -- so the overflow
-// and full-bleed assertions below have to run against both.
-const ROWS = [24, 50];
+// Exercise the real layout boundary at every width: 28 rows uses CompactSummary;
+// 29 rows uses the full launch panel. Both must remain within the terminal.
+const ROWS = [28, 29];
 const info = {
     engine: 'codex',
     model: 'smoke-model',
@@ -259,7 +269,7 @@ const width = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, '')].length;
 // $( ) command substitution and an unbalanced one breaks the parse.
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
-const panelRows = [];
+const fullPanelModes = [];
 
 for (const rows of ROWS) {
     const out = renderToString(
@@ -300,18 +310,11 @@ for (const rows of ROWS) {
         console.error('panel bottom border not found at ' + rows + ' rows');
         process.exit(1);
     }
-    panelRows.push(bottom - top + 1);
+    fullPanelModes.push(plain.some((line) => line.includes('│                  Vault')));
 }
 
-// v6.1: the tall terminal must actually produce a TALLER panel, and the short
-// one must be left alone. Asserting the difference (not an absolute height)
-// keeps this from breaking every time a true line is added to the panel.
-const [shortPanel, tallPanel] = panelRows;
-if (cols >= 80 && !(tallPanel > shortPanel)) {
-    console.error(
-        'panel did not grow on a tall terminal: ' + shortPanel + ' rows at 24, ' +
-        tallPanel + ' rows at 50'
-    );
+if (fullPanelModes[0] || !fullPanelModes[1]) {
+    console.error('launch did not cross compact/full boundary between 28 and 29 rows');
     process.exit(1);
 }
 process.exit(0);
@@ -329,7 +332,7 @@ for cols in 80 200; do
     if ! command -v node >/dev/null 2>&1; then
         fail "node not found -- cannot render the launch screen"
     elif [ ! -d "shell/node_modules/ink" ]; then
-        pass "skipped -- shell/node_modules absent, run install.sh"
+        skip "shell/node_modules absent, run install.sh"
     else
         render_err=$(cd shell && env SMOKE_COLS="$cols" node --input-type=module -e "$RENDER_JS" 2>&1)
         render_status=$?
@@ -406,7 +409,7 @@ echo "9. launch screen colours reach the terminal"
 if ! command -v node >/dev/null 2>&1; then
     fail "node not found -- cannot render the launch screen"
 elif [ ! -d "shell/node_modules/ink" ]; then
-    pass "skipped -- shell/node_modules absent, run install.sh"
+    skip "shell/node_modules absent, run install.sh"
 else
     color_err=$(cd shell && env FORCE_COLOR=3 node --input-type=module -e "$COLOR_JS" 2>&1)
     color_status=$?
@@ -446,9 +449,9 @@ fi
 # The turn structure, proven off-TTY. Ink 7 reads stdin via 'readable'+read(),
 # so a PassThrough with isTTY/setRawMode stubs drives the REAL App: the check
 # types a prompt into the real composer, a fake EngineSession yields a scripted
-# turn, and the final rendered screen must contain the user bullet, the signed
-# Sherman box border, a completed trace line that exists ONLY because the fake
-# backend emitted it, and the full-width composer bar. Off a TTY Ink defers the
+# turn, and the final rendered screen must contain the prompt marker, signed
+# Sherman reply, completed trace line that exists ONLY because the fake backend
+# emitted it, composer placeholder, and persistent status. Off a TTY Ink defers the
 # viewport frame until unmount, so the check waits for the scripted turn to
 # finish, unmounts, then asserts on the capture. It also passes the same
 # alternateScreen option the real entry point uses and asserts the 1049 escapes
@@ -580,7 +583,7 @@ const meterPlain = renderToString(
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '');
-if (!meterPlain.includes('68K/272K') || !meterPlain.includes('25%')) {
+if (!meterPlain.includes('68.0k/272.0k') || !meterPlain.includes('25%')) {
     mappingMissing.push('real context meter');
 }
 
@@ -600,31 +603,47 @@ for (const columns of [19, 20]) {
     );
     if (maxWidth(launch) > columns) mappingMissing.push(`launch overflow at ${columns} columns`);
 }
+const narrowReplyInput = '0123456789'.repeat(20);
 const narrowReply = renderToString(
     React.createElement(Transcript, {
-        items: [{ id: 'narrow-reply', kind: 'message', text: 'ok' }], columns: 3,
+        items: [{ id: 'narrow-reply', kind: 'message', text: narrowReplyInput }],
+        columns: 3,
     }),
     { columns: 3 }
 );
 if (maxWidth(narrowReply) > 3) mappingMissing.push('reply overflow below four columns');
+
 const fullReplyLines = renderToString(
     React.createElement(Transcript, {
         items: [{ id: 'full-reply', kind: 'message', text: 'reply body' }], columns: 80,
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
-const replyTop = fullReplyLines.findIndex((line) => line.includes('●●● Sherman'));
-const replyBottom = fullReplyLines.findIndex(
-    (line, index) => index > replyTop && line.startsWith('╰')
-);
-const fullBlankInterior = '│' + ' '.repeat(78) + '│';
 if (
-    replyTop < 0 ||
-    replyBottom < 0 ||
-    fullReplyLines[replyTop + 1] !== fullBlankInterior ||
-    fullReplyLines[replyBottom - 1] !== fullBlankInterior
+    fullReplyLines.length !== 3 ||
+    fullReplyLines[0] !== ' ◆ Sherman' ||
+    fullReplyLines[1] !== '   reply body' ||
+    fullReplyLines[2] !== ''
 ) {
-    mappingMissing.push('Sherman box scoped vertical padding');
+    mappingMissing.push('signed Sherman reply geometry and trailing rhythm');
+}
+
+const longReplyInput = '0123456789'.repeat(20);
+const longReplyLines = renderToString(
+    React.createElement(Transcript, {
+        items: [{ id: 'long-reply', kind: 'message', text: longReplyInput }],
+        columns: 80,
+    }),
+    { columns: 80 }
+).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
+const longBodyLines = longReplyLines.slice(1, -1);
+if (
+    longBodyLines.length < 3 ||
+    longBodyLines.some((line) => !line.startsWith('   ')) ||
+    longBodyLines.some((line) => [...line].length > 79) ||
+    longBodyLines.map((line) => line.slice(3)).join('') !== longReplyInput
+) {
+    mappingMissing.push('long Sherman reply wraps without overflow or dropped text');
 }
 const narrowComposer = renderToString(
     React.createElement(Composer, { onSubmit() {}, busy: false, columns: 3 }),
@@ -650,7 +669,10 @@ const fakeSession = {
         yield { kind: 'reasoning', text: 'checking the vault' };
         yield { kind: 'tool', id: 'tool-1', phase: 'started', glyph: '›', label: 'patch smoke.sh' };
         yield { kind: 'tool', id: 'tool-1', phase: 'completed', glyph: '›', label: 'patch smoke.sh', durationMs: 900 };
-        yield { kind: 'message', text: 'The intake SOP says to log the request first.' };
+        yield {
+            kind: 'message',
+            text: `The intake SOP says${ESC}]0;pwn${BEL}${ESC}[31m to log the request first.`,
+        };
         yield { kind: 'turn-end', usage: this.usage };
         turnComplete = true;
     },
@@ -666,7 +688,7 @@ stdin.unref = () => {};
 
 const stdout = new PassThrough();
 stdout.columns = 80;
-stdout.rows = 24;
+stdout.rows = 40;
 let captured = '';
 stdout.on('data', (d) => { captured += d.toString(); });
 
@@ -674,11 +696,22 @@ stdout.on('data', (d) => { captured += d.toString(); });
 // because this stdout is a pipe -- the leak assertion below proves it does.
 const inst = render(
     React.createElement(App, { session: fakeSession, sessionId: '20260726_120000_abc123' }),
-    { stdout, stdin, exitOnCtrlC: false, patchConsole: false, alternateScreen: true }
+    { stdout, stdin, exitOnCtrlC: false, patchConsole: false, alternateScreen: true, debug: true }
 );
 
+let draftEchoedBeforeSubmit = false;
 setTimeout(() => { stdin.write('read\nthe sop'); }, 40);
-setTimeout(() => { stdin.write('\r'); }, 90);
+const draftStartedAt = Date.now();
+const draftPoll = setInterval(() => {
+    const frame = captured.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+    draftEchoedBeforeSubmit = draftEchoedBeforeSubmit || (sent.length === 0
+        && frame.includes('read')
+        && frame.includes('❯ the sop'));
+    if (draftEchoedBeforeSubmit || Date.now() - draftStartedAt >= 500) {
+        clearInterval(draftPoll);
+        stdin.write('\r');
+    }
+}, 10);
 
 const startedAt = Date.now();
 const poll = setInterval(() => {
@@ -695,11 +728,11 @@ const poll = setInterval(() => {
 
             const missing = [...mappingMissing];
             if (!plain.includes('The intake SOP says')) missing.push('Sherman reply text');
-            if (!plain.includes('● read') || !plain.includes('the sop')) missing.push('user bullet');
+            if (!draftEchoedBeforeSubmit) missing.push('composer echoes draft before submission');
             if (sent.length !== 1 || sent[0] !== 'read\nthe sop') {
                 missing.push('multi-line paste preserved until Enter');
             }
-            if (!/╭─.*Sherman.*╮/.test(plain)) missing.push('Sherman box label');
+            if (!plain.includes('◆ Sherman')) missing.push('Sherman reply label');
             if (!plain.includes('› patch smoke.sh  0.9s')) missing.push('completed trace line with duration');
 
             // The raw capture, not the stripped one: 1049h/1049l anywhere in
@@ -707,22 +740,25 @@ const poll = setInterval(() => {
             if (captured.includes(ESC + '[?1049')) {
                 missing.push('alt-screen escapes leaked into piped output');
             }
+            if (captured.includes(ESC + ']0;pwn' + BEL) || captured.includes(ESC + '[31m')) {
+                missing.push('hostile reply controls reached terminal output');
+            }
 
             const width = (s) => [...s].length;
             const lines = plain.split(/\r?\n/);
-            const signedTop = lines.find((line) => line.includes('●●● Sherman'));
-            if (!signedTop || width(signedTop) !== 80) missing.push('full-width Sherman box');
+            if (!lines.includes(' ❯ read') || !lines.includes('   the sop')) {
+                missing.push('committed multiline user turn');
+            }
+            const statusLine = lines.find(
+                (line) => line.includes('blocked') && line.includes('fake-model')
+            );
+            if (!statusLine || width(statusLine) !== stdout.columns - 1) {
+                missing.push('full-bleed status line');
+            }
 
-            const composerLines = composerPlain.split('\n');
-            if (
-                composerLines.length !== 5 ||
-                composerLines.some((line) => width(line) !== 80) ||
-                composerLines[1] !== '│' + ' '.repeat(78) + '│' ||
-                !composerLines[2].startsWith('│ ›') ||
-                !composerLines[2].endsWith('│') ||
-                composerLines[3] !== '│' + ' '.repeat(78) + '│'
-            ) {
-                missing.push('80-column composer border');
+            const finalComposer = lines.findLast((line) => line.trim().length > 0);
+            if (!finalComposer?.startsWith(' ❯ Ask about company operations…')) {
+                missing.push('composer cleared to final placeholder');
             }
 
             if (missing.length > 0) {
@@ -742,15 +778,15 @@ echo "11. a scripted turn renders the turn structure"
 if ! command -v node >/dev/null 2>&1; then
     fail "node not found -- cannot drive the shell"
 elif [ ! -d "shell/node_modules/ink" ]; then
-    pass "skipped -- shell/node_modules absent, run install.sh"
+    skip "shell/node_modules absent, run install.sh"
 else
     turn_err=$(cd shell && env HOME="$TMPHOME" node --input-type=module -e "$TURN_JS" 2>&1)
     turn_status=$?
 
     if [ "$turn_status" -eq 0 ]; then
-        pass "bullet, vivid reply, real timed trace, composer bar; no alt-screen leak off-TTY"
+        pass "mapping, sanitization, narrow layout, prompt marker, signed reply, timed trace, composer placeholder and status width; no alt-screen leak off-TTY"
     else
-        fail "$(printf '%s' "$turn_err" | head -3)"
+        fail "$turn_err"
     fi
 fi
 
@@ -881,7 +917,7 @@ echo "12. a reasoning item renders as an explicit summary line"
 if ! command -v node >/dev/null 2>&1; then
     fail "node not found -- cannot drive the shell"
 elif [ ! -d "shell/node_modules/ink" ]; then
-    pass "skipped -- shell/node_modules absent, run install.sh"
+    skip "shell/node_modules absent, run install.sh"
 else
     st_err=$(cd shell && env HOME="$TMPHOME" FORCE_COLOR=3 node --input-type=module -e "$SELFTALK_JS" 2>&1)
     st_status=$?
@@ -893,13 +929,42 @@ else
     fi
 fi
 
+# ----------------------------------------------------------------- check 13 --
+echo
+echo "13. Sherman Shell test suite passes"
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot run the Sherman Shell tests"
+elif ! command -v npm >/dev/null 2>&1; then
+    fail "npm not found -- cannot run the Sherman Shell tests"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    skip "shell/node_modules absent, run install.sh"
+else
+    test_err=$(npm test --prefix shell 2>&1)
+    test_status=$?
+
+    if [ "$test_status" -eq 0 ]; then
+        pass "node:test suite passes"
+    else
+        fail "node:test suite failed: $(printf '%s' "$test_err" | tail -10)"
+    fi
+fi
+
 # -------------------------------------------------------------------- result --
 echo
-if [ "$FAILURES" -eq 0 ]; then
-    echo "12 checks, all green."
+echo "$PASSES passed, $SKIPPED skipped, $FAILURES failed."
+if [ "$FAILURES" -eq 0 ] && [ "$SKIPPED" -eq 0 ]; then
+    echo "$TOTAL_CHECKS checks, all green."
     echo
     exit 0
 fi
-echo "$FAILURES assertion(s) failed."
+if [ "$FAILURES" -eq 0 ] && [ "${SMOKE_ALLOW_SKIP:-0}" = "1" ]; then
+    echo "Skipped UI checks explicitly allowed by SMOKE_ALLOW_SKIP=1."
+    echo
+    exit 0
+fi
+if [ "$FAILURES" -eq 0 ]; then
+    echo "Skipped UI checks make the commit gate incomplete."
+fi
 echo
 exit 1

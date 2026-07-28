@@ -4,12 +4,11 @@
 // where there is no scrollback to append into — <Static>, which wrote rows once
 // and left them to the terminal, is meaningless there. So the transcript is an
 // ordinary component now: every turn stays in the `items` array for the life of
-// the session, and layout decides what is visible. The Box below shrinks
-// against the fixed-height root in app.js; while the turns fit, they read from
-// the top with the chrome directly beneath them, and once they outgrow the
-// space, justifyContent:'flex-end' anchors the newest content to the bottom
-// while overflowY:'hidden' clips the oldest off the top edge — the terminal's
-// own scroll behavior, reproduced without its buffer. There is no page-up
+// the session, and layout decides what is visible. The launch-only frame stays
+// top-anchored. Once conversation items exist, the transcript owns the
+// available height and anchors the newest content at the bottom while
+// overflowY:'hidden' clips the oldest off the top edge — the terminal's own
+// scroll behavior, reproduced without its buffer. There is no page-up
 // browsing of what scrolled off (README.md records the limitation); the session
 // JSONL log is the durable record.
 //
@@ -19,9 +18,9 @@
 // garbage. Rigid items overflow past the top instead, which is exactly what
 // the clip needs. Proven against ink 7.1.1 before this shipped.
 //
-// Turn structure (Phase 6): the user's line is a bullet, the work the engine
-// reported commits as a dim italic trace under it, and Sherman's reply arrives
-// in a bordered box signed in its top border. The trace renders ONLY what the
+// Turn structure: the user's line carries the same `❯` as the composer, the work
+// the engine reported commits as a factual trace under it, and Sherman's reply
+// arrives as a compact signed label plus indented body. The trace renders ONLY what the
 // engine actually emitted — an activity line that never happened is a lie in
 // the transcript, and one invented line poisons trust in all of them.
 
@@ -31,80 +30,69 @@ import { Text, Box, useWindowSize } from 'ink';
 import { color } from './theme.js';
 import { Banner } from './Header.js';
 import { LaunchScreen } from './LaunchScreen.js';
+import { safeTerminalText } from './sanitize.js';
 
 // Width of the speaker gutter for notice/error rows. A fixed column means
 // wrapped lines hang under the text rather than under the label.
 const GUTTER = 9;
+const DISPLAY_KINDS = new Set([
+    'launch', 'banner', 'user', 'selftalk', 'reasoning', 'tool',
+    'message', 'worker-message', 'notice', 'error',
+]);
 
-function Row({ label, labelColor, children, bold }) {
+function Row({ label, labelColor, children, bold, width }) {
+    if (width < 2) {
+        return React.createElement(Box, { width: Math.max(1, width) }, children);
+    }
+    const labelWidth = Math.min(GUTTER, width - 1);
     return React.createElement(
         Box,
-        { flexDirection: 'row' },
+        { flexDirection: 'row', width },
         React.createElement(
             Box,
-            { width: GUTTER, flexShrink: 0 },
+            { width: labelWidth, flexShrink: 0 },
             React.createElement(Text, { color: labelColor, bold }, label)
         ),
         React.createElement(Box, { flexGrow: 1 }, children)
     );
 }
 
-/**
- * Sherman's reply, boxed and signed: the mark at one-character scale (three
- * dots plus the word Sherman, bold in the anchor accent) set into the top
- * border — the same composed-line + borderTop:false construction the launch
- * panel's version header uses.
- */
-function ShermanBox({ text, width, worker = false }) {
-    const box = Math.max(1, width);
-
-    // Ink's rounded border has an intrinsic four-column minimum. Below that,
-    // degrade to truncated prose rather than spill past the terminal edge.
-    if (box < 4) {
-        return React.createElement(Text, { wrap: 'truncate' }, text);
+/** Hermes-sized reply: a compact signed label plus an indented body. */
+function ShermanMessage({ text, width, worker = false }) {
+    const safeText = safeTerminalText(text, { preserveNewlines: true });
+    if (width < 6) {
+        return React.createElement(Text, { wrap: 'truncate' }, safeText);
     }
-
-    // ' ●●● Sherman ' — measured in code points so the fill is exact.
-    const label = worker ? ' ◇ Worker 01 ' : ' ●●● Sherman ';
-    const fill = Math.max(0, box - 3 - [...label].length);
-
     return React.createElement(
         Box,
-        { flexDirection: 'column', width: box },
+        { flexDirection: 'column', width: Math.max(1, width) },
         React.createElement(
             Text,
-            { wrap: 'truncate' },
-            React.createElement(Text, { color: color.accent }, '╭─ '),
-            React.createElement(
-                Text,
-                { color: worker ? color.secondary : color.accent, bold: true },
-                worker ? '◇ Worker 01 ' : '●●● Sherman '
-            ),
-            React.createElement(Text, { color: color.accent }, '─'.repeat(fill) + '╮')
+            { color: worker ? color.secondary : color.accent, bold: true, wrap: 'truncate' },
+            worker ? '◇ Worker 01' : '◆ Sherman'
         ),
         React.createElement(
             Box,
             {
-                width: box,
-                borderStyle: 'round',
-                borderTop: false,
-                borderColor: color.accent,
-                paddingX: 2,
-                paddingY: 1,
+                paddingLeft: width >= 4 ? 2 : 0,
+                // Yoga stretches this body to its explicit-width parent. Keep
+                // horizontal overflow visible so geometry errors fail loudly.
             },
-            React.createElement(Text, null, text)
+            React.createElement(Text, { wrap: 'wrap' }, safeText)
         )
     );
 }
 
 /** One committed transcript item. */
-function Item({ item, width }) {
+function Item({ item, width, rows }) {
     switch (item.kind) {
         case 'launch':
             return React.createElement(LaunchScreen, {
                 info: item.info,
                 stats: item.stats,
                 sessionId: item.sessionId,
+                columns: width,
+                rows,
             });
 
         // Superseded by 'launch', kept deliberately. It costs one line, and it
@@ -113,11 +101,17 @@ function Item({ item, width }) {
             return React.createElement(Banner);
 
         case 'user':
+            // User prompts may wrap inside the explicit-width transcript. The
+            // two-space newline indent aligns continuations under the body.
             return React.createElement(
                 Text,
                 null,
-                React.createElement(Text, { color: color.accent }, '● '),
-                React.createElement(Text, { color: color.user }, item.text)
+                React.createElement(Text, { color: color.promptHistory, dimColor: true }, '❯ '),
+                React.createElement(
+                    Text,
+                    { color: color.user },
+                    safeTerminalText(item.text, { preserveNewlines: true }).replace(/\n/g, '\n  ')
+                )
             );
 
         // Self-talk: the model's own interim summary of what it is doing. Same
@@ -129,7 +123,7 @@ function Item({ item, width }) {
             return React.createElement(
                 Text,
                 { color: color.secondary, wrap: 'truncate' },
-                `  │ ⋯ summary: ${item.text}`
+                `  │ ⋯ summary: ${safeTerminalText(item.text)}`
             );
 
         // The committed activity trace. Dim italic, indented under the bullet,
@@ -140,27 +134,27 @@ function Item({ item, width }) {
             return React.createElement(
                 Text,
                 { color: color.tertiary, wrap: 'truncate' },
-                `  │ ${item.text}`
+                `  │ ${safeTerminalText(item.text)}`
             );
 
         case 'message':
-            return React.createElement(ShermanBox, { text: item.text, width });
+            return React.createElement(ShermanMessage, { text: item.text, width });
 
         case 'worker-message':
-            return React.createElement(ShermanBox, { text: item.text, width, worker: true });
+            return React.createElement(ShermanMessage, { text: item.text, width, worker: true });
 
         case 'notice':
             return React.createElement(
                 Row,
-                { label: '', labelColor: color.faint },
-                React.createElement(Text, { color: color.muted }, item.text)
+                { label: '', width },
+                React.createElement(Text, { color: color.muted }, safeTerminalText(item.text))
             );
 
         case 'error':
             return React.createElement(
                 Row,
-                { label: '!', labelColor: color.error, bold: true },
-                React.createElement(Text, { color: color.error }, item.text)
+                { label: '!', labelColor: color.error, bold: true, width },
+                React.createElement(Text, { color: color.error }, safeTerminalText(item.text))
             );
 
         default:
@@ -177,26 +171,28 @@ function Item({ item, width }) {
  */
 export function Transcript({ items, columns }) {
     const size = useWindowSize();
-    const width = typeof columns === 'number' ? columns : size.columns;
+    const viewportWidth = typeof columns === 'number' ? columns : size.columns;
+    const gutter = viewportWidth >= 4 ? 1 : 0;
+    const width = Math.max(1, viewportWidth - gutter * 2);
 
     // Every item renders at least one line, so at most `rows` of them can be
     // visible at once. Older items still live in `items` — they are simply not
     // worth a Yoga layout pass on every frame of a long session.
-    const visible = items.slice(-size.rows);
+    const displayItems = items.filter((item) => DISPLAY_KINDS.has(item.kind));
+    const visible = displayItems.slice(-size.rows);
 
     return React.createElement(
         Box,
         {
             flexDirection: 'column',
+            flexGrow: 1,
             flexShrink: 1,
             overflowY: 'hidden',
-            // Terminal-like scroll: once turns exist, anchor the NEWEST content
-            // to the bottom and clip the oldest off the top. The launch moment
-            // is the exception — while the opener is the only item, anchor to
-            // the top, so on a short terminal the wordmark and version border
-            // still paint from the top-left and it is the panel's tail that
-            // clips, never its head. Both anchors render identically whenever
-            // the content fits.
+            width: viewportWidth,
+            paddingX: gutter,
+            // Launch-only stays top-anchored. A conversation owns the available
+            // transcript height, anchors newest content at the bottom, and clips
+            // oldest content from the top.
             justifyContent: visible.length > 1 ? 'flex-end' : 'flex-start',
         },
         visible.map((item) =>
@@ -209,9 +205,9 @@ export function Transcript({ items, columns }) {
                     // Air above each user turn and below each reply — the rhythm
                     // that makes turns read as turns.
                     marginTop: item.kind === 'user' ? 1 : 0,
-                    marginBottom: item.kind === 'message' ? 1 : 0,
+                    marginBottom: item.kind === 'message' || item.kind === 'worker-message' ? 1 : 0,
                 },
-                React.createElement(Item, { item, width })
+                React.createElement(Item, { item, width, rows: size.rows })
             )
         )
     );

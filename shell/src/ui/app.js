@@ -9,7 +9,6 @@ import React, { useCallback, useRef, useState } from 'react';
 import { Box, useApp, useInput, useWindowSize } from 'ink';
 
 import { Transcript } from './Transcript.js';
-import { CompactHeader } from './Header.js';
 import { StatusBar } from './StatusBar.js';
 import { Composer } from './Composer.js';
 import { Thinking } from './Thinking.js';
@@ -46,9 +45,9 @@ function formatTool(event, includeDuration) {
 }
 
 /**
- * @param {{session: import('../engine/session.js').EngineSession, sessionId: string, sessionFactory?: (() => import('../engine/session.js').EngineSession)}} props
+ * @param {{session: import('../engine/session.js').EngineSession, sessionId: string, sessionFactory?: (() => import('../engine/session.js').EngineSession), rows?: number}} props
  */
-export function App({ session, sessionId, sessionFactory = null }) {
+export function App({ session, sessionId, sessionFactory = null, rows: rowsOverride }) {
     const { exit } = useApp();
 
     // The alternate screen has no scrollback, so the app owns the whole
@@ -56,7 +55,9 @@ export function App({ session, sessionId, sessionFactory = null }) {
     // That keeps every Ink frame fullscreen (stable incremental redraws, no
     // accidental scrolling of the alt buffer) and gives the transcript a hard
     // edge to shrink against. The hook re-renders on resize.
-    const { rows } = useWindowSize();
+    const measured = useWindowSize();
+    const columns = measured.columns;
+    const rows = typeof rowsOverride === 'number' ? rowsOverride : measured.rows;
 
     // One log per session, created once. useState, not useRef: the initialiser
     // contract ("runs once") is the same one the launch item already relies on.
@@ -70,22 +71,24 @@ export function App({ session, sessionId, sessionFactory = null }) {
     // item itself. Two reasons: the initialiser runs once, so the vault readdir
     // is not repeated on every render; and a committed transcript item should
     // show what was true when it was written, not mutate as the session goes on.
+    const [vaultStats] = useState(() => readVaultStats({
+        vaultPath: session.info.vaultPath,
+        user: session.info.user,
+    }));
     const [items, setItems] = useState(() => [
         {
             id: nextId(),
             kind: 'launch',
             info: session.info,
             sessionId,
-            stats: readVaultStats({
-                vaultPath: session.info.vaultPath,
-                user: session.info.user,
-            }),
+            stats: vaultStats,
         },
     ]);
     const [busy, setBusy] = useState(false);
     const [activities, setActivities] = useState([]);
     const [lifecycle, setLifecycle] = useState(null);
     const [goal, setGoal] = useState('');
+
     const [usage, setUsage] = useState(() => session.usage ?? emptyUsage());
     // Latest per-turn input, not the running total. Codex reports this on
     // turn.completed and, for resumed threads, it is the current context size.
@@ -289,38 +292,31 @@ export function App({ session, sessionId, sessionFactory = null }) {
         exit();
     });
 
-    // Hermes stacking, top-anchored: transcript (launch panel + welcome),
-    // activity, then the status region, then the prompt LAST — directly under
-    // the status bar, never separated from it by a gap. While the session is
-    // short the whole stack reads from the top of the screen; once the turns
-    // outgrow the viewport the transcript shrinks (it is the only child allowed
-    // to), the oldest turns clip off the top edge, and the chrome ends up
-    // resting on the bottom row. flexShrink:0 on everything below the
-    // transcript is what stops Yoga from shaving rows off the chrome instead.
+    // Launch-only remains top-anchored. Once conversation items exist, the
+    // transcript owns the available height and anchors newest content above the
+    // factual activity, status, and reserved composer rows.
     return React.createElement(
         Box,
         { flexDirection: 'column', height: rows },
         React.createElement(Transcript, { items }),
-        React.createElement(Thinking, { active: busy, activities, lifecycle }),
-        // Below nine rows the rigid chrome would push the composer — the one
-        // indispensable row — off the bottom edge. Sacrifice the header and
-        // status bar first, the same degradation order as the composer's own
-        // narrow-terminal fallback.
-        rows >= 9
-            ? React.createElement(
-                  Box,
-                  { flexDirection: 'column', flexShrink: 0 },
-                  React.createElement(CompactHeader, { goal }),
-                  React.createElement(StatusBar, {
-                      info,
-                      usage,
-                      contextUsed,
-                      busy,
-                      sessionStart,
-                      lastTurnMs,
-                  })
-              )
+        React.createElement(Thinking, { active: busy, activities, lifecycle, columns, rows }),
+        // Worst-case activity occupies three rows; reserve the composer before
+        // admitting the one-row status rule. Thinking budgets itself below that.
+        rows >= 2
+            ? React.createElement(StatusBar, {
+                  info,
+                  usage,
+                  contextUsed,
+                  busy,
+                  sessionStart,
+                  lastTurnMs,
+                  goal,
+                  vaultOk: vaultStats.ok,
+              })
             : null,
-        React.createElement(Composer, { onSubmit: submit, busy })
+        React.createElement(Composer, {
+            onSubmit: submit,
+            busy,
+        })
     );
 }

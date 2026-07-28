@@ -1,13 +1,8 @@
-// The launch mark and the persistent header line.
+// Live fallback for the legacy `banner` transcript item.
 //
-// Two exports, because they have different lifetimes (D13):
-//
-//   Banner        — 18 lines. A committed transcript item that scrolls out of
-//                   the viewport like any other, exactly as `bin/sherman` has
-//                   always behaved. Pinning it would leave six rows for the
-//                   conversation on a 24-row terminal.
-//   CompactHeader — one line, always visible, so the screen still says whose
-//                   it is after the mark has scrolled off.
+// Banner is committed history and scrolls out like any other transcript item.
+// LaunchScreen is the normal opener; Banner remains so stale or hand-built
+// `banner` items cannot blank the transcript.
 
 import React from 'react';
 import { Text, Box } from 'ink';
@@ -66,22 +61,5 @@ export function Banner() {
         Box,
         { flexDirection: 'column', marginBottom: 1 },
         React.createElement(Text, null, banner)
-    );
-}
-
-/** One line, always on screen. */
-export function CompactHeader({ goal = '' }) {
-    return React.createElement(
-        Text,
-        { wrap: 'truncate' },
-        React.createElement(Text, { color: color.accent, bold: true }, 'sherman'),
-        React.createElement(Text, { color: color.muted }, '  Sherman Abrams Labs'),
-        goal
-            ? React.createElement(
-                  Text,
-                  { color: color.secondary },
-                  `  │ goal: ${goal}`
-              )
-            : null
     );
 }

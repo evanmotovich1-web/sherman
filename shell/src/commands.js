@@ -70,7 +70,7 @@ export function helpText(name = '') {
         'Sherman commands',
         ...COMMANDS.map((command) => `${command.usage.padEnd(23)} ${command.summary}`),
         '',
-        'Up/down select · Tab completes · // sends a literal slash prompt',
+        'Up/down select · Tab completes · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
     ].join('\n');
 }
 

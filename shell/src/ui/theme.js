@@ -20,6 +20,7 @@ export const color = {
     // local palettes invented by individual components.
     accent: c(205),
     frame: c(205),
+    meterEmpty: c(53),
     secondary: c(135),
     tertiary: c(39),
 
@@ -28,11 +29,11 @@ export const color = {
     valueModel: c(205),
     valueEngine: c(135),
     valueUser: c(39),
+    promptLive: c(205),
+    promptHistory: 'gray',
 
-    // Secondary text. `muted` is for structural labels, `faint` for things the
-    // eye should skip unless it is looking for them (tool lines, timings).
+    // Secondary structural text.
     muted: 'gray',
-    faint: 'gray',
 
     user: 'white',
     error: 'red',

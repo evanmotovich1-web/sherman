@@ -10,6 +10,7 @@
 
 import { readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -43,6 +44,7 @@ function version() {
     const pkg = JSON.parse(readFileSync(join(HERE, '..', 'package.json'), 'utf8'));
     return pkg.version;
 }
+
 
 const HELP = `sherman-shell — Sherman Abrams' own terminal UI
 
@@ -210,6 +212,7 @@ async function startShell() {
         React.createElement(App, {
             session,
             sessionId: resolveSessionId(),
+
             // Every /subagent call gets a fresh engine thread with the exact
             // same config, persona workspace, vault scope, and safety posture.
             sessionFactory: () => selectBackend(config),

@@ -6,55 +6,48 @@
 // turn 2). With nothing on screen during that wait, a working shell reads as a
 // hung one — and the wait is the very first thing a new user experiences.
 //
-// `useAnimation` carries the whole job: `frame` indexes the spinner, `time` is
-// elapsed milliseconds. No setInterval, no Date.now() bookkeeping, and the values
-// reset themselves when `isActive` flips false -> true, which is once per turn.
+// The status rule owns the sole spinner and timer. This component renders only
+// factual lifecycle/tool lines, preventing duplicated "working" chrome.
 
 import React from 'react';
-import { Text, Box, useAnimation } from 'ink';
+import { Text, Box, useWindowSize } from 'ink';
 
-import { color, SPINNER } from './theme.js';
+import { color } from './theme.js';
+import { safeTerminalText } from './sanitize.js';
 
 /**
- * @param {{active: boolean, activities?: Array<{id:string,line:string,category?:string}>, lifecycle?: string|null}} props
+ * @param {{active: boolean, activities?: Array<{id:string,line:string,category?:string}>, lifecycle?: string|null, columns?: number, rows?: number}} props
  */
-export function Thinking({ active, activities = [], lifecycle = null }) {
-    const { frame, time } = useAnimation({ interval: 80, isActive: active });
+export function Thinking({ active, activities = [], lifecycle = null, columns, rows }) {
+    const measured = useWindowSize();
+    const viewportWidth = typeof columns === 'number' ? columns : measured.columns;
+    const viewportRows = typeof rows === 'number' ? rows : measured.rows;
+    const gutter = viewportWidth >= 4 ? 1 : 0;
+    const statusRows = viewportRows >= 2 ? 1 : 0;
+    const maxRows = Math.min(3, Math.max(0, viewportRows - statusRows - 1));
+    if (!active || maxRows === 0 || (activities.length === 0 && !lifecycle)) return null;
 
-    if (!active) return null;
-
-    const glyph = process.env.SHERMAN_MOTION === 'off' ? '●' : SPINNER[frame % SPINNER.length];
-    const seconds = (time / 1000).toFixed(1);
-
-    // A real in-flight tool sits above the persistent thinking tail. The tail
-    // never gets replaced: even a silent backend therefore has visible life,
-    // while the activity line still renders only what the engine actually sent.
+    // The activity line renders only what the engine actually sent. A silent
+    // backend still has visible life in the status rule below.
     //
     // flexShrink:0 — the indicator is chrome inside the fixed-height root; only
     // the transcript above it is allowed to give up rows (see app.js).
     return React.createElement(
         Box,
-        { flexDirection: 'column', flexShrink: 0 },
+        { flexDirection: 'column', flexShrink: 0, width: viewportWidth, paddingX: gutter },
         activities.length === 0 && lifecycle
             ? React.createElement(
                   Text,
                   { dimColor: true, italic: true, wrap: 'truncate' },
-                  `  ${lifecycle}`
+                  `  ${safeTerminalText(lifecycle)}`
               )
             : null,
-        ...activities.slice(-3).map((activity) =>
+        ...activities.slice(-maxRows).map((activity) =>
             React.createElement(
                 Text,
                 { key: activity.id, color: color.tertiary, wrap: 'truncate' },
-                `  │ ${activity.line}`
+                `  │ ${safeTerminalText(activity.line)}`
             )
-        ),
-        React.createElement(
-            Text,
-            null,
-            React.createElement(Text, { color: color.accent }, `  ${glyph} `),
-            React.createElement(Text, { color: color.muted }, 'working'),
-            React.createElement(Text, { dimColor: true, italic: true }, `  ${seconds}s`)
         )
     );
 }

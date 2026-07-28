@@ -15,8 +15,9 @@ sherman --raw     exec the engine directly, its own chrome, for debugging
 ```
 
 Inside the shell: type, Enter to send. **Ctrl+C interrupts the turn in flight;
-press it again to exit.** The conversation lives in your terminal's own
-scrollback, so the mouse wheel works normally.
+press it again to exit.** Conversation history lives in the alternate-screen
+viewport, not the terminal's scrollback; only the visible tail is browsable.
+See the known limitation under “UI decisions worth knowing” below.
 
 Type `/` to open the command palette. First-party commands:
 
@@ -48,18 +49,23 @@ The **engine layer**, which 04-02's UI is built on.
 - `src/config.js` — reads `~/.sherman/config.json` (read-only; the wizard owns it).
 - `bin/sherman-shell.js` — `--version`, `--help`, `--probe`.
 
-## What phase 04-02 added
+## The UI today
 
-The **UI**, in `src/ui/`:
+Phase 04-02 established the UI layer. Its current inventory in `src/ui/` is:
 
-- `app.js` — the root component. All turn state lives here; everything else is
-  presentational. It renders the event union below and nothing else.
-- `Thinking.js` — concurrent factual activity plus the neutral working indicator.
-- `Transcript.js` — committed history through a single `<Static>`.
-- `Header.js` — the banner, and the compact header line.
-- `StatusBar.js` — engine · model · user · vault · tokens.
-- `Composer.js` — the input line.
-- `theme.js` — the house palette, in one place.
+- `app.js` — root state and orchestration for turns, commands, workers, usage,
+  and transcript items.
+- `LaunchScreen.js` — the truthful, content-hugging launch card.
+- `Wordmark.js` — the full Sherman wordmark.
+- `Mark.js` — the compact Sherman identity mark.
+- `Transcript.js` — inset viewport history with compact signed responses.
+- `Thinking.js` — concurrent factual lifecycle and tool activity.
+- `StatusBar.js` — one-row state, engine/model, context, and goal summary.
+- `Composer.js` — the borderless input and row-budgeted slash palette.
+- `CommandMenu.js` — command suggestions, selection, and descriptions.
+- `Header.js` — fallback renderer for legacy `banner` transcript items.
+- `sanitize.js` — terminal-safe text normalization for displayed data.
+- `theme.js` — the house palette in one place.
 
 Plus the wire-up: `bin/sherman` execs the shell, `sherman --raw` execs the
 engine, and `install.sh` installs the shell's dependencies.
@@ -278,16 +284,20 @@ starting a new turn re-arms it, so a later Ctrl+C interrupts again rather than
 quitting. Ink is started with `exitOnCtrlC: false`, or it would quit on the first
 press before the app could abort anything.
 
+Set `SHERMAN_MOTION=off` (or any explicit value other than `on`) to replace the
+animated spinner with a static activity marker. The factual session clock still
+refreshes once per second; reduced motion disables decorative motion, not truth.
+
 ## UI decisions worth knowing
 
 **Perceived speed is a feature here, not polish.** Because there are no token
 deltas, an answer lands all at once after a wait, and the *first* turn is the
-slowest one in the product — nothing is cached until turn 2. So the shell always
-shows an animated indicator with a running elapsed time, and the label is replaced
-by the newest reasoning or tool line so the wait narrates itself. Without it a
-perfectly healthy shell reads as hung on the very first thing a new user does.
-`useAnimation` supplies both the spinner frame and the elapsed milliseconds, so
-there is no manual timer to get wrong.
+slowest one in the product — nothing is cached until turn 2. At terminals with at
+least two rows and nine columns, the one-row status rule shows an activity marker
+with real elapsed time; factual reasoning and tool lines appear immediately above
+it when space permits. During a silent turn the activity component renders no row,
+so this status indicator intentionally carries the perceived-responsiveness burden.
+Without that feedback a healthy shell reads as hung on the first thing a user does.
 
 **Alternate screen, viewport transcript.** The shell runs on the terminal's
 alternate screen buffer — the same switch that makes hermes, claude and codex
@@ -303,9 +313,9 @@ Inside the alternate screen there is no scrollback to append into, so `<Static>`
 is gone: history renders inside the viewport. Every turn stays in memory for
 the session; the newest fill the screen and the oldest scroll out of the top
 edge. The one anchoring exception is the launch moment: while the opener is the
-only thing on screen it anchors to the *top*, so on a short terminal the
-wordmark and version border still paint from the top-left and it is the panel's
-tail that clips, never its head.
+only thing on screen it anchors to the *top*. `LaunchScreen` switches to its
+compact summary before the opener would crowd the two-row persistent chrome;
+only pathologically small windows may clip its tail.
 
 **Known limitation:** there is no page-up browsing of what has left the screen —
 the visible tail is all you can see. That includes a single reply taller than
@@ -314,16 +324,26 @@ small windows a partially clipped panel border can render imperfectly at the cut
 line. The session JSONL log under `~/.sherman/sessions/` is the durable record
 either way.
 
-**The banner prints once, not pinned.** It is 18 lines. Pinning it would leave six
-rows for the conversation on a 24-row terminal, so the full mark is the launch
-moment and a single compact line stays in the chrome. `bin/sherman` deliberately
+Layout assumes East Asian Ambiguous glyphs such as `◆`, `◇`, and `●` render as
+one terminal cell. Profiles configured to render ambiguous characters
+double-width may wrap or misalign signature and status rows; Ink/string-width
+fixtures cannot reproduce that terminal setting. The prompt glyph `❯` is East
+Asian Neutral and is not part of this assumption.
+
+**The banner prints once, not pinned.** It is the launch moment, and persistent
+chrome is deliberately limited to two rows: one status rule plus one prompt row,
+preserving the rest of the terminal for the transcript. Hermes informed this
+footprint as prior art; it is not Sherman's sizing contract.
+`bin/sherman` deliberately
 does *not* print the banner when handing off to the shell — the shell draws it —
 or you would see it twice on every launch.
 
 **The composer is hand-rolled** on `useInput`. Ink 7 ships no text input, and
-`ink-text-input` only claims `ink>=5`. Bulk input is stripped of control
-characters, because a paste arrives as one chunk and could otherwise carry CR/LF
-straight into the prompt.
+`ink-text-input` only claims `ink>=5`. At rest it is one borderless `❯` row so
+persistent chrome leaves maximum room for the transcript; pasted multi-line input
+grows only to its real content. Bulk input is
+stripped of control characters because a paste arrives as one chunk and could
+otherwise carry CR/LF straight into the prompt.
 
 **Missing Node fails loudly.** If Node is absent, older than 22, or the
 dependencies are not installed, `bin/sherman` explains and exits non-zero. It
