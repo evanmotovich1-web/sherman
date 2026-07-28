@@ -5,11 +5,12 @@
 // need a change inside src/engine/, that is the signal the change belongs behind
 // EngineSession — not a licence to reach into codex.js.
 
-import React, { useCallback, useRef, useState } from 'react';
-import { Box, Text, useApp, useInput, useWindowSize } from 'ink';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Box, Text, useApp, useInput, useStdin, useStdout, useWindowSize } from 'ink';
 
 import { Transcript } from './Transcript.js';
 import { historyLabel, scrollBy } from './scrollback.js';
+import { enableMouse, parseMouse } from './mouse.js';
 import { color } from './theme.js';
 import { StatusBar } from './StatusBar.js';
 import { Composer } from './Composer.js';
@@ -30,6 +31,11 @@ import {
 // not one — items keep their identity while the array in front of them grows.
 let seq = 0;
 const nextId = () => `i${seq++}`;
+
+// Rows a single wheel notch moves the transcript. Three is the conventional
+// terminal notch; it is fed through the same clamped scroll the keys use, so it
+// cannot travel past the oldest row either.
+const WHEEL_ROWS = 3;
 
 function formatTool(event, includeDuration) {
     const outcomeGlyph = {
@@ -140,6 +146,45 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
     // callback fires from a layout effect, so a ref is the only value guaranteed
     // to describe the frame that was just measured.
     offsetRef.current = scrollOffset;
+
+    // ----------------------------------------------------------------- mouse --
+    // Reporting is enabled for as long as the shell is mounted and disabled on
+    // every exit path (see mouse.js). Off a TTY this is a no-op returning a
+    // no-op, so piped runs never see a mode change or a mouse byte.
+    //
+    // The reports are read straight off stdin rather than through `useInput`:
+    // Ink's key parser has no notion of a mouse packet, and a chunk that
+    // arrives mid-sequence would be delivered as text. Reading the raw chunk
+    // means the parser sees whole packets. Keystrokes are untouched — this
+    // listener acts only on what parses as a mouse report and ignores the rest,
+    // so a terminal that never sends one behaves exactly as it always did.
+    const { stdout } = useStdout();
+    const { stdin, isRawModeSupported } = useStdin();
+    const [click, setClick] = useState(null);
+    const clickSeq = useRef(0);
+
+    useEffect(() => enableMouse(stdout), [stdout]);
+
+    useEffect(() => {
+        if (!stdin || !isRawModeSupported) return undefined;
+        const onData = (chunk) => {
+            const events = parseMouse(String(chunk));
+            if (events.length === 0) return;
+            for (const event of events) {
+                if (event.type === 'wheel') {
+                    // One notch, one row of overlap short of a page: the wheel
+                    // feeds the same clamped scroll the keys do, so it can no
+                    // more run past the oldest row than PgUp can.
+                    scroll(event.direction === 'up' ? WHEEL_ROWS : -WHEEL_ROWS);
+                } else if (event.type === 'press' && event.button === 0) {
+                    clickSeq.current += 1;
+                    setClick({ column: event.column, row: event.row, seq: clickSeq.current });
+                }
+            }
+        };
+        stdin.on('data', onData);
+        return () => { stdin.off('data', onData); };
+    }, [stdin, isRawModeSupported, scroll]);
 
     const [usage, setUsage] = useState(() => session.usage ?? emptyUsage());
     // Latest per-turn input, not the running total. Codex reports this on
@@ -401,6 +446,7 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
         React.createElement(Composer, {
             onSubmit: submit,
             busy,
+            click,
         })
     );
 }

@@ -36,7 +36,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
-TOTAL_CHECKS=13
+TOTAL_CHECKS=14
 SMOKE_USER="smoke-tester"
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
@@ -1016,6 +1016,68 @@ else
         pass "node:test suite passes"
     else
         fail "node:test suite failed: $(printf '%s' "$test_err" | tail -10)"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 14 --
+# Mouse reporting is a mode borrowed from the terminal, and the terminal has no
+# way to take it back. A shell that exits with SGR 1006 still enabled leaves
+# every later click in that window spraying escape bytes into whatever prompt
+# comes next -- the same class of damage as exiting inside the alternate screen,
+# and the reason that restore is guarded on every path.
+#
+# Checked the way it actually fails: a child process enables reporting against a
+# descriptor pointed at a file, then leaves the way a real session leaves --
+# cleanly, by process.exit, by an uncaught fault, and by SIGINT/SIGTERM/SIGHUP.
+# The disable must be in the file every time. No pty is involved; enableMouse
+# inspects an isTTY flag and a descriptor, and both are supplied.
+
+echo
+echo "14. mouse reporting is disabled on every exit path"
+
+MOUSE_JS=$(cat <<'JS'
+import { openSync } from 'node:fs';
+
+// Imported by absolute URL: this script is written into the sandbox, so a
+// relative specifier would resolve against the sandbox, not the shell.
+const { enableMouse } = await import(process.argv[4]);
+
+const fd = openSync(process.argv[2], 'w');
+enableMouse({ isTTY: true, fd, write: () => true });
+
+switch (process.argv[3]) {
+    case 'exit': process.exit(0);
+    case 'throw': throw new Error('smoke fault');
+    case 'clean': break;
+    default: process.kill(process.pid, process.argv[3].toUpperCase());
+}
+JS
+)
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot check mouse cleanup"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    skip "shell/node_modules absent, run install.sh"
+else
+    mouse_dir="$TMPHOME/mouse"
+    mkdir -p "$mouse_dir"
+    printf '%s' "$MOUSE_JS" > "$mouse_dir/exit.mjs"
+    mouse_bad=""
+
+    for how in clean exit throw sigint sigterm sighup; do
+        out="$mouse_dir/$how.txt"
+        node "$mouse_dir/exit.mjs" "$out" "$how" "file://$PWD/shell/src/ui/mouse.js" \
+            >/dev/null 2>&1 || true
+        # 1006l then 1000l -- disabled in the reverse of the order enabled.
+        if ! grep -q "$(printf '\033')\[?1006l" "$out" 2>/dev/null; then
+            mouse_bad="$mouse_bad $how"
+        fi
+    done
+
+    if [ -n "$mouse_bad" ]; then
+        fail "mouse reporting survived these exits:$mouse_bad"
+    else
+        pass "1006l/1000l written on clean exit, process.exit, fault, SIGINT, SIGTERM and SIGHUP"
     fi
 fi
 

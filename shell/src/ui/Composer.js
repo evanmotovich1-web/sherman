@@ -8,10 +8,11 @@
 // two-stage contract (abort turn, then exit) depends on turn state this component
 // does not own. Splitting that across two components is how the contract breaks.
 
-import React, { useEffect, useState } from 'react';
-import { Text, Box, useInput, useWindowSize } from 'ink';
+import React, { useEffect, useRef, useState } from 'react';
+import { Text, Box, useBoxMetrics, useInput, useWindowSize } from 'ink';
 
 import { color } from './theme.js';
+import { caretForClick, isMouseSequence } from './mouse.js';
 import { CommandMenu } from './CommandMenu.js';
 import { commandFor, suggestionsFor } from '../commands.js';
 
@@ -27,10 +28,20 @@ function normalizeInput(input) {
 }
 
 /**
- * @param {{onSubmit: (text: string) => void, busy: boolean, columns?: number, initialValue?: string}} props
+ * @param {{onSubmit: (text: string) => void, busy: boolean, columns?: number, initialValue?: string, click?: {column: number, row: number, seq: number} | null}} props
+ *
+ * `click` is the most recent mouse press the shell saw, forwarded verbatim.
+ * The composer maps it itself rather than being told where its caret should go,
+ * because the composer is the only thing that knows where the composer is: the
+ * row it occupies moves with the command palette, the busy state, and the
+ * terminal height, and a caller guessing at that would be guessing.
  */
-export function Composer({ onSubmit, busy, columns, initialValue = '' }) {
+export function Composer({ onSubmit, busy, columns, initialValue = '', click = null }) {
     const [value, setValue] = useState(initialValue);
+    // Where the next character goes. Kept at the end of the text at all times
+    // except when a click has moved it, so a keyboard-only session behaves
+    // exactly as it did before the caret existed.
+    const [caret, setCaret] = useState(initialValue.length);
     const [selected, setSelected] = useState(0);
     const [menuDismissed, setMenuDismissed] = useState(false);
     const size = useWindowSize();
@@ -43,8 +54,26 @@ export function Composer({ onSubmit, busy, columns, initialValue = '' }) {
     }, [suggestions.length]);
 
 
+    // Every path that replaces the whole value puts the caret at the end of the
+    // new text — completing a command, clearing after submit. Only editing at
+    // the caret and clicking move it anywhere else.
     const changeValue = (next) => {
-        setValue((current) => (typeof next === 'function' ? next(current) : next));
+        setValue((current) => {
+            const resolved = typeof next === 'function' ? next(current) : next;
+            setCaret(resolved.length);
+            return resolved;
+        });
+        setSelected(0);
+        setMenuDismissed(false);
+    };
+
+    const editAtCaret = (edit) => {
+        setValue((current) => {
+            const at = Math.max(0, Math.min(caret, current.length));
+            const { text, caret: nextCaret } = edit(current, at);
+            setCaret(Math.max(0, Math.min(text.length, nextCaret)));
+            return text;
+        });
         setSelected(0);
         setMenuDismissed(false);
     };
@@ -97,7 +126,10 @@ export function Composer({ onSubmit, busy, columns, initialValue = '' }) {
             }
 
             if (key.backspace || key.delete) {
-                changeValue((current) => current.slice(0, -1));
+                editAtCaret((current, at) => ({
+                    text: current.slice(0, Math.max(0, at - 1)) + current.slice(at),
+                    caret: at - 1,
+                }));
                 return;
             }
 
@@ -109,13 +141,64 @@ export function Composer({ onSubmit, busy, columns, initialValue = '' }) {
 
             // Pasting a multi-line block then pressing Enter is the intended
             // flow; a pasted newline deliberately does not auto-send.
+            // Mouse reports reach this handler as ordinary input on a terminal
+            // that sends them. Dropping them here is what keeps `\x1b[<0;12;34M`
+            // out of the buffer; on a terminal that never sends one, the guard
+            // never fires and not a single keystroke is handled differently.
+            if (isMouseSequence(input)) return;
+
             const clean = input ? normalizeInput(input) : '';
-            if (clean) changeValue((current) => current + clean);
+            if (clean) {
+                editAtCaret((current, at) => ({
+                    text: current.slice(0, at) + clean + current.slice(at),
+                    caret: at + clean.length,
+                }));
+            }
         },
         // While a turn is in flight the composer stops listening entirely, so a
         // user cannot queue a second turn the engine has no way to accept.
         { isActive: !busy }
     );
+
+    // ------------------------------------------------------------- geometry --
+    // Where the composer actually is on screen. `useBoxMetrics` reports the
+    // outer box's position relative to its parent, and its parent IS the app's
+    // root box, so `top` is an absolute screen row. The prompt is always the
+    // last content row of that box — the content column is bottom-anchored and
+    // the bottom border is the final row — so its 0-based index is
+    // `top + height - 2`, derived from the measurement rather than from a guess
+    // about how tall the palette happens to be. Terminals report mouse rows
+    // 1-based, so the value kept here is that index plus one, in the terminal's
+    // own units; converting once, here, is what stops an off-by-one from being
+    // rediscovered at every comparison.
+    //
+    // Horizontally: border (1) + paddingX (1) + the '❯ ' gutter (2) = column 4,
+    // and 2 in the unframed narrow fallback which has neither border nor
+    // padding.
+    const outerRef = useRef(null);
+    const outer = useBoxMetrics(outerRef);
+    const framed = width >= 10;
+    const textRow = outer.hasMeasured ? outer.top + outer.height - (framed ? 1 : 0) : null;
+    const textColumn = framed ? 4 : 2;
+
+    // A click anywhere on that row places the caret; a click anywhere else is
+    // ignored, because there is nothing else here to click. `seq` is what makes
+    // two clicks at the same spot two events rather than one.
+    useEffect(() => {
+        if (!click || textRow === null || busy) return;
+        const at = caretForClick({
+            column: click.column,
+            row: click.row,
+            textRow,
+            textColumn,
+            length: value.length,
+        });
+        if (at !== null) setCaret(at);
+        // `value.length` is deliberately absent: a click acts on the text that
+        // was under the pointer, and re-running when the text changes later
+        // would move the caret for a click the user already finished making.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [click?.seq, textRow, textColumn, busy]);
 
     // Width budget for the bordered box:
     //   border      2 columns (│ … │)
@@ -130,12 +213,16 @@ export function Composer({ onSubmit, busy, columns, initialValue = '' }) {
     // the box cannot be drawn below width 10.
     if (width < 10) {
         return React.createElement(
+            Box,
+            { ref: outerRef, flexShrink: 0 },
+            React.createElement(
             Text,
             { color: color.promptLive, wrap: 'truncate' },
             // Same gutter as inside the box (Hermes' '❯' plus one space), so
             // the fallback reads as the same prompt, just unframed. The node
             // truncates, so the extra cell is safe at any width.
             busy ? '…' : `❯ ${value}`
+            )
         );
     }
 
@@ -153,7 +240,7 @@ export function Composer({ onSubmit, busy, columns, initialValue = '' }) {
 
     return React.createElement(
         Box,
-        { width, flexDirection: 'column', flexShrink: 0 },
+        { ref: outerRef, width, flexDirection: 'column', flexShrink: 0 },
         React.createElement(CommandMenu, {
             commands: suggestions,
             selected,
@@ -210,8 +297,28 @@ export function Composer({ onSubmit, busy, columns, initialValue = '' }) {
                                     { color: color.muted, wrap: 'truncate' },
                                     placeholder
                                 )
-                              : React.createElement(Text, null, value),
-                          React.createElement(Text, { color: color.accent, inverse: true }, ' ')
+                              // At the end of the text — which is where it sits
+                              // unless a click moved it — this is the same two
+                              // nodes the composer always rendered, so a
+                              // keyboard-only frame is byte-identical. Inside
+                              // the text, the block moves onto the character it
+                              // is in front of and the tail follows it.
+                              : caret >= value.length
+                                  ? React.createElement(Text, null, value)
+                                  : React.createElement(
+                                        Text,
+                                        null,
+                                        value.slice(0, caret),
+                                        React.createElement(
+                                            Text,
+                                            { color: color.accent, inverse: true },
+                                            value.slice(caret, caret + 1)
+                                        ),
+                                        value.slice(caret + 1)
+                                    ),
+                          caret >= value.length || (value.length === 0 && placeholder)
+                              ? React.createElement(Text, { color: color.accent, inverse: true }, ' ')
+                              : null
                       ),
                   ])
             )

@@ -18,9 +18,18 @@ Inside the shell: type, Enter to send. **Ctrl+C interrupts the turn in flight;
 press it again to exit.** Conversation history lives in the alternate-screen
 viewport, not the terminal's scrollback, and the shell scrolls it itself:
 **PgUp/PgDn** page and **shift+↑/↓** step a row, at any time, including while a
-turn is running. While you are parked above the tail the shell says so and says
-how far — `viewing history — N lines below` — and new output keeps appending
-underneath without moving what you are reading. Any submit snaps back to live.
+turn is running, and the **mouse wheel** does the same. While you are parked
+above the tail the shell says so and says how far — `viewing history — N lines
+below` — and new output keeps appending underneath without moving what you are
+reading. Any submit snaps back to live.
+
+**Clicking** the composer's input line places the caret at that column, clamped
+to the text; typing then inserts there. Clicks anywhere else do nothing — there
+are no invisible buttons. Mouse reporting (SGR 1006) is on only while the shell
+is running and is disabled on every exit path, including faults and signals, on
+the same discipline as the alternate-screen restore; smoke check 14 proves it.
+Terminals that never send mouse reports are unaffected: not one keystroke is
+handled differently.
 
 Type `/` to open the command palette. First-party commands:
 
