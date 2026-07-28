@@ -8,9 +8,9 @@
 // top-anchored. Once conversation items exist, the transcript owns the
 // available height and anchors the newest content at the bottom while
 // overflowY:'hidden' clips the oldest off the top edge — the terminal's own
-// scroll behavior, reproduced without its buffer. There is no page-up
-// browsing of what scrolled off (README.md records the limitation); the session
-// JSONL log is the durable record.
+// scroll behavior, reproduced without its buffer — and, since scrollback landed,
+// browsable: see the scrolling note further down. The session JSONL log remains
+// the durable record.
 //
 // Every item wrapper is flexShrink:0, and that is load-bearing: Yoga's default
 // shrink of 1 applies to the ITEMS when the list overflows, compressing each by
@@ -24,10 +24,11 @@
 // engine actually emitted — an activity line that never happened is a lie in
 // the transcript, and one invented line poisons trust in all of them.
 
-import React from 'react';
-import { Text, Box, useWindowSize } from 'ink';
+import React, { useEffect, useRef } from 'react';
+import { Text, Box, useBoxMetrics, useWindowSize } from 'ink';
 
 import { color } from './theme.js';
+import { scrollWindow } from './scrollback.js';
 import { Banner } from './Header.js';
 import { LaunchScreen } from './LaunchScreen.js';
 import { safeTerminalText } from './sanitize.js';
@@ -243,26 +244,71 @@ function Item({ item, width, rows }) {
     }
 }
 
+// ----------------------------------------------------------------- scrolling --
+// The scrolled-off rows used to be gone: the clip discarded them and nothing
+// remembered how many there had been. Restoring them without inventing a second
+// history means never re-rendering events into text — what scrolls past has to
+// be the same component tree that was on screen.
+//
+// Hermes solves this with a ScrollBox in its own ink fork; stock ink has no
+// such thing, and `renderToString` cannot be used to build a line buffer here
+// because calling it during a render is a nested React render, which React
+// rejects outright. So the transcript scrolls the way a clipped element does:
+// the content column is pushed DOWN past the bottom of a fixed, overflow-hidden
+// viewport by a negative bottom margin. The rows that leave the bottom and the
+// rows that arrive at the top are the same rendered rows either way — the
+// component tree is identical at every offset, and only what the clip admits
+// changes.
+//
+// Every number the indicator prints comes from Yoga's measurement of that same
+// tree — the viewport's height and the content's height — so "N lines below" is
+// a measured fact about the frame on screen, not a model of it.
+
 /**
- * @param {{items: Array<{id: string, kind: string, text?: string}>, columns?: number}} props
+ * @param {{items: Array<{id: string, kind: string, text?: string}>, columns?: number, offset?: number, onWindow?: (window: {total: number, viewport: number, below: number, following: boolean}) => void}} props
  *
  * `columns` is injectable for off-TTY fixtures (D17); live, the hook wins.
+ *
+ * `offset` is rows above the live tail — 0 follows it, which is the default and
+ * the only state an off-TTY render can reach, so fixtures see exactly the
+ * output they saw before scrollback existed.
+ *
+ * `onWindow` reports the measured window upward so the shell can clamp its own
+ * offset and print a true count. The measurement is reported, never recomputed.
  */
-export function Transcript({ items, columns }) {
+export function Transcript({ items, columns, offset = 0, onWindow }) {
     const size = useWindowSize();
     const viewportWidth = typeof columns === 'number' ? columns : size.columns;
     const gutter = viewportWidth >= 4 ? 1 : 0;
     const width = Math.max(1, viewportWidth - gutter * 2);
 
-    // Every item renders at least one line, so at most `rows` of them can be
-    // visible at once. Older items still live in `items` — they are simply not
-    // worth a Yoga layout pass on every frame of a long session.
+    // Two measurements, both from the frame that is actually on screen: how
+    // tall the clip is, and how tall the content inside it is. Both read 0
+    // until the first layout pass, and `scrollWindow` treats that as unknown
+    // rather than guessing a height.
+    const viewportRef = useRef(null);
+    const contentRef = useRef(null);
+    const viewportMetrics = useBoxMetrics(viewportRef);
+    const contentMetrics = useBoxMetrics(contentRef);
+    const viewport = viewportMetrics.hasMeasured ? viewportMetrics.height : 0;
+    const total = contentMetrics.hasMeasured ? contentMetrics.height : 0;
+
     const displayItems = items.filter((item) => DISPLAY_KINDS.has(item.kind));
-    const visible = displayItems.slice(-size.rows);
+    const window = scrollWindow({ total, viewport, offset });
+
+    useEffect(() => {
+        onWindow?.({
+            total,
+            viewport,
+            below: window.below,
+            following: window.following,
+        });
+    }, [onWindow, total, viewport, window.below, window.following]);
 
     return React.createElement(
         Box,
         {
+            ref: viewportRef,
             flexDirection: 'column',
             flexGrow: 1,
             flexShrink: 1,
@@ -272,26 +318,40 @@ export function Transcript({ items, columns }) {
             // Launch-only stays top-anchored. A conversation owns the available
             // transcript height, anchors newest content at the bottom, and clips
             // oldest content from the top.
-            justifyContent: visible.length > 1 ? 'flex-end' : 'flex-start',
+            justifyContent: displayItems.length > 1 ? 'flex-end' : 'flex-start',
         },
-        visible.map((item) =>
-            React.createElement(
-                Box,
-                {
-                    key: item.id,
-                    flexDirection: 'column',
-                    flexShrink: 0,
-                    // Air above each user turn and below each reply — the rhythm
-                    // that makes turns read as turns.
-                    marginTop: item.kind === 'user' ? 1 : 0,
-                    // Replies used to need a trailing blank row to separate them
-                    // from the next turn. The reply box now closes itself with a
-                    // bottom border, so that row would be a second terminator —
-                    // and it would cost a transcript row that the border already
-                    // spends, pushing one more item off the top of the clip.
-                    marginBottom: 0,
-                },
-                React.createElement(Item, { item, width, rows: size.rows })
+        React.createElement(
+            Box,
+            {
+                ref: contentRef,
+                flexDirection: 'column',
+                flexShrink: 0,
+                // The scroll itself. At offset 0 this is 0, so the layout is
+                // bit-for-bit the pre-scrollback one; above 0 the column hangs
+                // that many rows past the bottom of the clip and the same
+                // number of older rows come into view at the top.
+                marginBottom: -window.offset,
+            },
+            displayItems.map((item) =>
+                React.createElement(
+                    Box,
+                    {
+                        key: item.id,
+                        flexDirection: 'column',
+                        flexShrink: 0,
+                        // Air above each user turn — the rhythm that makes turns
+                        // read as turns.
+                        marginTop: item.kind === 'user' ? 1 : 0,
+                        // Replies used to need a trailing blank row to separate
+                        // them from the next turn. The reply box now closes
+                        // itself with a bottom border, so that row would be a
+                        // second terminator — and it would cost a transcript row
+                        // that the border already spends, pushing one more item
+                        // off the top of the clip.
+                        marginBottom: 0,
+                    },
+                    React.createElement(Item, { item, width, rows: size.rows })
+                )
             )
         )
     );

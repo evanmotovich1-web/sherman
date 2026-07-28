@@ -16,8 +16,11 @@ sherman --raw     exec the engine directly, its own chrome, for debugging
 
 Inside the shell: type, Enter to send. **Ctrl+C interrupts the turn in flight;
 press it again to exit.** Conversation history lives in the alternate-screen
-viewport, not the terminal's scrollback; only the visible tail is browsable.
-See the known limitation under “UI decisions worth knowing” below.
+viewport, not the terminal's scrollback, and the shell scrolls it itself:
+**PgUp/PgDn** page and **shift+↑/↓** step a row, at any time, including while a
+turn is running. While you are parked above the tail the shell says so and says
+how far — `viewing history — N lines below` — and new output keeps appending
+underneath without moving what you are reading. Any submit snaps back to live.
 
 Type `/` to open the command palette. First-party commands:
 
@@ -317,12 +320,19 @@ only thing on screen it anchors to the *top*. `LaunchScreen` switches to its
 compact summary before the opener would crowd the two-row persistent chrome;
 only pathologically small windows may clip its tail.
 
-**Known limitation:** there is no page-up browsing of what has left the screen —
-the visible tail is all you can see. That includes a single reply taller than
-the viewport, which shows its tail (as a terminal would); and at pathologically
-small windows a partially clipped panel border can render imperfectly at the cut
-line. The session JSONL log under `~/.sherman/sessions/` is the durable record
-either way.
+Scrollback works by pushing that same content column past the bottom of the
+clip with a negative margin, so the component tree is identical at every scroll
+position — what you scroll back to is the frame that was rendered, never a
+second, tidier rendering of the same events. The row count in the indicator is
+Yoga's measurement of the content and the viewport, so it is a fact about the
+screen rather than a model of it, and it clamps at the oldest row instead of
+counting past it.
+
+**Known limitations:** a single reply taller than the viewport still shows its
+tail on arrival (as a terminal would) — scroll up to read it; and at
+pathologically small windows a partially clipped panel border can render
+imperfectly at the cut line. The session JSONL log under `~/.sherman/sessions/`
+is the durable record either way.
 
 Layout assumes East Asian Ambiguous glyphs such as `◆`, `◇`, and `●` render as
 one terminal cell. Profiles configured to render ambiguous characters

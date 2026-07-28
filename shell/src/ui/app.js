@@ -6,9 +6,11 @@
 // EngineSession — not a licence to reach into codex.js.
 
 import React, { useCallback, useRef, useState } from 'react';
-import { Box, useApp, useInput, useWindowSize } from 'ink';
+import { Box, Text, useApp, useInput, useWindowSize } from 'ink';
 
 import { Transcript } from './Transcript.js';
+import { historyLabel, scrollBy } from './scrollback.js';
+import { color } from './theme.js';
 import { StatusBar } from './StatusBar.js';
 import { Composer } from './Composer.js';
 import { Thinking } from './Thinking.js';
@@ -89,6 +91,56 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
     const [lifecycle, setLifecycle] = useState(null);
     const [goal, setGoal] = useState('');
 
+    // ------------------------------------------------------------ scrollback --
+    // How many rows above the live tail the transcript is parked. 0 follows the
+    // tail, which is the state every off-TTY render is in and the state any
+    // submit returns to.
+    //
+    // `window` is what the transcript MEASURED — its own height and its
+    // content's — reported back up after layout. The offset is the shell's
+    // intent; the window is the fact, and the indicator prints the fact. They
+    // can disagree for exactly one frame after a resize, which is why the
+    // handler clamps against the window rather than against a remembered total.
+    const [scrollOffset, setScrollOffset] = useState(0);
+    const [scrollState, setScrollState] = useState({
+        total: 0, viewport: 0, below: 0, following: true,
+    });
+    const windowRef = useRef(scrollState);
+    const offsetRef = useRef(0);
+    const onWindow = useCallback((next) => {
+        // Content appended while parked would otherwise slide the window down
+        // by however many rows arrived, because the offset is measured from the
+        // tail and the tail just moved. Growing the offset by the same amount
+        // is what keeps the rows under the operator's eyes still — a turn
+        // finishing behind you must not yank you forward through history.
+        const grew = next.total - windowRef.current.total;
+        if (grew > 0 && offsetRef.current > 0) {
+            setScrollOffset((current) =>
+                scrollBy(current, grew, next.total, next.viewport)
+            );
+        }
+
+        windowRef.current = next;
+        setScrollState((current) =>
+            current.total === next.total
+            && current.viewport === next.viewport
+            && current.below === next.below
+            && current.following === next.following
+                ? current
+                : next
+        );
+    }, []);
+
+    const scroll = useCallback((delta) => {
+        const { total, viewport } = windowRef.current;
+        setScrollOffset((current) => scrollBy(current, delta, total, viewport));
+    }, []);
+
+    // The offset the append-compensation above reads. State is async, and that
+    // callback fires from a layout effect, so a ref is the only value guaranteed
+    // to describe the frame that was just measured.
+    offsetRef.current = scrollOffset;
+
     const [usage, setUsage] = useState(() => session.usage ?? emptyUsage());
     // Latest per-turn input, not the running total. Codex reports this on
     // turn.completed and, for resumed threads, it is the current context size.
@@ -120,6 +172,11 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
     const submit = useCallback(
         async (text) => {
             const parsed = parseSubmission(text);
+            // Submitting is a statement that you are done reading history: the
+            // answer is going to arrive at the tail, so snap there rather than
+            // leaving the operator parked above their own new turn.
+            setScrollOffset(0);
+            offsetRef.current = 0;
             commit('user', text);
             log.append('user', text);
 
@@ -281,7 +338,20 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
     // `busy` is the whole state machine: interrupting clears it, so the next
     // press falls through to exit — and starting a new turn re-arms it, so a
     // later Ctrl+C interrupts again instead of quitting.
+    //
+    // Scrollback rides in the same handler, and deliberately without
+    // `isActive`: browsing history has to work WHILE a turn runs, which is
+    // exactly when the composer stops listening. A page is the measured
+    // viewport less one row of overlap, so a paged-past line is never a line
+    // you did not see. PgUp/PgDn page; shift+arrows step a single row. The
+    // composer already ignores all four, so nothing here steals a keystroke
+    // from it.
     useInput((input, key) => {
+        if (key.pageUp) return scroll(Math.max(1, scrollState.viewport - 1));
+        if (key.pageDown) return scroll(-Math.max(1, scrollState.viewport - 1));
+        if (key.shift && key.upArrow) return scroll(1);
+        if (key.shift && key.downArrow) return scroll(-1);
+
         if (!(key.ctrl && input === 'c')) return;
 
         if (busyRef.current) {
@@ -298,7 +368,21 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
     return React.createElement(
         Box,
         { flexDirection: 'column', height: rows },
-        React.createElement(Transcript, { items }),
+        React.createElement(Transcript, { items, offset: scrollOffset, onWindow }),
+        // Only while parked above the tail, and only ever a measured count. The
+        // row costs transcript height, which is the honest trade: the shell
+        // says how much it is hiding from you, in the same units you scroll in.
+        historyLabel(scrollState)
+            ? React.createElement(
+                  Box,
+                  { flexShrink: 0 },
+                  React.createElement(
+                      Text,
+                      { color: color.secondary, wrap: 'truncate' },
+                      historyLabel(scrollState)
+                  )
+              )
+            : null,
         React.createElement(Thinking, { active: busy, activities, lifecycle, columns, rows }),
         // Worst-case activity occupies three rows; reserve the composer before
         // admitting the one-row status rule. Thinking budgets itself below that.
