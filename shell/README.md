@@ -18,6 +18,19 @@ Inside the shell: type, Enter to send. **Ctrl+C interrupts the turn in flight;
 press it again to exit.** The conversation lives in your terminal's own
 scrollback, so the mouse wheel works normally.
 
+Type `/` to open the command palette. First-party commands:
+
+- `/goal [text|status|clear]` — set, inspect, or clear a visible session-local goal.
+- `/plan [task]` — ask the current engine for a plan under an isolated read-only
+  sandbox with every configured MCP server and inherited apps/browser/hooks disabled.
+- `/subagent <task>` — run a fresh isolated read-only engine session with inherited
+  host-side tools disabled and ephemeral session persistence. The worker
+  sees only its task and the active goal, not the parent transcript.
+- `/help [command]` — show command behavior and limits.
+
+Up/down selects a command and Tab completes it. Start with `//` to send a
+literal slash-prefixed prompt.
+
 Needs Node 22 or newer, and `./install.sh` to have installed the shell's
 dependencies. If either is missing, `sherman` says so and stops — it does not
 quietly fall back to the engine (see the UI decisions below).
@@ -41,7 +54,7 @@ The **UI**, in `src/ui/`:
 
 - `app.js` — the root component. All turn state lives here; everything else is
   presentational. It renders the event union below and nothing else.
-- `Thinking.js` — the activity indicator (see the note on perceived speed).
+- `Thinking.js` — concurrent factual activity plus the neutral working indicator.
 - `Transcript.js` — committed history through a single `<Static>`.
 - `Header.js` — the banner, and the compact header line.
 - `StatusBar.js` — engine · model · user · vault · tokens.
@@ -224,7 +237,9 @@ persona. The vault becomes writable through `writable_roots` instead.
 | `get usage()` | cumulative session token totals |
 | `dispose()` | release resources; safe to call twice |
 
-Normalized events — the only shapes a UI ever sees:
+Normalized events — the only shapes a UI ever sees. Tool events cover command,
+file-change, MCP, web-search, plan, and collaborative-agent activity with a
+truthful outcome and measured duration when a start event existed:
 
 | Event | Meaning |
 |---|---|

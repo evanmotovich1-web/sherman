@@ -13,9 +13,17 @@ import { CompactHeader } from './Header.js';
 import { StatusBar } from './StatusBar.js';
 import { Composer } from './Composer.js';
 import { Thinking } from './Thinking.js';
-import { emptyUsage } from '../engine/session.js';
+import { addUsage, emptyUsage } from '../engine/session.js';
 import { readVaultStats } from '../vault.js';
 import { createSessionLog } from '../sessionlog.js';
+import {
+    commandFor,
+    goalEnvelope,
+    helpText,
+    parseSubmission,
+    planRequest,
+    workerRequest,
+} from '../commands.js';
 
 // Monotonic ids. React list keys must be stable per item, and array index is
 // not one — items keep their identity while the array in front of them grows.
@@ -23,7 +31,13 @@ let seq = 0;
 const nextId = () => `i${seq++}`;
 
 function formatTool(event, includeDuration) {
-    const glyph = event.glyph || '›';
+    const outcomeGlyph = {
+        succeeded: '✓',
+        failed: '×',
+        declined: '–',
+        unknown: '?',
+    };
+    const glyph = includeDuration ? outcomeGlyph[event.outcome] ?? event.glyph ?? '›' : event.glyph || '›';
     const duration =
         includeDuration && typeof event.durationMs === 'number'
             ? `  ${(event.durationMs / 1000).toFixed(1)}s`
@@ -32,9 +46,9 @@ function formatTool(event, includeDuration) {
 }
 
 /**
- * @param {{session: import('../engine/session.js').EngineSession, sessionId: string}} props
+ * @param {{session: import('../engine/session.js').EngineSession, sessionId: string, sessionFactory?: (() => import('../engine/session.js').EngineSession)}} props
  */
-export function App({ session, sessionId }) {
+export function App({ session, sessionId, sessionFactory = null }) {
     const { exit } = useApp();
 
     // The alternate screen has no scrollback, so the app owns the whole
@@ -69,7 +83,9 @@ export function App({ session, sessionId }) {
         },
     ]);
     const [busy, setBusy] = useState(false);
-    const [activity, setActivity] = useState(null);
+    const [activities, setActivities] = useState([]);
+    const [lifecycle, setLifecycle] = useState(null);
+    const [goal, setGoal] = useState('');
     const [usage, setUsage] = useState(() => session.usage ?? emptyUsage());
     // Latest per-turn input, not the running total. Codex reports this on
     // turn.completed and, for resumed threads, it is the current context size.
@@ -86,6 +102,8 @@ export function App({ session, sessionId }) {
     // Mirrors `busy` for the Ctrl+C handler. React state is async, so two fast
     // presses would both observe the stale value and neither would exit.
     const busyRef = useRef(false);
+    const activeSessionRef = useRef(session);
+    const workerUsageRef = useRef(emptyUsage());
 
     const commit = useCallback((kind, text) => {
         setItems((prev) => [...prev, { id: nextId(), kind, text }]);
@@ -98,24 +116,82 @@ export function App({ session, sessionId }) {
 
     const submit = useCallback(
         async (text) => {
+            const parsed = parseSubmission(text);
             commit('user', text);
             log.append('user', text);
+
+            if (parsed.kind === 'command') {
+                const command = commandFor(parsed.name);
+                if (!command) {
+                    commit('error', `Unknown command /${parsed.name || '?'}. Type /help to list commands.`);
+                    return;
+                }
+                if (command.name === 'help') {
+                    commit('notice', helpText(parsed.args));
+                    return;
+                }
+                if (command.name === 'goal') {
+                    if (parsed.args === 'clear' || parsed.args === '--clear') {
+                        setGoal('');
+                        commit('notice', 'Session goal cleared.');
+                    } else if (parsed.args === '' || parsed.args === 'status') {
+                        commit('notice', goal ? `Session goal: ${goal}` : 'No session goal is set.');
+                    } else {
+                        setGoal(parsed.args);
+                        commit('notice', `Session goal set: ${parsed.args}`);
+                    }
+                    return;
+                }
+            }
+
+            let engine = session;
+            let request = parsed.kind === 'prompt' ? goalEnvelope(parsed.text, goal) : null;
+            let messageKind = 'message';
+            let isWorker = false;
+
+            if (parsed.kind === 'command' && parsed.name === 'plan') {
+                request = planRequest(parsed.args, goal);
+                if (!request) {
+                    commit('error', 'Usage: /plan <task>, or set a session goal first with /goal.');
+                    return;
+                }
+                commit('notice', 'planning turn · read-only sandbox');
+            }
+
+            if (parsed.kind === 'command' && parsed.name === 'subagent') {
+                if (!parsed.args) {
+                    commit('error', 'Usage: /subagent <task>');
+                    return;
+                }
+                if (!sessionFactory) {
+                    commit('error', 'This shell cannot create an isolated worker session.');
+                    return;
+                }
+                engine = sessionFactory();
+                request = workerRequest(parsed.args, goal);
+                messageKind = 'worker-message';
+                isWorker = true;
+                commit('notice', 'worker 01 · isolated · read-only');
+            }
+
             // Set busy BEFORE awaiting anything, so the indicator mounts on the
             // next render rather than waiting for the engine's first event. The
             // dead time at the start of a turn is exactly what it exists to cover.
             setBusyBoth(true);
-            setActivity(null);
+            setActivities([]);
+            setLifecycle(null);
+            activeSessionRef.current = engine;
             turnStartRef.current = Date.now();
 
             try {
-                for await (const event of session.send(text)) {
+                for await (const event of engine.send(request)) {
                     switch (event.kind) {
                         case 'turn-start':
                             break;
 
                         case 'message':
-                            commit('message', event.text);
-                            log.append('sherman', event.text);
+                            commit(messageKind, event.text);
+                            log.append(isWorker ? 'worker' : 'sherman', event.text);
                             break;
 
                         // Self-talk commits immediately, so it appears in the
@@ -124,7 +200,6 @@ export function App({ session, sessionId }) {
                         // which is part of the record of the turn.
                         case 'reasoning':
                             commit('selftalk', event.text);
-                            setActivity(null);
                             break;
 
                         // Lifecycle, by contrast, is transient. "starting…" is
@@ -133,25 +208,36 @@ export function App({ session, sessionId }) {
                         // the in-flight tool uses and is overwritten by it --
                         // never committed, never scrolled past as history.
                         case 'status':
-                            setActivity(event.text);
+                            setLifecycle(event.text);
                             break;
 
                         case 'tool':
-                            if (event.phase === 'started') {
-                                setActivity(formatTool(event, false));
+                            if (event.phase === 'started' || event.phase === 'updated') {
+                                const line = formatTool(event, false);
+                                setActivities((current) => [
+                                    ...current.filter((activity) => activity.id !== event.id),
+                                    { id: event.id, line, category: event.category },
+                                ]);
                             } else {
                                 const line = formatTool(event, true);
                                 commit('tool', line);
-                                setActivity(null);
+                                setActivities((current) =>
+                                    current.filter((activity) => activity.id !== event.id)
+                                );
                             }
                             break;
 
                         case 'turn-end':
-                            setUsage(session.usage);
-                            setContextUsed(
-                                Number.isFinite(event.usage?.input) ? event.usage.input : null
-                            );
-                            setInfo(session.info);
+                            if (isWorker && event.usage) {
+                                workerUsageRef.current = addUsage(workerUsageRef.current, event.usage);
+                            }
+                            setUsage(addUsage(session.usage, workerUsageRef.current));
+                            if (!isWorker) {
+                                setContextUsed(
+                                    Number.isFinite(event.usage?.input) ? event.usage.input : null
+                                );
+                                setInfo(session.info);
+                            }
                             break;
 
                         case 'interrupted':
@@ -172,7 +258,10 @@ export function App({ session, sessionId }) {
                 commit('error', err?.message ?? String(err));
             } finally {
                 setBusyBoth(false);
-                setActivity(null);
+                setActivities([]);
+                setLifecycle(null);
+                activeSessionRef.current = session;
+                if (isWorker) engine.dispose();
                 setInfo(session.info);
                 // In `finally`, not on turn-end: an interrupted or failed turn
                 // still ran for a true amount of time, and that is the honest
@@ -180,7 +269,7 @@ export function App({ session, sessionId }) {
                 setLastTurnMs(Date.now() - turnStartRef.current);
             }
         },
-        [commit, session, setBusyBoth, log]
+        [commit, goal, session, sessionFactory, setBusyBoth, log]
     );
 
     // Two-stage Ctrl+C, proven in a pty at plan time. Ink is started with
@@ -193,7 +282,7 @@ export function App({ session, sessionId }) {
         if (!(key.ctrl && input === 'c')) return;
 
         if (busyRef.current) {
-            session.interrupt();
+            activeSessionRef.current.interrupt();
             return;
         }
         session.dispose();
@@ -212,7 +301,7 @@ export function App({ session, sessionId }) {
         Box,
         { flexDirection: 'column', height: rows },
         React.createElement(Transcript, { items }),
-        React.createElement(Thinking, { active: busy, activity }),
+        React.createElement(Thinking, { active: busy, activities, lifecycle }),
         // Below nine rows the rigid chrome would push the composer — the one
         // indispensable row — off the bottom edge. Sacrifice the header and
         // status bar first, the same degradation order as the composer's own
@@ -221,7 +310,7 @@ export function App({ session, sessionId }) {
             ? React.createElement(
                   Box,
                   { flexDirection: 'column', flexShrink: 0 },
-                  React.createElement(CompactHeader),
+                  React.createElement(CompactHeader, { goal }),
                   React.createElement(StatusBar, {
                       info,
                       usage,

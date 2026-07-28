@@ -10,6 +10,9 @@
   "bin": {
     "sherman-shell": "./bin/sherman-shell.js"
   },
+  "scripts": {
+    "test": "node --test"
+  },
   "dependencies": {
     "ink": "^7.1.1",
     "react": "^19.2.8"

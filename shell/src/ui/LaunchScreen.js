@@ -278,10 +278,11 @@ function Knowledge({ stats, info, sessionId, width, spread = false, includeIdent
         React.createElement(Section, {
             key: 'keys',
             title: 'Keys',
-            // What actually exists. There are no slash commands in the shell
-            // today, so this lists the real affordances rather than inventing
-            // a Commands section to fill the space.
-            lines: ['enter    send', 'ctrl+c   interrupt, again to exit'],
+            lines: [
+                'enter    send',
+                '/        commands · tab completes',
+                'ctrl+c   interrupt, again to exit',
+            ],
         }),
     ];
 
@@ -330,6 +331,56 @@ function Knowledge({ stats, info, sessionId, width, spread = false, includeIdent
     );
 }
 
+/** Short-terminal readiness card: operational facts win over decorative art. */
+function CompactSummary({ width, info, stats, sessionId }) {
+    if (width < 4) return React.createElement(Text, { wrap: 'truncate' }, 'sherman');
+
+    const facts = stats.wiki + stats.shared + stats.private;
+    const vault = stats.ok
+        ? `${plural(facts, 'fact')} · ${plural(stats.inbox, 'inbox item')}`
+        : 'unavailable · check vault_path';
+    const session = sessionId ? `…${sessionId.slice(-6)}` : '—';
+
+    return React.createElement(
+        Box,
+        { width, flexDirection: 'column' },
+        React.createElement(VersionBorder, { width }),
+        React.createElement(
+            Box,
+            {
+                width,
+                borderStyle: 'round',
+                borderTop: false,
+                borderColor: color.frame,
+                paddingX: 1,
+                flexDirection: 'column',
+            },
+            React.createElement(
+                Text,
+                { wrap: 'truncate' },
+                React.createElement(Text, { color: stats.ok ? color.tertiary : color.error }, stats.ok ? '● ready  ' : '× blocked  '),
+                React.createElement(Text, { color: color.valueEngine }, info.engine),
+                React.createElement(Text, { color: color.muted }, ' · '),
+                React.createElement(Text, { color: color.valueModel, bold: true }, info.model)
+            ),
+            React.createElement(Text, { color: color.muted, wrap: 'truncate' }, `vault     ${vault}`),
+            React.createElement(
+                Text,
+                { color: color.muted, wrap: 'truncate' },
+                `user      ${info.user} · session ${session}`
+            ),
+            React.createElement(
+                Text,
+                { wrap: 'truncate' },
+                React.createElement(Text, { color: color.secondary }, '⋯ summary'),
+                React.createElement(Text, { color: color.muted }, ' · '),
+                React.createElement(Text, { color: color.tertiary }, '› activity'),
+                React.createElement(Text, { color: color.muted }, ' · /help commands')
+            )
+        )
+    );
+}
+
 /** One plain sentence. No exclamation marks — that is not Sherman's voice. */
 function welcome(stats) {
     if (!stats.ok) {
@@ -357,6 +408,8 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
     const measured = useWindowSize();
     const width = typeof columns === 'number' ? columns : measured.columns;
     const height = typeof rows === 'number' ? rows : measured.rows;
+    const compactPanel = height <= 26;
+    const compactWordmark = height < 40;
 
     // Full bleed: the panel spans the terminal, like Hermes. Never a fixed
     // constant — the border is composed to the measured width, so a narrow
@@ -389,11 +442,22 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
     return React.createElement(
         Box,
         { flexDirection: 'column', marginBottom: 1 },
-        React.createElement(Wordmark, { columns: width }),
-        React.createElement(
-            Box,
-            { marginTop: 1, width: panel, flexDirection: 'column' },
-            React.createElement(VersionBorder, { width: panel }),
+        React.createElement(Wordmark, { columns: width, compact: compactWordmark }),
+        compactPanel
+            ? React.createElement(
+                  Box,
+                  { marginTop: 1, width: panel, flexDirection: 'column' },
+                  React.createElement(CompactSummary, {
+                      width: panel,
+                      info,
+                      stats,
+                      sessionId,
+                  })
+              )
+            : React.createElement(
+                  Box,
+                  { marginTop: 1, width: panel, flexDirection: 'column' },
+                  React.createElement(VersionBorder, { width: panel }),
             React.createElement(
                 Box,
                 {
@@ -456,8 +520,8 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
                         })
                     )
                 )
-            )
-        ),
+                  )
+              ),
         React.createElement(
             Box,
             { marginTop: 1 },

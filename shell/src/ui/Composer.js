@@ -8,10 +8,12 @@
 // two-stage contract (abort turn, then exit) depends on turn state this component
 // does not own. Splitting that across two components is how the contract breaks.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Text, Box, useInput, useWindowSize } from 'ink';
 
 import { color } from './theme.js';
+import { CommandMenu } from './CommandMenu.js';
+import { commandFor, suggestionsFor } from '../commands.js';
 
 // Preserve pasted line breaks so a multi-line prompt remains visibly multi-line
 // inside the field. Strip every other C0 control plus DEL; those escape/control
@@ -29,8 +31,28 @@ function normalizeInput(input) {
  */
 export function Composer({ onSubmit, busy, columns }) {
     const [value, setValue] = useState('');
+    const [selected, setSelected] = useState(0);
+    const [menuDismissed, setMenuDismissed] = useState(false);
     const size = useWindowSize();
     const width = Math.max(1, typeof columns === 'number' ? columns : size.columns);
+    const suggestions = menuDismissed ? [] : suggestionsFor(value);
+
+    useEffect(() => {
+        setSelected((current) => Math.min(current, Math.max(0, suggestions.length - 1)));
+    }, [suggestions.length]);
+
+    const changeValue = (next) => {
+        setValue((current) => (typeof next === 'function' ? next(current) : next));
+        setSelected(0);
+        setMenuDismissed(false);
+    };
+
+    const completeSelected = () => {
+        const command = suggestions[selected];
+        if (!command) return false;
+        changeValue(`/${command.name} `);
+        return true;
+    };
 
     useInput(
         (input, key) => {
@@ -38,17 +60,42 @@ export function Composer({ onSubmit, busy, columns }) {
             // it the 'c' would also be typed into the buffer.
             if (key.ctrl && input === 'c') return;
 
+            if (key.escape && suggestions.length > 0) {
+                setMenuDismissed(true);
+                return;
+            }
+            if (key.upArrow && suggestions.length > 0) {
+                setSelected((current) =>
+                    (current - 1 + suggestions.length) % suggestions.length
+                );
+                return;
+            }
+            if (key.downArrow && suggestions.length > 0) {
+                setSelected((current) => (current + 1) % suggestions.length);
+                return;
+            }
+            if (key.tab && suggestions.length > 0) {
+                completeSelected();
+                return;
+            }
+
             if (key.return) {
                 const text = value.trim();
+                const commandName = text.startsWith('/')
+                    ? text.slice(1).split(/\s/, 1)[0].toLowerCase()
+                    : '';
+                if (suggestions.length > 0 && !commandFor(commandName) && completeSelected()) {
+                    return;
+                }
                 if (text.length > 0) {
-                    setValue('');
+                    changeValue('');
                     onSubmit(text);
                 }
                 return;
             }
 
             if (key.backspace || key.delete) {
-                setValue((v) => v.slice(0, -1));
+                changeValue((current) => current.slice(0, -1));
                 return;
             }
 
@@ -61,7 +108,7 @@ export function Composer({ onSubmit, busy, columns }) {
             // Pasting a multi-line block then pressing Enter is the intended
             // flow; a pasted newline deliberately does not auto-send.
             const clean = input ? normalizeInput(input) : '';
-            if (clean) setValue((v) => v + clean);
+            if (clean) changeValue((current) => current + clean);
         },
         // While a turn is in flight the composer stops listening entirely, so a
         // user cannot queue a second turn the engine has no way to accept.
@@ -80,34 +127,36 @@ export function Composer({ onSubmit, busy, columns }) {
 
     return React.createElement(
         Box,
-        {
-            width,
-            borderStyle: 'round',
-            borderColor: color.accent,
-            borderDimColor: busy,
-            paddingX: 1,
-            paddingY: 1,
-            flexDirection: 'row',
-            // Chrome inside the fixed-height root: the transcript shrinks, the
-            // input bar never does (see app.js).
-            flexShrink: 0,
-            // A pasted block taller than the screen must not push the caret and
-            // bottom border past the viewport edge. Cap the bar and clip the
-            // paste from the top: the tail — where the caret lives and typing
-            // continues — stays visible, and the full value is intact in state.
-            maxHeight: Math.max(5, size.rows - 4),
-            overflowY: 'hidden',
-            alignItems: 'flex-end',
-        },
-        busy
-            ? React.createElement(Text, { dimColor: true }, '… working, Ctrl+C to interrupt')
-            : React.createElement(
-                  React.Fragment,
-                  null,
-                  React.createElement(Text, { color: color.accent, bold: true }, '› '),
-                  React.createElement(Text, null, value),
-                  // Our own caret. Ink's useCursor is for IME positioning, not a text caret.
-                  React.createElement(Text, { color: color.accent, inverse: true }, ' ')
-              )
+        { width, flexDirection: 'column', flexShrink: 0 },
+        React.createElement(CommandMenu, { commands: suggestions, selected }),
+        React.createElement(
+            Box,
+            {
+                width,
+                borderStyle: 'round',
+                borderColor: color.accent,
+                borderDimColor: busy,
+                paddingX: 1,
+                paddingY: 1,
+                flexDirection: 'row',
+                // Chrome inside the fixed-height root: the transcript shrinks,
+                // the input bar never does (see app.js).
+                flexShrink: 0,
+                // Keep the tail of a tall pasted block visible with the caret.
+                maxHeight: Math.max(5, size.rows - 4),
+                overflowY: 'hidden',
+                alignItems: 'flex-end',
+            },
+            busy
+                ? React.createElement(Text, { dimColor: true }, '… working, Ctrl+C to interrupt')
+                : React.createElement(
+                      React.Fragment,
+                      null,
+                      React.createElement(Text, { color: color.accent, bold: true }, '› '),
+                      React.createElement(Text, null, value),
+                      // Our own caret. Ink useCursor is for IME positioning.
+                      React.createElement(Text, { color: color.accent, inverse: true }, ' ')
+                  )
+        )
     );
 }

@@ -66,14 +66,66 @@ function readCodexSetting(key) {
         const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
         for (const line of toml.split('\n')) {
             if (line.trimStart().startsWith('[')) break;
-            const m = line.match(new RegExp(`^\\s*${key}\\s*=\\s*"([^"]+)"`));
-            if (m) return m[1];
+            const m = line.match(new RegExp(`^\\s*${key}\\s*=\\s*(.+?)\\s*(?:#.*)?$`));
+            if (m) {
+                const raw = m[1].trim();
+                const quote = raw[0];
+                if ((quote === '"' || quote === "'") && raw.endsWith(quote)) {
+                    return raw.slice(1, -1);
+                }
+                return raw;
+            }
         }
     } catch {
         // No config, unreadable, whatever. A missing value is not an error.
     }
     return null;
 }
+
+/** Extract only TOML-safe MCP table keys; never read or expose server values. */
+export function mcpServerKeysFromToml(text) {
+    const keys = new Set();
+    const section = /^\s*\[\s*mcp_servers\.((?:"(?:\\.|[^"\\])*"|'[^']*'|[A-Za-z0-9_-]+))(?:\.|\s*\])/;
+    for (const line of text.split('\n')) {
+        const match = line.match(section);
+        if (match) keys.add(match[1]);
+    }
+    return [...keys];
+}
+
+function configuredMcpServerKeys() {
+    try {
+        const text = readFileSync(join(homedir(), '.codex', 'config.toml'), 'utf8');
+        return mcpServerKeysFromToml(text);
+    } catch {
+        return [];
+    }
+}
+
+// Filesystem sandboxing does not govern Codex host-side tools. Planning and
+// isolated workers disable those capabilities explicitly instead of claiming
+// to be read-only while inherited MCP/apps could still mutate external state.
+// Ordinary chat turns keep the operator's configured tools.
+const ISOLATED_TOOL_OVERRIDES = Object.freeze([
+    'orchestrator.mcp.enabled=false',
+    'orchestrator.skills.enabled=false',
+    'web_search="disabled"',
+    'features.apps=false',
+    'features.auth_elicitation=false',
+    'features.browser_use=false',
+    'features.browser_use_external=false',
+    'features.browser_use_full_cdp_access=false',
+    'features.computer_use=false',
+    'features.goals=false',
+    'features.hooks=false',
+    'features.image_generation=false',
+    'features.in_app_browser=false',
+    'features.multi_agent=false',
+    'features.multi_agent_v2=false',
+    'features.plugins=false',
+    'features.remote_plugin=false',
+    'features.tool_suggest=false',
+]);
 
 export class CodexSession extends EngineSession {
     /** @param {import('../config.js').ShermanConfig} config */
@@ -86,6 +138,7 @@ export class CodexSession extends EngineSession {
         this._child = null;
         this._interrupted = false;
         this._toolStarts = new Map();
+        this._configuredMcpServerKeys = configuredMcpServerKeys();
     }
 
     get info() {
@@ -120,19 +173,38 @@ export class CodexSession extends EngineSession {
      * Never add --dangerously-bypass-approvals-and-sandbox or
      * --dangerously-bypass-hook-trust. They defeat the entire posture.
      */
-    _postureArgs() {
-        return [
+    _postureArgs(mode = 'normal') {
+        const readOnly = mode === 'read-only' || mode === 'isolated-read-only';
+        const args = [
             '--json',
             // The workspace is not a git repo and does not need to be.
             '--skip-git-repo-check',
-            '-c', 'sandbox_mode="workspace-write"',
-            // cwd (the workspace) is writable under workspace-write already;
-            // this adds the vault, which is the only durable destination.
-            '-c', `sandbox_workspace_write.writable_roots=["${this._config.vaultPath}"]`,
+            '-c', `sandbox_mode="${readOnly ? 'read-only' : 'workspace-write'}"`,
             // Nothing escalates to a human and nothing outside the sandbox gets
             // auto-approved: a denied action simply fails and the model is told.
             '-c', 'approval_policy="never"',
         ];
+        if (!readOnly) {
+            // cwd is writable under workspace-write already; this adds the
+            // vault, which is the only durable destination.
+            args.push(
+                '-c',
+                `sandbox_workspace_write.writable_roots=["${this._config.vaultPath}"]`
+            );
+        }
+        if (mode === 'isolated-read-only') {
+            for (const override of ISOLATED_TOOL_OVERRIDES) {
+                args.push('-c', override);
+            }
+            // `orchestrator.mcp.enabled=false` blocks MCP dispatch, but Codex's
+            // `mcp list` still reports inherited servers as enabled. Disable
+            // every configured server too, so the invocation's effective
+            // configuration and its displayed state agree fail-closed.
+            for (const key of this._configuredMcpServerKeys) {
+                args.push('-c', `mcp_servers.${key}.enabled=false`);
+            }
+        }
+        return args;
     }
 
     /**
@@ -157,11 +229,17 @@ export class CodexSession extends EngineSession {
     }
 
     /** Turn 1 opens a thread; later turns resume it by id. */
-    _argsFor(text) {
-        const shared = [...this._postureArgs(), ...this._streamArgs()];
+    _argsFor(request) {
+        const normalized = normalizeRequest(request);
+        const shared = [...this._postureArgs(normalized.mode), ...this._streamArgs()];
+        if (normalized.source === 'subagent') {
+            // Shell workers are deliberately one-turn and should leave no
+            // resumable Codex session file behind after App disposes them.
+            shared.push('--ephemeral');
+        }
         return this._threadId === null
-            ? ['exec', ...shared, text]
-            : ['exec', 'resume', this._threadId, ...shared, text];
+            ? ['exec', ...shared, normalized.text]
+            : ['exec', 'resume', this._threadId, ...shared, normalized.text];
     }
 
     /**
@@ -204,6 +282,9 @@ export class CodexSession extends EngineSession {
             case 'item.started':
                 return this._mapItem(msg.item, 'started');
 
+            case 'item.updated':
+                return this._mapItem(msg.item, 'updated');
+
             case 'item.completed':
                 return this._mapItem(msg.item, 'completed');
 
@@ -225,7 +306,7 @@ export class CodexSession extends EngineSession {
 
     /**
      * @param {{id?:string,type?:string,text?:string,summary?:string,command?:string,changes?:Array<{path?:string}>}} item
-     * @param {'started'|'completed'} phase
+     * @param {'started'|'updated'|'completed'} phase
      */
     _mapItem(item, phase) {
         if (!item || typeof item !== 'object') return [];
@@ -245,6 +326,12 @@ export class CodexSession extends EngineSession {
             case 'file_change':
                 return this._mapTool(item, phase);
 
+            case 'mcp_tool_call':
+            case 'web_search':
+            case 'collab_tool_call':
+            case 'todo_list':
+                return this._mapTool(item, phase);
+
             case 'error':
                 return phase === 'completed'
                     ? [ev.error(text || 'The engine reported an error.')]
@@ -260,17 +347,29 @@ export class CodexSession extends EngineSession {
     _mapTool(item, phase) {
         if (!item.id) return [];
 
-        const started = phase === 'completed' ? this._toolStarts.get(item.id) : null;
-        const derivedLabel =
-            item.type === 'command_execution'
-                ? commandLabel(item.command)
-                : fileChangeLabel(item.changes, this._config);
+        const started = phase !== 'started' ? this._toolStarts.get(item.id) : null;
+        const derived = toolPresentation(item, this._config);
+        const derivedLabel = derived?.label ?? null;
         const label = started?.label ?? derivedLabel;
         if (!label) return [];
 
         if (phase === 'started') {
-            this._toolStarts.set(item.id, { startedAt: performance.now(), label });
-            return [ev.tool({ id: item.id, phase, label })];
+            this._toolStarts.set(item.id, {
+                startedAt: performance.now(),
+                label,
+                category: derived?.category ?? 'tool',
+            });
+            return [ev.tool({ id: item.id, phase, label, category: derived?.category ?? 'tool' })];
+        }
+        if (phase === 'updated') {
+            return [
+                ev.tool({
+                    id: item.id,
+                    phase,
+                    label: derivedLabel ?? label,
+                    category: started?.category ?? derived?.category ?? 'tool',
+                }),
+            ];
         }
 
         this._toolStarts.delete(item.id);
@@ -278,19 +377,28 @@ export class CodexSession extends EngineSession {
             typeof started?.startedAt === 'number'
                 ? Math.max(0, Math.round(performance.now() - started.startedAt))
                 : null;
-        return [ev.tool({ id: item.id, phase, label, durationMs })];
+        return [
+            ev.tool({
+                id: item.id,
+                phase,
+                label,
+                category: started?.category ?? derived?.category ?? 'tool',
+                outcome: toolOutcome(item.status, phase),
+                durationMs,
+            }),
+        ];
     }
 
     /**
      * Run one user turn.
-     * @param {string} text
+     * @param {string|{text:string, mode?:'normal'|'read-only'|'isolated-read-only', source?:string}} request
      * @returns {AsyncGenerator<import('./session.js').EngineEvent>}
      */
-    async *send(text) {
+    async *send(request) {
         this._interrupted = false;
         this._toolStarts.clear();
 
-        const child = spawn('codex', this._argsFor(text), {
+        const child = spawn('codex', this._argsFor(request), {
             cwd: this._config.workspacePath,
             // TRAP 1. Anything but 'ignore' on stdin risks a hung turn.
             stdio: ['ignore', 'pipe', 'pipe'],
@@ -361,6 +469,67 @@ export class CodexSession extends EngineSession {
             this._child.kill('SIGTERM');
         }
         this._child = null;
+    }
+}
+
+function normalizeRequest(request) {
+    if (typeof request === 'string') return { text: request, mode: 'normal', source: 'chat' };
+    if (!request || typeof request.text !== 'string' || request.text.trim() === '') {
+        throw new Error('Engine request needs non-empty text.');
+    }
+    return {
+        text: request.text,
+        mode: request.mode === 'read-only' || request.mode === 'isolated-read-only'
+            ? request.mode
+            : 'normal',
+        source: typeof request.source === 'string' ? request.source : 'chat',
+    };
+}
+
+function toolOutcome(status, phase) {
+    if (status === 'completed') return 'succeeded';
+    if (status === 'failed') return 'failed';
+    if (status === 'declined') return 'declined';
+    if (status === 'in_progress' || phase !== 'completed') return 'running';
+    return 'unknown';
+}
+
+function toolPresentation(item, config) {
+    switch (item.type) {
+        case 'command_execution':
+            return { category: 'command', label: commandLabel(item.command) };
+        case 'file_change':
+            return { category: 'file-change', label: fileChangeLabel(item.changes, config) };
+        case 'mcp_tool_call': {
+            const target = [safeLabel(item.server), safeLabel(item.tool)].filter(Boolean).join('.');
+            return { category: 'mcp', label: target ? `mcp ${target}` : 'mcp tool' };
+        }
+        case 'web_search': {
+            const query = firstLine(safeLabel(item.query));
+            return { category: 'web-search', label: query ? `search ${query}` : 'web search' };
+        }
+        case 'collab_tool_call': {
+            const actions = {
+                spawn_agent: 'spawn subagent',
+                send_input: 'brief subagent',
+                wait: 'wait for subagent',
+                close_agent: 'close subagent',
+            };
+            return {
+                category: 'subagent',
+                label: actions[item.tool] ?? `subagent ${safeLabel(item.tool) || 'activity'}`,
+            };
+        }
+        case 'todo_list': {
+            const items = Array.isArray(item.items) ? item.items : [];
+            const done = items.filter((entry) => entry?.completed).length;
+            return {
+                category: 'plan',
+                label: `plan ${done}/${items.length} steps`,
+            };
+        }
+        default:
+            return null;
     }
 }
 
@@ -448,7 +617,10 @@ function commandLabel(value) {
     const command = shellCommand(value);
     if (command === '') return null;
 
-    const read = command.match(/^(?:cat|head|tail)\s+(?:--\s+)?(.+)$/);
+    // Only classify one simple command with no shell operators as a read.
+    // Redirects, pipes, substitutions, and compound forms stay honest `exec`s.
+    const unsafe = /[|;&<>`]|\$\(|\n/.test(command);
+    const read = unsafe ? null : command.match(/^(?:cat|head|tail)\s+(?:--\s+)?([^\s]+)$/);
     if (read) return `read ${firstLine(read[1])}`;
 
     return `exec ${firstLine(command)}`;

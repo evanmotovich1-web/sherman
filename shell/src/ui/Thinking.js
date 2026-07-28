@@ -16,14 +16,14 @@ import { Text, Box, useAnimation } from 'ink';
 import { color, SPINNER } from './theme.js';
 
 /**
- * @param {{active: boolean, activity: string | null}} props
+ * @param {{active: boolean, activities?: Array<{id:string,line:string,category?:string}>, lifecycle?: string|null}} props
  */
-export function Thinking({ active, activity }) {
+export function Thinking({ active, activities = [], lifecycle = null }) {
     const { frame, time } = useAnimation({ interval: 80, isActive: active });
 
     if (!active) return null;
 
-    const glyph = SPINNER[frame % SPINNER.length];
+    const glyph = process.env.SHERMAN_MOTION === 'off' ? '●' : SPINNER[frame % SPINNER.length];
     const seconds = (time / 1000).toFixed(1);
 
     // A real in-flight tool sits above the persistent thinking tail. The tail
@@ -35,18 +35,25 @@ export function Thinking({ active, activity }) {
     return React.createElement(
         Box,
         { flexDirection: 'column', flexShrink: 0 },
-        activity && activity.length > 0
+        activities.length === 0 && lifecycle
             ? React.createElement(
                   Text,
                   { dimColor: true, italic: true, wrap: 'truncate' },
-                  `  ${activity}`
+                  `  ${lifecycle}`
               )
             : null,
+        ...activities.slice(-3).map((activity) =>
+            React.createElement(
+                Text,
+                { key: activity.id, color: color.tertiary, wrap: 'truncate' },
+                `  │ ${activity.line}`
+            )
+        ),
         React.createElement(
             Text,
             null,
             React.createElement(Text, { color: color.accent }, `  ${glyph} `),
-            React.createElement(Text, { dimColor: true, italic: true }, 'thinking…'),
+            React.createElement(Text, { color: color.muted }, 'working'),
             React.createElement(Text, { dimColor: true, italic: true }, `  ${seconds}s`)
         )
     );

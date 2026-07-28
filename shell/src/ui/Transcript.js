@@ -55,7 +55,7 @@ function Row({ label, labelColor, children, bold }) {
  * border — the same composed-line + borderTop:false construction the launch
  * panel's version header uses.
  */
-function ShermanBox({ text, width }) {
+function ShermanBox({ text, width, worker = false }) {
     const box = Math.max(1, width);
 
     // Ink's rounded border has an intrinsic four-column minimum. Below that,
@@ -65,7 +65,7 @@ function ShermanBox({ text, width }) {
     }
 
     // ' ●●● Sherman ' — measured in code points so the fill is exact.
-    const label = ' ●●● Sherman ';
+    const label = worker ? ' ◇ Worker 01 ' : ' ●●● Sherman ';
     const fill = Math.max(0, box - 3 - [...label].length);
 
     return React.createElement(
@@ -75,7 +75,11 @@ function ShermanBox({ text, width }) {
             Text,
             { wrap: 'truncate' },
             React.createElement(Text, { color: color.accent }, '╭─ '),
-            React.createElement(Text, { color: color.accent, bold: true }, '●●● Sherman '),
+            React.createElement(
+                Text,
+                { color: worker ? color.secondary : color.accent, bold: true },
+                worker ? '◇ Worker 01 ' : '●●● Sherman '
+            ),
             React.createElement(Text, { color: color.accent }, '─'.repeat(fill) + '╮')
         ),
         React.createElement(
@@ -124,8 +128,8 @@ function Item({ item, width }) {
         case 'selftalk':
             return React.createElement(
                 Text,
-                { dimColor: true, italic: true, wrap: 'truncate' },
-                `  ⋯ ${item.text}`
+                { color: color.secondary, wrap: 'truncate' },
+                `  │ ⋯ summary: ${item.text}`
             );
 
         // The committed activity trace. Dim italic, indented under the bullet,
@@ -135,12 +139,15 @@ function Item({ item, width }) {
         case 'tool':
             return React.createElement(
                 Text,
-                { dimColor: true, italic: true, wrap: 'truncate' },
-                `  ${item.text}`
+                { color: color.tertiary, wrap: 'truncate' },
+                `  │ ${item.text}`
             );
 
         case 'message':
             return React.createElement(ShermanBox, { text: item.text, width });
+
+        case 'worker-message':
+            return React.createElement(ShermanBox, { text: item.text, width, worker: true });
 
         case 'notice':
             return React.createElement(

@@ -41,8 +41,9 @@
  * @typedef {{kind:'reasoning', text:string}} ReasoningEvent
  * @typedef {{kind:'status', text:string}} StatusEvent
  * @typedef {{kind:'message', text:string}} MessageEvent
- * @typedef {{kind:'tool', id:string, phase:'started'|'completed', glyph:string,
- *            label:string, durationMs:number|null}} ToolEvent
+ * @typedef {{kind:'tool', id:string, phase:'started'|'updated'|'completed', glyph:string,
+ *            label:string, category:string, outcome:'running'|'succeeded'|'failed'|'declined'|'unknown',
+ *            durationMs:number|null}} ToolEvent
  * @typedef {{kind:'turn-end', usage:Usage|null}} TurnEndEvent
  * @typedef {{kind:'interrupted'}} InterruptedEvent
  * @typedef {{kind:'error', message:string}} ErrorEvent
@@ -77,12 +78,22 @@ export const ev = Object.freeze({
     reasoning: (text) => ({ kind: 'reasoning', text }),
     status: (text) => ({ kind: 'status', text }),
     message: (text) => ({ kind: 'message', text }),
-    tool: ({ id, phase, glyph = '›', label, durationMs = null }) => ({
+    tool: ({
+        id,
+        phase,
+        glyph = '›',
+        label,
+        category = 'tool',
+        outcome = phase === 'completed' ? 'unknown' : 'running',
+        durationMs = null,
+    }) => ({
         kind: 'tool',
         id,
         phase,
         glyph,
         label,
+        category,
+        outcome,
         durationMs,
     }),
     turnEnd: (usage) => ({ kind: 'turn-end', usage }),
@@ -127,10 +138,10 @@ export class EngineSession {
 
     /**
      * Run one user turn.
-     * @param {string} _text
+     * @param {string|{text:string, mode?:'normal'|'read-only'|'isolated-read-only', source?:string}} _request
      * @returns {AsyncIterable<EngineEvent>}
      */
-    async *send(_text) {
+    async *send(_request) {
         throw new Error('EngineSession.send not implemented');
     }
 

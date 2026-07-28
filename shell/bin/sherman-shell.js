@@ -207,7 +207,13 @@ async function startShell() {
     // refuses to run without a TTY; a TTY session always renders live. Piped
     // fixtures still resolve non-interactive (isTTY is undefined there).
     const { waitUntilExit } = render(
-        React.createElement(App, { session, sessionId: resolveSessionId() }),
+        React.createElement(App, {
+            session,
+            sessionId: resolveSessionId(),
+            // Every /subagent call gets a fresh engine thread with the exact
+            // same config, persona workspace, vault scope, and safety posture.
+            sessionFactory: () => selectBackend(config),
+        }),
         {
             exitOnCtrlC: false,
             alternateScreen: true,

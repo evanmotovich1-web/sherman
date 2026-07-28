@@ -235,12 +235,13 @@ function Small() {
  * means the wordmark and the panel below it can never disagree about how wide
  * the terminal is.
  *
- * @param {{columns?: number}} props
+ * @param {{columns?: number, compact?: boolean}} props
  */
-export function Wordmark({ columns }) {
+export function Wordmark({ columns, compact = false }) {
     const measured = useWindowSize().columns;
     const width = typeof columns === 'number' ? columns : measured;
 
+    if (compact) return React.createElement(Small);
     if (width >= RETRO_MIN_COLUMNS) return React.createElement(Retro);
     if (width >= STACK_MIN_COLUMNS) return React.createElement(Stack);
     return React.createElement(Small);

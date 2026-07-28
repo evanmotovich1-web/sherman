@@ -70,11 +70,18 @@ export function Banner() {
 }
 
 /** One line, always on screen. */
-export function CompactHeader() {
+export function CompactHeader({ goal = '' }) {
     return React.createElement(
         Text,
-        null,
+        { wrap: 'truncate' },
         React.createElement(Text, { color: color.accent, bold: true }, 'sherman'),
-        React.createElement(Text, { color: color.muted }, '  Sherman Abrams Labs')
+        React.createElement(Text, { color: color.muted }, '  Sherman Abrams Labs'),
+        goal
+            ? React.createElement(
+                  Text,
+                  { color: color.secondary },
+                  `  │ goal: ${goal}`
+              )
+            : null
     );
 }

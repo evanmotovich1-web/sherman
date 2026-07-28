@@ -16,7 +16,7 @@
 #  10. `sherman update` exits honestly in this repo's state.
 #  11. A scripted turn through a fake backend renders the turn structure:
 #      user bullet, signed Sherman box, and a trace line from a real event.
-#  12. A real codex reasoning payload renders as a dimmed italic self-talk line.
+#  12. A real codex reasoning payload renders as an explicit purple summary line.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -761,11 +761,10 @@ fi
 # model_reasoning_summary set -- and it is fed through CodexSession._mapLine, so
 # this exercises the whole chain rather than a hand-built event:
 #
-#   codex JSON -> ev.reasoning -> App commits 'selftalk' -> dim italic ⋯ line
+#   codex JSON -> ev.reasoning -> App commits 'selftalk' -> purple summary line
 #
-# FORCE_COLOR=3 because dim and italic are styles chalk strips when it sees a
-# pipe. Without it the escape assertions would pass on plain text and prove
-# nothing about the line being dimmed.
+# FORCE_COLOR=3 because chalk strips colour when it sees a pipe. Without it the
+# escape assertion would pass on plain text and prove nothing about hierarchy.
 #
 # It also pins the honest half of the probe: a turn that emits NO reasoning item
 # must produce no self-talk line. Rendering one anyway would be the invented
@@ -851,18 +850,18 @@ const poll = setInterval(() => {
         setTimeout(() => {
             const plain = captured.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 
-            if (!plain.includes('⋯ Planning alternative awk command')) {
-                problems.push('self-talk line rendered with the ⋯ marker');
+            if (!plain.includes('⋯ summary: Planning alternative awk command')) {
+                problems.push('reasoning item rendered as an explicit summary');
             }
             if (plain.includes('**Planning')) {
                 problems.push('Markdown asterisks kept out of the trace');
             }
-            // Dim (2) and italic (3), on the same styled run as the text.
+            // Purple 135, the summary role in the Sherman palette.
             const styled = captured
                 .split('\n')
                 .find((l) => l.includes('Planning alternative awk command'));
-            if (!styled || !/\x1b\[2m/.test(styled) || !/\x1b\[3m/.test(styled)) {
-                problems.push('self-talk line is dimmed and italic');
+            if (!styled || !styled.includes('38;5;135m')) {
+                problems.push('reasoning summary uses the purple summary role');
             }
 
             if (problems.length > 0) {
@@ -877,7 +876,7 @@ JS
 )
 
 echo
-echo "12. a reasoning item renders as a dimmed self-talk line"
+echo "12. a reasoning item renders as an explicit summary line"
 
 if ! command -v node >/dev/null 2>&1; then
     fail "node not found -- cannot drive the shell"
@@ -888,7 +887,7 @@ else
     st_status=$?
 
     if [ "$st_status" -eq 0 ]; then
-        pass "codex reasoning payload becomes a dim italic ⋯ self-talk line"
+        pass "codex reasoning payload becomes a purple ⋯ summary line"
     else
         fail "$(printf '%s' "$st_err" | head -3)"
     fi
