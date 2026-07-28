@@ -39,7 +39,18 @@ Type `/` to open the command palette. First-party commands:
 - `/subagent <task>` — run a fresh isolated read-only engine session with inherited
   host-side tools disabled and ephemeral session persistence. The worker
   sees only its task and the active goal, not the parent transcript.
+- `/compact [focus]` — spend one read-only turn writing a handoff summary, then
+  start a fresh engine thread carrying only that summary. The transcript keeps
+  every line; the engine's context does not. The summary travels with the next
+  request rather than as a turn of its own, and is spent exactly once.
 - `/help [command]` — show command behavior and limits.
+
+Compaction also runs on its own. When a turn reports 90% of the model's context
+window — the same measured number the status meter prints, never an estimate —
+the shell announces `context NN% · compacting automatically` and compacts. An
+unknown window shows no meter and never auto-compacts, and a summary that comes
+back empty or interrupted leaves the thread intact rather than resetting context
+that was never preserved.
 
 Up/down selects a command and Tab completes it. Start with `//` to send a
 literal slash-prefixed prompt.

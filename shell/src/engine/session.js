@@ -145,6 +145,22 @@ export class EngineSession {
         throw new Error('EngineSession.send not implemented');
     }
 
+    /**
+     * Drop conversation continuity so the next `send` opens a fresh thread,
+     * and report whether that happened.
+     *
+     * This is a capability, not a requirement: a backend with no notion of a
+     * thread answers `false` and the UI says so plainly instead of claiming a
+     * reduction it did not get. The default is that honest `false` rather than
+     * a throw, because a session that cannot start a new thread is a working
+     * session -- just one where /compact summarizes without shrinking anything.
+     *
+     * @returns {boolean}
+     */
+    startNewThread() {
+        return false;
+    }
+
     /** Abort the in-flight turn. The session must remain usable afterward. */
     interrupt() {
         throw new Error('EngineSession.interrupt not implemented');

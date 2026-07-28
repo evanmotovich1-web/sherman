@@ -21,6 +21,12 @@ export const COMMANDS = Object.freeze([
         detail: 'Starts a fresh engine session with the same Sherman identity and safety boundary. The worker sees only the explicit task and active goal.',
     },
     {
+        name: 'compact',
+        usage: '/compact [focus]',
+        summary: 'summarize the session and start a fresh engine thread',
+        detail: 'Runs one read-only turn that writes a handoff summary, then opens a new engine thread carrying only that summary. The transcript keeps every line; the engine does not. Runs automatically once a turn reports 90% of the context window.',
+    },
+    {
         name: 'help',
         usage: '/help [command]',
         summary: 'show commands and exact behavior',
@@ -102,6 +108,67 @@ export function planRequest(task, goal) {
         mode: 'isolated-read-only',
         source: 'plan',
     };
+}
+
+// Compaction fires on the same number the status meter prints: the latest
+// turn's reported input tokens over the model's known window. No estimate is
+// involved on either side, so the shell never compacts on a guess -- an unknown
+// window (no meter) simply never auto-compacts.
+export const AUTO_COMPACT_RATIO = 0.9;
+
+/** @returns {boolean} */
+export function shouldAutoCompact(used, window) {
+    if (!Number.isFinite(used) || used < 0) return false;
+    if (!Number.isFinite(window) || window <= 0) return false;
+    return used / window >= AUTO_COMPACT_RATIO;
+}
+
+/**
+ * The compaction turn. Read-only on purpose: summarizing a conversation is not
+ * a reason to hold write access to the vault, and the summary is the only thing
+ * this turn is allowed to produce.
+ */
+export function compactRequest(focus, goal) {
+    return {
+        text: [
+            'CONTEXT COMPACTION TURN',
+            'This session is being compacted. Write the handoff a fresh Sherman session needs to continue this work without having read the conversation.',
+            focus ? `Preserve in particular: ${focus}` : null,
+            goal ? `Standing session goal: ${goal}` : null,
+            '',
+            'Cover, in this order:',
+            '1. What the operator is trying to accomplish.',
+            '2. Decisions already made, and the reasons that outlive them.',
+            '3. Files, vault notes, and company facts established — with paths.',
+            '4. Work in progress, and the exact next step.',
+            '5. Open questions and anything still unverified.',
+            '',
+            'Be specific and cite paths rather than describing them. Do not restate the operating contract; the fresh session already has it. Never carry patient-identifying information into the summary — if any appeared, omit it and say that you did. Return the summary and nothing else.',
+        ].filter(Boolean).join('\n'),
+        mode: 'read-only',
+        source: 'compact',
+    };
+}
+
+/**
+ * Seeds the first turn after a compaction. The new thread has no history, so
+ * the summary must travel WITH the next request rather than being sent as a
+ * turn of its own -- an unanswered summary turn would just be context spent to
+ * say what the following turn was about to say anyway.
+ */
+export function carryOverEnvelope(summary, text) {
+    if (!summary) return text;
+    return [
+        'SHERMAN SESSION HANDOFF',
+        'This is a fresh engine thread. The earlier conversation is gone; what follows is everything that carried over.',
+        '',
+        summary,
+        '',
+        'END HANDOFF',
+        '',
+        'USER REQUEST',
+        text,
+    ].join('\n');
 }
 
 export function workerRequest(task, goal) {

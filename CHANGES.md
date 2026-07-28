@@ -12,6 +12,12 @@ shipped, verified release.
   height-dependent panel stretching.
 - Preserved alternate-screen viewport history while reducing persistent chrome
   to one truthful status rule and one borderless composer row.
+- Added `/compact`, plus automatic compaction at 90% of the model's context
+  window. Compaction is a read-only summarization turn followed by a new engine
+  thread; the summary rides the next request as a handoff and is spent once. The
+  thread reset is an `EngineSession.startNewThread()` capability that defaults to
+  a truthful `false`, so a backend that cannot reset says so instead of claiming
+  a reduction it did not get.
 - Added first-party `/help`, `/goal`, `/plan`, and `/subagent`; read-only plan and
   worker turns are fresh, ephemeral, transcript-independent, and explicitly
   disable inherited MCP servers and host tools.

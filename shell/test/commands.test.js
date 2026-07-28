@@ -29,7 +29,7 @@ test('parses commands, multiline args, and literal slash escape', () => {
 test('registry drives suggestions and help', () => {
     assert.equal(commandFor('subagent')?.usage, '/subagent <task>');
     assert.deepEqual(suggestionsFor('/p').map((c) => c.name), ['plan']);
-    assert.deepEqual(suggestionsFor('/').map((c) => c.name), ['goal', 'plan', 'subagent', 'help']);
+    assert.deepEqual(suggestionsFor('/').map((c) => c.name), ['goal', 'plan', 'subagent', 'compact', 'help']);
     assert.equal(suggestionsFor('//plan').length, 0);
     assert.match(helpText(), /\/goal/);
     assert.match(helpText('plan'), /read-only sandbox/);

@@ -19,11 +19,14 @@ import { addUsage, emptyUsage } from '../engine/session.js';
 import { readVaultStats } from '../vault.js';
 import { createSessionLog } from '../sessionlog.js';
 import {
+    carryOverEnvelope,
     commandFor,
+    compactRequest,
     goalEnvelope,
     helpText,
     parseSubmission,
     planRequest,
+    shouldAutoCompact,
     workerRequest,
 } from '../commands.js';
 
@@ -205,6 +208,16 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
     const activeSessionRef = useRef(session);
     const workerUsageRef = useRef(emptyUsage());
 
+    // What survived the last compaction, waiting for a turn to ride along with.
+    // It is spent on the first request after the reset and then forgotten --
+    // once the new thread has heard the handoff, resending it would be paying
+    // for the same context twice.
+    const [carryOver, setCarryOver] = useState('');
+    // Re-entrancy guard. Auto-compaction is triggered by the end of a turn, and
+    // compaction is itself a turn; without this a slow-summarizing session
+    // could stack a second compaction on top of the first.
+    const compactingRef = useRef(false);
+
     const commit = useCallback((kind, text) => {
         setItems((prev) => [...prev, { id: nextId(), kind, text }]);
     }, []);
@@ -213,6 +226,80 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
         busyRef.current = value;
         setBusy(value);
     }, []);
+
+    /**
+     * Summarize the session, then reset the engine thread.
+     *
+     * Deliberately NOT routed through `submit`: this is not a user turn. It
+     * commits no user row, it must not be re-entered by the auto-trigger, and
+     * its summary is the payload for the next request rather than an answer to
+     * this one. Sharing submit's body to save a dozen lines would mean teaching
+     * submit four exceptions to what a turn is.
+     */
+    const compactSession = useCallback(
+        async (focus = '') => {
+            if (compactingRef.current) return;
+            compactingRef.current = true;
+
+            setBusyBoth(true);
+            setActivities([]);
+            setLifecycle(null);
+            activeSessionRef.current = session;
+            turnStartRef.current = Date.now();
+
+            let summary = '';
+            let failed = false;
+            try {
+                for await (const event of session.send(compactRequest(focus, goal))) {
+                    if (event.kind === 'message') {
+                        summary = summary ? `${summary}\n\n${event.text}` : event.text;
+                    } else if (event.kind === 'status') {
+                        setLifecycle(event.text);
+                    } else if (event.kind === 'error') {
+                        commit('error', event.message);
+                        failed = true;
+                    } else if (event.kind === 'interrupted') {
+                        commit('notice', 'compaction interrupted');
+                        failed = true;
+                    }
+                }
+            } catch (err) {
+                commit('error', err?.message ?? String(err));
+                failed = true;
+            } finally {
+                setBusyBoth(false);
+                setActivities([]);
+                setLifecycle(null);
+                setLastTurnMs(Date.now() - turnStartRef.current);
+                compactingRef.current = false;
+            }
+
+            // An empty or failed summary leaves the thread ALONE. Resetting
+            // context we failed to preserve would turn a bad turn into lost work.
+            if (failed || !summary.trim()) {
+                if (!failed) commit('error', 'Compaction produced no summary.');
+                commit('notice', 'not compacted · the engine thread was left intact');
+                return;
+            }
+
+            commit('message', summary);
+            log.append('sherman', summary);
+
+            const fresh = session.startNewThread?.() === true;
+            if (fresh) {
+                setCarryOver(summary);
+                // Nothing has been sent on the new thread yet, so there is no
+                // honest number to print. The meter comes back with the next
+                // turn's real reported input rather than a projection of it.
+                setContextUsed(null);
+                setInfo(session.info);
+                commit('notice', 'compacted · new engine thread · the summary above is what carried over');
+            } else {
+                commit('notice', 'summarized · this engine cannot start a new thread, so context was not reduced');
+            }
+        },
+        [commit, goal, log, session, setBusyBoth]
+    );
 
     const submit = useCallback(
         async (text) => {
@@ -247,6 +334,11 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                     }
                     return;
                 }
+                if (command.name === 'compact') {
+                    commit('notice', 'compacting · summarizing this session');
+                    await compactSession(parsed.args);
+                    return;
+                }
             }
 
             let engine = session;
@@ -279,6 +371,16 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                 commit('notice', 'worker 01 · isolated · read-only');
             }
 
+            // The handoff rides the first request the reset thread receives,
+            // whatever kind it is. A worker never gets it: it is a fresh
+            // isolated session that was never party to the compacted thread.
+            if (!isWorker && carryOver) {
+                request = typeof request === 'string'
+                    ? carryOverEnvelope(carryOver, request)
+                    : { ...request, text: carryOverEnvelope(carryOver, request.text) };
+                setCarryOver('');
+            }
+
             // Set busy BEFORE awaiting anything, so the indicator mounts on the
             // next render rather than waiting for the engine's first event. The
             // dead time at the start of a turn is exactly what it exists to cover.
@@ -287,6 +389,11 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
             setLifecycle(null);
             activeSessionRef.current = engine;
             turnStartRef.current = Date.now();
+
+            // Decided inside the loop, acted on after it: compaction is another
+            // turn, and starting one while this turn's stream is still open
+            // would interleave two conversations on the same session.
+            let autoCompactPercent = null;
 
             try {
                 for await (const event of engine.send(request)) {
@@ -338,10 +445,16 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                             }
                             setUsage(addUsage(session.usage, workerUsageRef.current));
                             if (!isWorker) {
-                                setContextUsed(
-                                    Number.isFinite(event.usage?.input) ? event.usage.input : null
-                                );
+                                const used = Number.isFinite(event.usage?.input)
+                                    ? event.usage.input
+                                    : null;
+                                setContextUsed(used);
                                 setInfo(session.info);
+
+                                const window = session.info.contextWindow;
+                                if (shouldAutoCompact(used, window)) {
+                                    autoCompactPercent = Math.round((used / window) * 100);
+                                }
                             }
                             break;
 
@@ -373,8 +486,13 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                 // value for "last".
                 setLastTurnMs(Date.now() - turnStartRef.current);
             }
+
+            if (autoCompactPercent !== null) {
+                commit('notice', `context ${autoCompactPercent}% · compacting automatically`);
+                await compactSession('');
+            }
         },
-        [commit, goal, session, sessionFactory, setBusyBoth, log]
+        [carryOver, commit, compactSession, goal, session, sessionFactory, setBusyBoth, log]
     );
 
     // Two-stage Ctrl+C, proven in a pty at plan time. Ink is started with

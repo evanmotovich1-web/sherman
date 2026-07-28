@@ -160,6 +160,20 @@ export class CodexSession extends EngineSession {
     }
 
     /**
+     * Forget the thread id. `_argsFor` reads that field to decide between
+     * `exec` and `exec resume`, so clearing it is the whole of starting over:
+     * the next turn opens a new codex thread with an empty context.
+     *
+     * The old thread's session file is left on disk untouched. It is the record
+     * of what was said, and compaction is a context decision, not a reason to
+     * destroy history the operator may want to resume by hand.
+     */
+    startNewThread() {
+        this._threadId = null;
+        return true;
+    }
+
+    /**
      * The permissions posture — §3c's safety boundary and §4's data boundary,
      * enforced at the engine.
      *
