@@ -44,7 +44,9 @@ executable, runs `npm install` for the shell's dependencies, and symlinks
 `/usr/local/bin`. That is all it installs — see prerequisites for what it
 expects you to bring.
 
-**Windows:** Sherman has never been run on Windows.
+**Windows:** Sherman has never been run on Windows. There is no native
+installer; the one route worth trying is WSL2, documented honestly in
+[docs/WINDOWS.md](docs/WINDOWS.md) — whoever tries it first is the first test.
 **Linux:** untested there too — macOS is the only platform Sherman has run on.
 
 ### Prerequisites (install.sh does not provide these)

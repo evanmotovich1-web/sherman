@@ -1492,6 +1492,17 @@ else
         fail "README never mentions ./install.sh"
     fi
 
+    # If the README routes Windows users anywhere, the destination must exist
+    # and must itself admit it is untested -- a dead link or a confident doc
+    # would each be a claim without a check.
+    if grep -q 'docs/WINDOWS\.md' README.md; then
+        if [ -f docs/WINDOWS.md ] && grep -qi 'untested' docs/WINDOWS.md; then
+            pass "the Windows route exists and says it is untested"
+        else
+            fail "README points at docs/WINDOWS.md but it is missing or does not admit it is untested"
+        fi
+    fi
+
     # Unbuilt integrations may appear ONLY at or below the marked roadmap
     # heading. Anywhere above it, they read as a feature menu of dead options.
     roadmap_line=$(grep -n '^## Not built yet' README.md | head -1 | cut -d: -f1)

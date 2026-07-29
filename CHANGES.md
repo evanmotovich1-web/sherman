@@ -3,6 +3,18 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-07-29 — Added: a Windows install route, stated as untested
+
+- `docs/WINDOWS.md` documents the WSL2 route end to end — Node 22 via nvm,
+  the Codex CLI and its own sign-in, clone + `./install.sh` — and states
+  plainly what is unproven there: the vault write-boundary escape test has
+  only ever run on macOS, smoke has never executed on Linux, and the UI has
+  never rendered in Windows Terminal. No native installer exists, and the
+  doc says why instead of omitting it.
+- The README's Windows sentence now routes to that doc; smoke check 19
+  additionally fails if the README points at a Windows route that is missing
+  or does not admit it is untested.
+
 ## 2026-07-29 — Changed: install.sh claims only what it verified
 
 - Every success line now follows a check, not an attempt: "executable" after
