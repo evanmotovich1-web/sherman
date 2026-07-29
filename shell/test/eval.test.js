@@ -192,3 +192,111 @@ test('a manual /eval satisfies the exit eval', async () => {
         rmSync(h.home, { recursive: true, force: true });
     }
 });
+
+// -------------------------------------------------------- checkpoint loop --
+//
+// The background eval must be a judge, not an interruption: it runs on an
+// isolated worker session, only when turns happened since the last grading,
+// and never for a session that has done nothing. The interval is injectable
+// (evalEveryMs) so these tests measure behavior, not ten minutes.
+
+function checkpointHarness() {
+    const h = harness();
+    const workerRequests = [];
+    const workers = [];
+    h.workerRequests = workerRequests;
+    h.workers = workers;
+    h.sessionFactory = () => {
+        let disposed = 0;
+        const worker = {
+            info: { ...h.session.info, model: 'worker-model' },
+            usage: zeroUsage(),
+            async *send(request) {
+                workerRequests.push(request);
+                yield { kind: 'turn-start' };
+                yield { kind: 'message', text: 'CHECKPOINT VERDICT: on track.' };
+                yield { kind: 'turn-end', usage: zeroUsage() };
+            },
+            interrupt() {},
+            dispose() { disposed += 1; },
+            disposed: () => disposed,
+        };
+        workers.push(worker);
+        return worker;
+    };
+    return h;
+}
+
+test('the checkpoint eval grades new turns on a worker, once, in the background', async () => {
+    const h = checkpointHarness();
+    const oldHome = process.env.HOME;
+    process.env.HOME = h.home;
+
+    const instance = render(
+        React.createElement(App, {
+            session: h.session, sessionId: '20260729_040000_ckpt01',
+            sessionFactory: h.sessionFactory, evalEveryMs: 120,
+        }),
+        { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        h.stdin.write('real work');
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        h.stdin.write('\r');
+        await until(() => h.requests.length === 1);
+
+        // Two full intervals with no further turns: exactly one checkpoint —
+        // an idle session is never re-graded.
+        await until(() => h.workerRequests.length === 1);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        assert.equal(h.workerRequests.length, 1, 'an idle session was re-graded');
+
+        // The judge is a worker with the eval request, and the main thread
+        // spent nothing on it.
+        assert.equal(h.workerRequests[0].source, 'eval');
+        assert.equal(h.workerRequests[0].mode, 'read-only');
+        assert.equal(h.requests.length, 1, 'the checkpoint ran on the main session');
+        assert.equal(h.workers.length, 1);
+        assert.equal(h.workers[0].disposed(), 1, 'the checkpoint worker was not disposed');
+
+        // A new turn re-arms the loop.
+        h.stdin.write('more work');
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        h.stdin.write('\r');
+        await until(() => h.requests.length === 2);
+        await until(() => h.workerRequests.length === 2);
+
+        instance.unmount();
+        assert.match(h.captured(), /checkpoint eval · background/);
+        assert.match(h.captured(), /CHECKPOINT VERDICT/);
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(h.home, { recursive: true, force: true });
+    }
+});
+
+test('an untouched session is never checkpoint-graded', async () => {
+    const h = checkpointHarness();
+    const oldHome = process.env.HOME;
+    process.env.HOME = h.home;
+
+    const instance = render(
+        React.createElement(App, {
+            session: h.session, sessionId: '20260729_050000_ckpt02',
+            sessionFactory: h.sessionFactory, evalEveryMs: 60,
+        }),
+        { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        assert.equal(h.workerRequests.length, 0, 'a session with no turns was graded');
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(h.home, { recursive: true, force: true });
+    }
+});

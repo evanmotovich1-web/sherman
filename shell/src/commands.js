@@ -30,7 +30,7 @@ export const COMMANDS = Object.freeze([
         name: 'eval',
         usage: '/eval [gaps|conduct]',
         summary: 'grade this session against the skills, and propose missing ones',
-        detail: 'Runs one read-only turn that reads this session\'s log and reports where skills and the vault were used or missed, whether durable knowledge was written, and what capability was missing. It judges and proposes; it never writes. Runs automatically when a session with turns in it ends.',
+        detail: 'Runs one read-only turn that reads this session\'s log and reports where skills and the vault were used or missed, whether durable knowledge was written, and what capability was missing. It judges and proposes; it never writes. Runs automatically when a session with turns in it ends, and as a background checkpoint every 10 minutes while a session with new turns is live.',
     },
     {
         name: 'copy',

@@ -58,6 +58,15 @@ unknown window shows no meter and never auto-compacts, and a summary that comes
 back empty or interrupted leaves the thread intact rather than resetting context
 that was never preserved.
 
+The eval loop also runs on its own. Every 10 minutes, a session with new turns
+since the last grading is judged by an isolated read-only worker — a fresh
+engine session reading the session log, the same evidence the exit eval uses —
+so drift is reported while there is still session left to correct it in. It
+runs outside the turn machinery: the composer stays live, one judge runs at a
+time, a tick that lands mid-turn skips rather than interleaving output, and an
+idle session is never re-graded. The verdict commits to the transcript and the
+log as a worker message.
+
 Up/down selects a command and Tab completes it. Start with `//` to send a
 literal slash-prefixed prompt.
 

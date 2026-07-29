@@ -108,7 +108,7 @@ function formatTool(event, includeDuration) {
 }
 
 /**
- * @param {{session: import('../engine/session.js').EngineSession, sessionId: string, sessionFactory?: (() => import('../engine/session.js').EngineSession), rows?: number}} props
+ * @param {{session: import('../engine/session.js').EngineSession, sessionId: string, sessionFactory?: (() => import('../engine/session.js').EngineSession), rows?: number, evalEveryMs?: number}} props
  */
 /**
  * `clipboard` is injectable for one concrete reason: the real implementation
@@ -122,6 +122,9 @@ export function App({
     sessionFactory = null,
     rows: rowsOverride,
     clipboard = copyText,
+    // How often the background checkpoint eval considers running. Injectable
+    // so tests do not wait ten real minutes; the product value is the default.
+    evalEveryMs = 10 * 60_000,
 }) {
     const { exit } = useApp();
 
@@ -177,6 +180,13 @@ export function App({
     // opening the shell.
     const turnsRef = useRef(0);
     const evalRanRef = useRef(false);
+    // The turn count the last eval of any kind graded up to. The background
+    // checkpoint only runs when turns have happened since, so an idle session
+    // is never re-graded and a manual /eval resets the clock's debt to zero.
+    const lastEvalTurnRef = useRef(0);
+    // The in-flight background judge, if any: one at a time, and disposed on
+    // unmount so quitting the shell never orphans a worker process.
+    const bgEvalWorkerRef = useRef(null);
 
     const [busy, setBusy] = useState(false);
     const [activities, setActivities] = useState([]);
@@ -536,6 +546,7 @@ export function App({
                     return;
                 }
                 evalRanRef.current = true;
+                lastEvalTurnRef.current = turnsRef.current;
                 commit('notice', 'evaluating this session · read-only · judging conduct, not answers');
             }
 
@@ -748,6 +759,70 @@ export function App({
         [carryOver, clearLingerTimers, commit, compactSession, exit, goal, session, sessionFactory, setBusyBoth, log]
     );
     submitRef.current = submit;
+
+    // The background checkpoint eval: every `evalEveryMs`, a session with new
+    // turns since the last grading is judged by an isolated read-only worker
+    // reading the session LOG — the same evidence the exit eval uses — so the
+    // operator sees drift while there is still session left to correct it in.
+    //
+    // It runs OUTSIDE the submit machinery on purpose. submit() owns the busy
+    // state, the composer, and the activity chrome; a checkpoint that seized
+    // those would be a modal interruption, not a background judge. The worker
+    // is a fresh engine session (never the main thread — grading must not
+    // spend the conversation's own context), one runs at a time, and a tick
+    // that lands mid-turn skips rather than interleaving its report with the
+    // turn's output. Its tokens land in the worker usage total, and its
+    // verdict commits to the transcript and the log like any worker's.
+    useEffect(() => {
+        if (!sessionFactory || !Number.isFinite(evalEveryMs) || evalEveryMs <= 0) return undefined;
+
+        const tick = async () => {
+            if (bgEvalWorkerRef.current !== null) return;
+            if (busyRef.current) return;
+            if (log.failed) return;
+            if (turnsRef.current === 0 || turnsRef.current <= lastEvalTurnRef.current) return;
+
+            const request = evalRequest(log.path);
+            if (!request) return;
+
+            // Marked before the turn runs, same as every other eval path: an
+            // interrupted checkpoint must not re-run immediately and double up.
+            evalRanRef.current = true;
+            lastEvalTurnRef.current = turnsRef.current;
+
+            const worker = sessionFactory();
+            bgEvalWorkerRef.current = worker;
+            commit('notice', 'checkpoint eval · background · read-only worker grading the session so far');
+            try {
+                let verdict = '';
+                for await (const event of worker.send(request)) {
+                    if (event.kind === 'message') verdict = event.text;
+                    if (event.kind === 'error') {
+                        commit('error', `checkpoint eval failed: ${event.message}`);
+                        return;
+                    }
+                }
+                if (verdict) {
+                    commit('worker-message', verdict);
+                    log.append('worker', verdict);
+                }
+            } catch (err) {
+                commit('error', `checkpoint eval failed: ${err?.message ?? String(err)}`);
+            } finally {
+                workerUsageRef.current = addUsage(workerUsageRef.current, worker.usage ?? emptyUsage());
+                setUsage(addUsage(session.usage, workerUsageRef.current));
+                worker.dispose();
+                bgEvalWorkerRef.current = null;
+            }
+        };
+
+        const timer = setInterval(tick, evalEveryMs);
+        return () => {
+            clearInterval(timer);
+            bgEvalWorkerRef.current?.dispose();
+            bgEvalWorkerRef.current = null;
+        };
+    }, [commit, evalEveryMs, log, session, sessionFactory]);
 
     // Two-stage Ctrl+C, proven in a pty at plan time. Ink is started with
     // exitOnCtrlC:false so this handler is what decides.
