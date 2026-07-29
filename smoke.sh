@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — twenty checks, no framework.
+# smoke.sh — twenty-one checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -27,6 +27,9 @@
 #      names unbuilt channels only under its marked roadmap heading.
 #  20. The wizard lists an unavailable provider visibly, refuses its selection
 #      with the reason, and completes on the available one.
+#  21. install.sh claims only what it verified: an npm that exits 0 while
+#      producing nothing is never reported as installed, the linked line
+#      matches readlink, and a missing npm degrades to the NOTE.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -45,7 +48,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
-TOTAL_CHECKS=20
+TOTAL_CHECKS=21
 SMOKE_USER="smoke-tester"
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
@@ -1533,6 +1536,65 @@ else
     [ "$wiz_engine" = "codex" ] \
         && pass "run completed on the available provider (engine=codex)" \
         || fail "engine after refusal+retry is '$wiz_engine', expected 'codex'"
+fi
+
+# ----------------------------------------------------------------- check 21 --
+echo
+echo "21. installer claims follow checks, not attempts"
+
+# A fake repo in the sandbox, so neither the real HOME nor the real
+# node_modules is ever touched. Its npm stub exits 0 while producing nothing
+# -- the exact case where an attempt-based "installed" line would lie.
+IHOME="$TMPHOME/install-home"
+FAKEROOT="$TMPHOME/fake-repo"
+NPMSTUB="$TMPHOME/npm-stub"
+mkdir -p "$IHOME" "$FAKEROOT/bin" "$FAKEROOT/shell" "$NPMSTUB"
+cp install.sh "$FAKEROOT/install.sh"
+printf '#!/bin/sh\nexit 0\n' > "$FAKEROOT/bin/sherman"
+printf '{}\n' > "$FAKEROOT/shell/package.json"
+printf '#!/bin/sh\nexit 0\n' > "$NPMSTUB/npm"
+chmod +x "$NPMSTUB/npm"
+
+lying_out=$(env HOME="$IHOME" PATH="$NPMSTUB:/usr/bin:/bin" \
+    bash "$FAKEROOT/install.sh" 2>&1)
+lying_status=$?
+
+if [ "$lying_status" -ne 0 ]; then
+    fail "install.sh exited $lying_status in the fake repo: $(printf '%s' "$lying_out" | tail -2)"
+else
+    printf '%s' "$lying_out" | grep -q "dependencies installed" \
+        && fail "claimed 'dependencies installed' though npm produced nothing" \
+        || pass "npm exit 0 with no artifacts is not claimed as installed"
+
+    printf '%s' "$lying_out" | grep -q "did not produce" \
+        && pass "the empty install is reported as what it is" \
+        || fail "no honest NOTE about npm producing nothing"
+
+    # The "linked" line is a claim; verify the state it claims. The sandbox
+    # HOME has no ~/.local, so the installer's candidate list lands on ~/bin.
+    # install.sh resolves its root with `cd -P` (mktemp's /var is a symlink to
+    # /private/var on macOS), so compare against the same physical path.
+    FAKEROOT_P=$(cd -P "$FAKEROOT" && pwd)
+    if printf '%s' "$lying_out" | grep -q "linked "; then
+        [ "$(readlink "$IHOME/bin/sherman" 2>/dev/null)" = "$FAKEROOT_P/bin/sherman" ] \
+            && pass "the linked claim matches readlink" \
+            || fail "claimed a link that readlink does not confirm"
+    else
+        fail "installer printed no linked line: $(printf '%s' "$lying_out" | tail -3)"
+    fi
+fi
+
+# No npm at all: the graceful path must survive and must not claim installs.
+nonpm_out=$(env HOME="$IHOME" PATH="/usr/bin:/bin" bash "$FAKEROOT/install.sh" 2>&1)
+nonpm_status=$?
+
+if [ "$nonpm_status" -ne 0 ]; then
+    fail "install.sh exited $nonpm_status with npm missing"
+elif printf '%s' "$nonpm_out" | grep -q "npm not found" \
+    && ! printf '%s' "$nonpm_out" | grep -q "dependencies installed"; then
+    pass "missing npm degrades to the NOTE, with no installed claim"
+else
+    fail "npm-missing run made a claim it could not verify"
 fi
 
 # -------------------------------------------------------------------- result --

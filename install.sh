@@ -16,10 +16,19 @@ echo "Installing Sherman Abrams"
 echo
 
 # ------------------------------------------------------------ make runnable --
+# Every success line in this script follows a CHECK, never an attempt: claim
+# only what was verified, the same honesty rule the shell lives under.
 chmod +x "$ROOT/bin/sherman"
 [ -f "$ROOT/smoke.sh" ] && chmod +x "$ROOT/smoke.sh"
 [ -f "$ROOT/shell/bin/sherman-shell.js" ] && chmod +x "$ROOT/shell/bin/sherman-shell.js"
-echo "  bin/sherman is executable"
+if [ -x "$ROOT/bin/sherman" ]; then
+    echo "  bin/sherman is executable"
+else
+    echo >&2
+    echo "bin/sherman is still not executable after chmod +x." >&2
+    echo "Check the filesystem (mount options, permissions) and re-run." >&2
+    exit 1
+fi
 
 # --------------------------------------------------------- shell dependencies --
 # The Sherman Shell is a Node app (Ink). `npm install` is idempotent, so this
@@ -31,10 +40,15 @@ echo "  bin/sherman is executable"
 if [ -f "$ROOT/shell/package.json" ]; then
     if command -v npm >/dev/null 2>&1; then
         echo "  installing shell dependencies (npm install)"
-        if (cd "$ROOT/shell" && npm install --silent >/dev/null 2>&1); then
-            echo "  shell dependencies installed"
+        # "installed" is claimed only if the artifacts the shell actually
+        # imports exist afterward -- npm exiting 0 is an attempt's report,
+        # not a verification.
+        if (cd "$ROOT/shell" && npm install --silent >/dev/null 2>&1) \
+            && [ -d "$ROOT/shell/node_modules/ink" ] \
+            && [ -d "$ROOT/shell/node_modules/react" ]; then
+            echo "  shell dependencies installed (node_modules/ink and react verified)"
         else
-            echo "  NOTE: npm install failed. The shell will not start."
+            echo "  NOTE: npm install did not produce the shell's dependencies."
             echo "        Run it by hand:  cd $ROOT/shell && npm install"
             echo "        Until then:      sherman --raw"
         fi
@@ -84,7 +98,46 @@ fi
 # -n stops ln nesting a new link *inside* an existing symlinked directory.
 ln -sfn "$ROOT/bin/sherman" "$TARGET_DIR/sherman"
 
-echo "  linked $TARGET_DIR/sherman -> $ROOT/bin/sherman"
+# Claim the link only after reading it back. readlink without -f -- macOS
+# system bash 3.2 land has no readlink -f, and the first hop is what ln wrote.
+if [ "$(readlink "$TARGET_DIR/sherman" 2>/dev/null)" = "$ROOT/bin/sherman" ]; then
+    echo "  linked $TARGET_DIR/sherman -> $ROOT/bin/sherman"
+else
+    echo >&2
+    echo "The symlink at $TARGET_DIR/sherman does not point at $ROOT/bin/sherman." >&2
+    echo "Something else owns that path. Remove it and re-run ./install.sh" >&2
+    exit 1
+fi
+echo
+
+# --------------------------------------------------- what you still need --
+# Reported, never installed: install.sh does not provide Node or the engine
+# CLI, and saying nothing would read as "handled".
+if command -v node >/dev/null 2>&1; then
+    node_version=$(node --version 2>/dev/null)
+    node_major=$(printf '%s' "$node_version" | sed 's/^v//' | cut -d. -f1)
+    case "$node_major" in
+        ''|*[!0-9]*)
+            echo "  NOTE: could not read a Node version from '$node_version'. The shell needs Node 22+." ;;
+        *)
+            if [ "$node_major" -ge 22 ]; then
+                echo "  node $node_version found (shell needs 22+: ok)"
+            else
+                echo "  NOTE: node $node_version is too old -- the shell needs Node 22+."
+                echo "        Until you upgrade: sherman --raw"
+            fi ;;
+    esac
+else
+    echo "  NOTE: node not found. The Sherman Shell needs Node 22+."
+    echo "        Until then: sherman --raw"
+fi
+
+if command -v codex >/dev/null 2>&1; then
+    echo "  codex CLI found (sign-in stays codex's own)"
+else
+    echo "  NOTE: codex CLI not found -- Sherman runs on Codex today."
+    echo "        Install it:  npm install -g @openai/codex"
+fi
 echo
 
 # ----------------------------------------------------------- report on PATH --

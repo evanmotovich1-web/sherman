@@ -3,6 +3,20 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-07-29 — Changed: install.sh claims only what it verified
+
+- Every success line now follows a check, not an attempt: "executable" after
+  `[ -x ]`, "dependencies installed" only after `node_modules/ink` and
+  `node_modules/react` exist (npm exiting 0 is an attempt's report), and the
+  "linked" line only after `readlink` confirms the symlink points at the
+  launcher. The npm-missing graceful path is unchanged.
+- A truthful still-needed report closes the run: Node found/too-old/missing
+  and codex CLI found/missing — reported, never installed, because install.sh
+  does not provide either.
+- Smoke check 21 drives install.sh in a sandboxed fake repo with an npm stub
+  that exits 0 while producing nothing, and fails the suite if any claim
+  outruns its verification.
+
 ## 2026-07-29 — Changed: the wizard renders from a provider registry
 
 - The first-run provider menu now renders from a registry in `bin/sherman`
