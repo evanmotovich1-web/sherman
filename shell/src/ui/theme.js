@@ -106,8 +106,28 @@ export const ramp = {
  * sitting behind the letterforms rather than as a fourth band.
  */
 export const retro = {
-    bands: [c(205), c(205), c(135), c(135), c(39), c(39)],
+    // Was three flat bands, two rows each (205/205, 135/135, 39/39). A flat
+    // pair reads as printed ink; a six-step ramp reads as light falling across
+    // the letterforms from above — the same move ramp.body already makes for
+    // the stacked wordmark, compressed into the lockup's six rows. Top row is
+    // the lit pink the brand already owns (212), and the descent stays strictly
+    // inside the pink→purple→blue family: brighter, not a new palette.
+    // Row 5 is the echo row — all box-drawing, no solid cells — so the last
+    // band a viewer actually sees is row 4. Blue sits there, not on row 5,
+    // or the brand's third colour would never reach the screen.
+    bands: [c(212), c(205), c(171), c(135), c(39), c(39)],
     echo: c(61),
+    // The lit rim above the lockup and the ground shadow beneath it — the same
+    // two-tone depth treatment Stack() has always used (ramp.lit over the
+    // letters, a dim ink under them), extended to the one-line lockup. The
+    // shadow is the echo's own indigo so the ground the letters sit on and the
+    // outline they cast read as one material.
+    rim: c(212),
+    shadow: c(61),
+    // Specular glints in the rim row. White, deliberately: a glint is a point
+    // where the light source itself reflects, which is hotter than any surface
+    // colour — and one step past the 212 rim is exactly white.
+    spark: 'white',
 };
 
 /**

@@ -13,6 +13,7 @@ import { LaunchScreen, markScaleFor } from '../src/ui/LaunchScreen.js';
 import { markSize } from '../src/ui/Mark.js';
 import { StatusBar } from '../src/ui/StatusBar.js';
 import { Transcript } from '../src/ui/Transcript.js';
+import { Wordmark } from '../src/ui/Wordmark.js';
 import { safeTerminalText } from '../src/ui/sanitize.js';
 import { shimmerSegments, startLoadIn } from '../src/ui/loadin.js';
 import { SPINNER } from '../src/ui/theme.js';
@@ -119,9 +120,13 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         }
     }
 
-    const at40 = plain(renderToString(
+    // 41, not 40: the rim and ground shadow made the wordmark two rows taller,
+    // and at 40 rows the list budget now (honestly) caps a category row, so 40
+    // and 43 are no longer the same frame. Hug-invariance is asserted between
+    // two heights where no cap applies.
+    const at41 = plain(renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 40,
+            info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 41,
         }),
         { columns: 120 }
     ));
@@ -137,17 +142,17 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         }),
         { columns: 120 }
     ));
-    // Below the tall threshold the panel still hugs its content, unchanged: 40
+    // Below the tall threshold the panel still hugs its content, unchanged: 41
     // and 43 rows must render the identical frame.
-    assert.equal(at43, at40, 'below the tall threshold the launch panel must still hug content');
+    assert.equal(at43, at41, 'below the tall threshold the launch panel must still hug content');
     // At and above it the panel claims a share of the height, so a 60-row
     // terminal gets a visibly taller frame than a 40-row one — and still leaves
     // room for the status rule and composer.
-    const rowsAt40 = at40.split('\n').length;
+    const rowsAt41 = at41.split('\n').length;
     const rowsAt60 = at60.split('\n').length;
     assert.ok(
-        rowsAt60 >= rowsAt40 + 6,
-        `tall terminals must stretch the launch panel (40 rows -> ${rowsAt40}, 60 -> ${rowsAt60})`
+        rowsAt60 >= rowsAt41 + 6,
+        `tall terminals must stretch the launch panel (41 rows -> ${rowsAt41}, 60 -> ${rowsAt60})`
     );
     assert.ok(rowsAt60 <= 58, 'a stretched launch panel must not crowd out status and composer');
 
@@ -958,4 +963,32 @@ test('tool and skill names are brighter than the category labels that group them
     } finally {
         chalk.level = 0;
     }
+});
+
+// The retro lockup's depth construction: a lit rim above, a ground shadow
+// below, and glints that are CHOSEN, not random. Determinism is the load-
+// bearing property — a Math.random glint would render two different launch
+// frames for one session, flake every frame assertion in this file, and make
+// "what I saw" unreproducible.
+test('the retro lockup carries a rim, a ground shadow, and deterministic glints', () => {
+    const renderMark = () => plain(renderToString(
+        React.createElement(Wordmark, { columns: 120 }),
+        { columns: 120 }
+    ));
+
+    const rows = renderMark().split('\n');
+    assert.equal(rows.length, 8, 'the lockup is rim + six glyph rows + shadow');
+
+    // The rim sits above the letters, over their lit columns, and carries the
+    // glints. Exactly three: three is the design, not "up to three" — each aim
+    // point snaps to the nearest lit cell rather than vanishing into a gap.
+    assert.match(rows[0], /▄/, 'the rim row lost its lit edge');
+    assert.equal((rows[0].match(/✦/g) ?? []).length, 3, 'the rim must carry exactly three glints');
+    assert.doesNotMatch(rows[0], /█/, 'the rim must be a half-height edge, not a solid row');
+
+    // The ground shadow closes the construction under the echo row.
+    assert.match(rows[7], /^▀[▀ ]*$/, 'the ground shadow row is malformed');
+
+    // Same input, same frame — byte for byte.
+    assert.equal(renderMark(), renderMark(), 'the lockup must render identically every time');
 });

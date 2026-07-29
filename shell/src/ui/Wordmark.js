@@ -21,6 +21,10 @@
 // of the reference's yellow/yellow/orange — and the echo is one dim indigo so
 // it sits behind the letterforms (the reference relies on thin-vs-solid alone
 // for that reading; the dim tone pushes the echo one step further back).
+// The lockup now also carries Stack()'s depth treatment scaled up: a lit rim
+// row above with three deterministic glints, and a ground-shadow row under the
+// echo — eight rows total. The bands themselves are a six-step ramp rather
+// than three flat pairs, so light reads as falling across the letters.
 //
 // Below the lockup's width the mark falls back to the v3 stack — SHERMAN on
 // the lit/ramp/shadow treatment with AGENT flush beneath — and below that to
@@ -127,8 +131,8 @@ export const SMALL_COLUMNS = [...row(SMALL, WORD, 0)].length;
 // The narrow tag: letters spaced out so 5 glyphs still read as a deck.
 const SUB_TAG = SUB.split('').join(' ');
 
-/** The lockup is exactly its glyph height: 6 rows, nothing above or below. */
-export const RETRO_ROWS = RETRO.S.length;
+/** Lit rim above, 6 glyph rows, ground shadow below: 8 rows. */
+export const RETRO_ROWS = RETRO.S.length + 2;
 /** Rim + 7 body rows + shadow + gap + 5 AGENT rows. */
 export const STACK_ROWS = 15;
 /** 5 body rows + the tag line. */
@@ -189,16 +193,79 @@ function RetroLine({ band, text }) {
     return React.createElement(Text, { wrap: 'truncate' }, ...spans);
 }
 
-/** 111 x 6: SHERMAN-AGENT on one line, at reference scale. */
+// Where the glints sit in the rim row, as fractions of the lockup's width.
+//
+// Chosen positions, not random ones: Math.random would make the launch frame
+// differ between two renders of the same session, which turns every layout
+// test into a flake and makes "what I saw" unreproducible. Three glints,
+// asymmetric, weighted toward the lit top-left the way a specular highlight
+// follows the light — a symmetric row of stars would read as bunting.
+const SPARK_AT = [0.09, 0.34, 0.77];
+
+/**
+ * The lit rim above the lockup, glinting.
+ *
+ * The base row is Stack()'s own rim treatment — `▄` over every column whose
+ * top glyph row carries ink. The glints replace the rim cell at each SPARK_AT
+ * fraction with `✦`, but only where the rim actually has ink: a glint floating
+ * in the gap between letters would be a spark with nothing to reflect off.
+ */
+function rimRow(top) {
+    const cells = [...top].map((c) => (c === '█' ? '▄' : ' '));
+    // Each fraction snaps to the nearest lit cell within a few columns, so a
+    // glint aimed at a letter gap slides onto the letter beside it instead of
+    // silently vanishing — three glints are the design, not "up to three".
+    const glints = new Set();
+    for (const f of SPARK_AT) {
+        const aim = Math.round(f * (cells.length - 1));
+        for (const offset of [0, 1, -1, 2, -2, 3, -3]) {
+            const i = aim + offset;
+            if (cells[i] === '▄') { glints.add(i); break; }
+        }
+    }
+    return cells
+        .map((cell, i) => (glints.has(i) ? { glyph: '✦', spark: true } : { glyph: cell, spark: false }))
+        .reduce((runs, cell) => {
+            const last = runs[runs.length - 1];
+            if (last && last.spark === cell.spark) last.text += cell.glyph;
+            else runs.push({ text: cell.glyph, spark: cell.spark });
+            return runs;
+        }, []);
+}
+
+/**
+ * The ground shadow: `▀` under every column the bottom echo row touches, so
+ * the letters sit ON something instead of floating. Echo-indexed rather than
+ * solid-indexed because the echo IS the letterforms' bottom edge at this
+ * scale — a shadow narrower than the outline would detach from it.
+ */
+function shadowRow(bottom) {
+    return [...bottom].map((c) => (c === ' ' ? ' ' : '▀')).join('');
+}
+
+/** 111 x 8: rim, SHERMAN-AGENT at reference scale, ground shadow. */
 function Retro() {
-    // retro.bands is row-indexed: its six entries are the three colour bands,
-    // two rows each, zipped against the six glyph rows.
+    const rim = rimRow(retroRow(0));
+    // retro.bands is row-indexed: six ramp steps zipped against the six glyph
+    // rows, lit at the top and descending through the brand family.
     return React.createElement(
         Box,
         { flexDirection: 'column' },
+        React.createElement(
+            Text,
+            { key: 'rim', wrap: 'truncate' },
+            ...rim.map((run, i) =>
+                React.createElement(
+                    Text,
+                    { key: i, color: run.spark ? retro.spark : retro.rim, bold: run.spark },
+                    run.text
+                )
+            )
+        ),
         ...retro.bands.map((band, r) =>
             React.createElement(RetroLine, { key: r, band, text: retroRow(r) })
-        )
+        ),
+        React.createElement(Line, { key: 'shadow', tint: retro.shadow }, shadowRow(retroRow(5)))
     );
 }
 
