@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { CodexSession, mcpServerKeysFromToml } from '../src/engine/codex.js';
+import {
+    CodexSession,
+    findRolloutPath,
+    latestTokenCount,
+    mcpServerKeysFromToml,
+} from '../src/engine/codex.js';
 
 function session() {
     return new CodexSession({
@@ -151,4 +159,123 @@ test('a read command and a shell command report different categories', () => {
         id: 'p1', type: 'command_execution', command: '/bin/bash -lc "cat a | rm -rf b"',
     });
     assert.equal(piped.category, 'command');
+});
+
+// --------------------------------------------------------------------------
+// Live-context measurement from the rollout file. Fixture lines mirror the
+// real 0.145.0 rollout shape byte-for-byte where it matters:
+// {"type":"event_msg","payload":{"type":"token_count","info":{...}}}.
+// --------------------------------------------------------------------------
+
+const THREAD = '019fac02-b871-73e2-97f1-4ee7b62ab4a0';
+
+function rolloutLine(lastInput, lastTotal, window) {
+    return JSON.stringify({
+        timestamp: '2026-07-29T03:55:08.395Z',
+        type: 'event_msg',
+        payload: {
+            type: 'token_count',
+            info: {
+                total_token_usage: {
+                    input_tokens: 109112, cached_input_tokens: 83968,
+                    cache_write_input_tokens: 0, output_tokens: 184,
+                    reasoning_output_tokens: 27, total_tokens: 109296,
+                },
+                last_token_usage: {
+                    input_tokens: lastInput, cached_input_tokens: 21248,
+                    cache_write_input_tokens: 0, output_tokens: 34,
+                    reasoning_output_tokens: 0, total_tokens: lastTotal,
+                },
+                model_context_window: window,
+            },
+        },
+    });
+}
+
+function writeRollout(home, lines) {
+    const dir = join(home, 'sessions', '2026', '07', '29');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, `rollout-2026-07-29T00-00-00-${THREAD}.jsonl`);
+    writeFileSync(path, lines.join('\n') + '\n');
+    return path;
+}
+
+test('the rollout file is found by thread id, newest date first', () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-rollout-find-'));
+    try {
+        const path = writeRollout(home, [rolloutLine(100, 120, 258400)]);
+        // A decoy from an older day that must not shadow the real thread.
+        mkdirSync(join(home, 'sessions', '2025', '01', '01'), { recursive: true });
+        writeFileSync(
+            join(home, 'sessions', '2025', '01', '01', 'rollout-old-other-thread.jsonl'),
+            '{}\n'
+        );
+        assert.equal(findRolloutPath(THREAD, join(home, 'sessions')), path);
+        assert.equal(findRolloutPath('no-such-thread', join(home, 'sessions')), null);
+        assert.equal(findRolloutPath(THREAD, join(home, 'nowhere')), null);
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('latestTokenCount reads the newest measurement and survives junk lines', () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-rollout-tail-'));
+    try {
+        const path = writeRollout(home, [
+            rolloutLine(10_000, 10_050, 258400),
+            '{"type":"event_msg","payload":{"type":"agent_message"}}',
+            rolloutLine(22_544, 22_578, 258400),
+            'not json at all',
+        ]);
+        assert.deepEqual(latestTokenCount(path), { used: 22_578, window: 258400 });
+
+        // No token_count at all is absence, not zero.
+        const empty = writeRollout(home, ['{"type":"event_msg","payload":{"type":"other"}}']);
+        assert.equal(latestTokenCount(empty), null);
+        assert.equal(latestTokenCount(join(home, 'missing.jsonl')), null);
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('turn.completed carries a measured context event, and its absence stays absent', () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-rollout-events-'));
+    const oldCodexHome = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = home;
+    try {
+        writeRollout(home, [rolloutLine(22_544, 22_578, 258400)]);
+
+        const codex = session();
+        codex._mapLine(JSON.stringify({ type: 'thread.started', thread_id: THREAD }));
+        const events = codex._mapLine(JSON.stringify({
+            type: 'turn.completed',
+            usage: { input_tokens: 1_566_800, cached_input_tokens: 0, output_tokens: 184 },
+        }));
+
+        // The measurement rides ahead of turn-end, so a UI acting at the turn
+        // boundary has already seen the live figure — never the 1.57M bill.
+        assert.deepEqual(
+            events.map((e) => e.kind),
+            ['context', 'turn-end']
+        );
+        assert.equal(events[0].used, 22_578);
+        assert.equal(events[0].window, 258400);
+        // The measured window supersedes the table's guess in info too.
+        assert.equal(codex.info.contextWindow, 258400);
+        // The bill still lands where it belongs: accounting.
+        assert.equal(events[1].usage.input, 1_566_800);
+
+        // A thread with no rollout file emits no context event at all.
+        const bare = session();
+        bare._mapLine(JSON.stringify({ type: 'thread.started', thread_id: 'unwritten-thread' }));
+        const bareEvents = bare._mapLine(JSON.stringify({
+            type: 'turn.completed',
+            usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 1 },
+        }));
+        assert.deepEqual(bareEvents.map((e) => e.kind), ['turn-end']);
+    } finally {
+        process.env.CODEX_HOME = oldCodexHome ?? '';
+        if (oldCodexHome === undefined) delete process.env.CODEX_HOME;
+        rmSync(home, { recursive: true, force: true });
+    }
 });

@@ -91,9 +91,10 @@ test('App auto-compacts at 90% and seeds the fresh thread with the summary', asy
 
     const requests = [];
     let threadStarts = 0;
-    // 95k of a 100k window on the first turn: over the line, so the shell
-    // should compact without being asked.
-    const inputs = [95_000, 4_000];
+    // A measured 95k of a 100k window on the first turn: over the line, so the
+    // shell should compact without being asked. Compaction listens to the
+    // engine's measured 'context' events, never to turn-end usage.
+    const measurements = [95_000, 4_000];
     const session = {
         info: {
             engine: 'fake', model: 'fake-model', user: 'test-user',
@@ -103,13 +104,14 @@ test('App auto-compacts at 90% and seeds the fresh thread with the summary', asy
         usage: zeroUsage(),
         async *send(request) {
             requests.push(request);
-            const input = inputs.shift() ?? 0;
+            const used = measurements.shift() ?? 0;
             yield { kind: 'turn-start' };
             yield {
                 kind: 'message',
                 text: request?.source === 'compact' ? 'HANDOFF: vault work, step 4 next.' : 'answer',
             };
-            yield { kind: 'turn-end', usage: { ...zeroUsage(), input } };
+            yield { kind: 'context', used, window: 100_000 };
+            yield { kind: 'turn-end', usage: { ...zeroUsage(), input: used } };
         },
         startNewThread() { threadStarts += 1; return true; },
         interrupt() {},
@@ -250,6 +252,80 @@ test('compaction fires on the measured figure alone, never on the estimate', asy
             /compacting automatically/,
             'auto-compaction announced on an estimate'
         );
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+// Compaction never sees the bill.
+//
+// Codex's turn.completed input_tokens is the SUM across every sub-request of
+// an agentic turn — a healthy ~20k thread reports 100k+ after a few tool
+// calls. The 576%-context incident: one long turn billed 1.57M tokens against
+// a 272k window and the shell compacted a thread that codex itself had kept
+// well inside its window. Usage is accounting; only a measured 'context'
+// event may arm compaction. An engine that emits none must never compact.
+test('compaction ignores turn-end usage, however far past the window it runs', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-compact-bill-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const threads = [];
+    const sent = [];
+    let turnEnded = false;
+
+    const session = {
+        info: {
+            engine: 'fake', model: 'fake-model', user: 'test-user',
+            vaultPath: '/tmp/sherman/vault', threadId: 't1', contextWindow: 272_000,
+        },
+        usage: zeroUsage(),
+        async *send(request) {
+            sent.push(request);
+            yield { kind: 'turn-start' };
+            yield { kind: 'message', text: 'a marathon turn' };
+            // 576% of the window, with no context event: the bill, not the thread.
+            yield { kind: 'turn-end', usage: { ...zeroUsage(), input: 1_566_800, total: 1_566_900 } };
+            turnEnded = true;
+        },
+        startNewThread() { threads.push('new'); return true; },
+        interrupt() {},
+        dispose() {},
+    };
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+
+    const stdout = new PassThrough();
+    stdout.columns = 120;
+    stdout.rows = 24;
+    let captured = '';
+    stdout.on('data', (chunk) => { captured += chunk.toString(); });
+
+    const instance = render(
+        React.createElement(App, { session, sessionId: '20260728_020000_bill' }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        stdin.write('a question');
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        stdin.write('\r');
+
+        await until(() => turnEnded);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        assert.equal(sent.length, 1, 'a second engine turn ran; compaction fired on the bill');
+        assert.deepEqual(threads, [], 'a fresh thread was started on cumulative usage');
+
+        instance.unmount();
+        assert.doesNotMatch(plain(captured), /compacting automatically/);
     } finally {
         instance.unmount();
         process.env.HOME = oldHome;

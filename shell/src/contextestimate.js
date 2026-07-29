@@ -20,11 +20,11 @@
 //     it says anything.
 //   * It NEVER feeds compaction. Compaction throws away real conversation, and
 //     doing that on a guess would destroy context to satisfy a number nobody
-//     measured. `shouldAutoCompact` is called only with `turn.completed` usage;
-//     see app.js.
+//     measured. `shouldAutoCompact` is called only with the engine's measured
+//     `context` events; see app.js and session.js.
 //   * It is discarded the instant a real figure arrives. The measured value
-//     replaces it at turn end rather than being blended with it — an average of
-//     a fact and a guess is a guess.
+//     replaces it rather than being blended with it — an average of a fact and
+//     a guess is a guess.
 //
 // The estimate is deliberately crude, because a more elaborate one would invite
 // more trust than the input deserves. It cannot see the system prompt, the

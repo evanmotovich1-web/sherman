@@ -273,8 +273,9 @@ export function App({
     }, [stdin, isRawModeSupported, scroll]);
 
     const [usage, setUsage] = useState(() => session.usage ?? emptyUsage());
-    // Latest per-turn input, not the running total. Codex reports this on
-    // turn.completed and, for resumed threads, it is the current context size.
+    // The engine's latest measured live-context size, from 'context' events —
+    // never turn-end usage, which is the turn's bill rather than the thread's
+    // size (see session.js).
     const [contextUsed, setContextUsed] = useState(null);
     // Characters this turn has genuinely sent and received. Codex reports no
     // usage until turn.completed, so between those two moments the meter is
@@ -630,35 +631,47 @@ export function App({
                             break;
                         }
 
+                        // The engine's own measurement of the live thread —
+                        // the ONLY thing allowed to move the context meter or
+                        // arm compaction. turn-end usage is the turn's bill
+                        // (input summed across sub-requests) and must not:
+                        // acting on the bill reads several hundred percent on
+                        // a healthy thread and would discard real conversation
+                        // over arithmetic on the wrong number. The estimate
+                        // must never reach this decision either: it moves a
+                        // meter; only a measurement moves the session.
+                        case 'context':
+                            if (!isWorker) {
+                                setContextUsed(event.used);
+                                // The measured figure supersedes the estimate
+                                // outright. Blending a fact with a guess yields
+                                // a guess, so the guess is simply dropped.
+                                setLiveChars(null);
+                                const window = event.window ?? session.info.contextWindow;
+                                // Recomputed on every measurement, including
+                                // back to null: codex can compact its own
+                                // thread mid-turn, and a later, smaller figure
+                                // must disarm a compaction an earlier one
+                                // armed. Arriving mid-turn, the decision still
+                                // ACTS at the turn boundary below — the
+                                // earliest point a compaction turn can run.
+                                autoCompactPercent = shouldAutoCompact(event.used, window)
+                                    ? Math.round((event.used / window) * 100)
+                                    : null;
+                            }
+                            break;
+
                         case 'turn-end':
                             if (isWorker && event.usage) {
                                 workerUsageRef.current = addUsage(workerUsageRef.current, event.usage);
                             }
                             setUsage(addUsage(session.usage, workerUsageRef.current));
                             if (!isWorker) {
-                                const used = Number.isFinite(event.usage?.input)
-                                    ? event.usage.input
-                                    : null;
                                 turnsRef.current += 1;
-                                setContextUsed(used);
-                                // The measured figure supersedes the estimate
-                                // outright. Blending a fact with a guess yields
-                                // a guess, so the guess is simply dropped.
-                                setLiveChars(null);
+                                // A turn that produced no measurement leaves
+                                // the estimate up rather than promoting the
+                                // bill to the meter; only 'context' clears it.
                                 setInfo(session.info);
-
-                                const window = session.info.contextWindow;
-                                // `used` here is the engine's own reported
-                                // figure, and compaction is gated on it alone.
-                                // The live estimate must NEVER reach this call:
-                                // compaction discards real conversation, and
-                                // discarding it on a guessed number would throw
-                                // away context nobody measured. The estimate
-                                // moves a meter; only a measurement moves the
-                                // session.
-                                if (shouldAutoCompact(used, window)) {
-                                    autoCompactPercent = Math.round((used / window) * 100);
-                                }
                             }
                             break;
 

@@ -45,6 +45,7 @@
  *            label:string, category:string, outcome:'running'|'succeeded'|'failed'|'declined'|'unknown',
  *            durationMs:number|null}} ToolEvent
  * @typedef {{kind:'turn-end', usage:Usage|null}} TurnEndEvent
+ * @typedef {{kind:'context', used:number, window:number|null}} ContextEvent
  * @typedef {{kind:'interrupted'}} InterruptedEvent
  * @typedef {{kind:'error', message:string}} ErrorEvent
  * @typedef {{kind:'diff', path:string, changeKind:string, available:boolean,
@@ -52,7 +53,7 @@
  *            lines:Array<{sign:'+'|'-', text:string}>, more:number}} DiffEvent
  *
  * @typedef {TurnStartEvent|ReasoningEvent|StatusEvent|MessageEvent|ToolEvent
- *          |TurnEndEvent|InterruptedEvent|ErrorEvent|DiffEvent} EngineEvent
+ *          |TurnEndEvent|ContextEvent|InterruptedEvent|ErrorEvent|DiffEvent} EngineEvent
  *
  * A `diff` event reports one file change in the lines that actually changed.
  * `available:false` is a first-class outcome, not a failure to paper over: no
@@ -61,6 +62,17 @@
  * event still reports the path and the fact of the change, carries a `reason`,
  * and the UI states plainly that line detail is unavailable. A `diff` event
  * must never contain a line that was not read from a real file.
+ *
+ * A `context` event is the engine's own measurement of the LIVE conversation
+ * size -- what the next request will actually carry -- as opposed to
+ * `turn-end`'s usage, which is token ACCOUNTING: the bill for the turn, summed
+ * across however many requests the turn made. A long agentic turn re-sends its
+ * growing prompt once per tool call, so the bill can run to many times the
+ * context window while the live thread is nowhere near it. Only a `context`
+ * event may move the context meter or gate compaction; usage may not, because
+ * acting on the bill discards real conversation over arithmetic on the wrong
+ * number. A backend that cannot measure the live figure emits no `context`
+ * events at all -- absence must stay absence.
  *
  * `reasoning` and `status` are both interim signals, and they differ in what
  * they are evidence OF. A `reasoning` event carries the model's own words about
@@ -78,6 +90,7 @@ export const EVENT_KINDS = Object.freeze([
     'message',
     'tool',
     'turn-end',
+    'context',
     'interrupted',
     'error',
     'diff',
@@ -120,6 +133,7 @@ export const ev = Object.freeze({
         more,
     }),
     turnEnd: (usage) => ({ kind: 'turn-end', usage }),
+    context: (used, window = null) => ({ kind: 'context', used, window }),
     interrupted: () => ({ kind: 'interrupted' }),
     error: (message) => ({ kind: 'error', message }),
 });

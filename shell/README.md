@@ -45,9 +45,10 @@ Type `/` to open the command palette. First-party commands:
   request rather than as a turn of its own, and is spent exactly once.
 - `/help [command]` — show command behavior and limits.
 
-Compaction also runs on its own. When a turn reports 90% of the model's context
-window — the same measured number the status meter prints, never an estimate —
-the shell announces `context NN% · compacting automatically` and compacts. An
+Compaction also runs on its own. When the engine's measured live context — the
+same number the status meter prints, never an estimate and never the turn's
+cumulative token bill — reaches 90% of the model's window, the shell announces
+`context NN% · compacting automatically` and compacts at the turn boundary. An
 unknown window shows no meter and never auto-compacts, and a summary that comes
 back empty or interrupted leaves the thread intact rather than resetting context
 that was never preserved.
@@ -185,11 +186,21 @@ a turn — `~` on the figure and the percent, a lighter `▒` fill — built fro
 characters actually sent and actually streamed back. See
 `src/contextestimate.js` for why it is crude on purpose and why it understates.
 
-**The estimate never reaches compaction.** Compaction discards real
-conversation; doing that on a guessed number would throw away context nobody
-measured. `shouldAutoCompact` is called only with `turn.completed` usage, and
-smoke check 18 pins both halves — the mark on screen and the gate on the
-decision.
+**The estimate never reaches compaction — and neither does the bill.**
+Compaction discards real conversation; doing that on a guessed number would
+throw away context nobody measured. And `turn.completed` usage is not a
+measurement of the thread: probed against codex 0.145.0, its `input_tokens` is
+the SUM across every sub-request of the turn, so a healthy ~22k thread bills
+109k for one three-command turn and a marathon agentic turn can bill several
+times the window (the 576%-context incident) while codex keeps the live thread
+comfortably inside it. The figure that IS the live context — `last_token_usage`,
+with the model's real `model_context_window` — lives in the per-thread rollout
+file under `$CODEX_HOME/sessions/`, so the backend tails it at each completed
+item and at turn end and surfaces the measurement as normalized `context`
+events. Only those events move the meter or arm `shouldAutoCompact` (mid-turn
+measurements arm it early; the compaction turn still runs at the turn boundary,
+the earliest safe point). Smoke check 18 pins the gate's arithmetic, and
+`test/compact.test.js` pins that neither an estimate nor the bill ever compacts.
 
 ## Permissions: the engine is sealed inside the vault
 

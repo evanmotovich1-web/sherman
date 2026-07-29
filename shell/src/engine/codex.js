@@ -24,7 +24,7 @@
 
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { readFileSync, statSync } from 'node:fs';
+import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 
@@ -61,10 +61,13 @@ function detectModel() {
  * @param {string} key
  * @returns {string|null} the string value, or null if absent/unreadable
  */
+function codexHome() {
+    return process.env.CODEX_HOME || join(process.env.HOME || homedir(), '.codex');
+}
+
 function readCodexSetting(key) {
-    const codexHome = process.env.CODEX_HOME || join(process.env.HOME || homedir(), '.codex');
     try {
-        const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
+        const toml = readFileSync(join(codexHome(), 'config.toml'), 'utf8');
         for (const line of toml.split('\n')) {
             if (line.trimStart().startsWith('[')) break;
             const m = line.match(new RegExp(`^\\s*${key}\\s*=\\s*(.+?)\\s*(?:#.*)?$`));
@@ -103,6 +106,109 @@ function configuredMcpServerKeys() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Live-context measurement.
+//
+// `codex exec --json` reports token usage only on turn.completed, and that
+// figure is the turn's BILL: input_tokens summed across every sub-request the
+// turn made. Probed against codex 0.145.0 -- a resumed thread of ~22k live
+// tokens reported input_tokens of 109k for one three-command turn. Feeding
+// that number to a context meter reads 400%+ on a healthy thread, and feeding
+// it to auto-compaction discards real conversation over arithmetic on the
+// wrong number.
+//
+// The figure that IS the live context -- what the next request will carry --
+// exists, but only in the rollout file codex writes per thread under
+// $CODEX_HOME/sessions/YYYY/MM/DD/rollout-<ts>-<threadId>.jsonl: `token_count`
+// events whose `last_token_usage` is the final request of the turn, alongside
+// the model's real `model_context_window`. So the session tails that file and
+// surfaces the measurement as normalized `context` events. Absence -- no file,
+// no token_count line yet, unreadable tail -- yields no event, never a guess.
+// ---------------------------------------------------------------------------
+
+/**
+ * Locate the rollout file for a thread, scanning date directories newest-first
+ * so an active thread is found in the first day or two touched.
+ *
+ * @param {string} threadId
+ * @param {string} [root]
+ * @returns {string|null}
+ */
+export function findRolloutPath(threadId, root = join(codexHome(), 'sessions')) {
+    const suffix = `-${threadId}.jsonl`;
+    const list = (dir) => {
+        try {
+            return readdirSync(dir).sort().reverse();
+        } catch {
+            return [];
+        }
+    };
+    for (const year of list(root)) {
+        for (const month of list(join(root, year))) {
+            for (const day of list(join(root, year, month))) {
+                for (const file of list(join(root, year, month, day))) {
+                    if (file.endsWith(suffix)) return join(root, year, month, day, file);
+                }
+            }
+        }
+    }
+    return null;
+}
+
+// 64KB of tail is dozens of rollout lines; token_count arrives at least once
+// per sub-request, so the latest one is always well inside it.
+const ROLLOUT_TAIL_BYTES = 64 * 1024;
+
+/**
+ * The latest measured live-context figure in a rollout file.
+ *
+ * Reads only the tail, scans backwards for the newest `token_count` line, and
+ * returns its `last_token_usage` total with the reported window. The first
+ * line of the tail may be cut mid-record; a line that fails to parse is
+ * skipped, not fatal.
+ *
+ * @param {string} path
+ * @returns {{used:number, window:number|null}|null}
+ */
+export function latestTokenCount(path) {
+    let text;
+    try {
+        const size = statSync(path).size;
+        const start = Math.max(0, size - ROLLOUT_TAIL_BYTES);
+        const buffer = Buffer.alloc(size - start);
+        const fd = openSync(path, 'r');
+        try {
+            readSync(fd, buffer, 0, buffer.length, start);
+        } finally {
+            closeSync(fd);
+        }
+        text = buffer.toString('utf8');
+    } catch {
+        return null;
+    }
+
+    const lines = text.split('\n');
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+        if (!lines[i].includes('"token_count"')) continue;
+        try {
+            const record = JSON.parse(lines[i]);
+            const info = record?.payload?.type === 'token_count' ? record.payload.info : null;
+            const last = info?.last_token_usage;
+            if (!Number.isFinite(last?.input_tokens)) continue;
+            const used = Number.isFinite(last.total_tokens)
+                ? last.total_tokens
+                : last.input_tokens + (last.output_tokens ?? 0);
+            const window = Number.isFinite(info.model_context_window)
+                ? info.model_context_window
+                : null;
+            return { used, window };
+        } catch {
+            // The cut first line, or a future shape. Keep scanning.
+        }
+    }
+    return null;
+}
+
 // Filesystem sandboxing does not govern Codex host-side tools. Planning and
 // isolated workers disable those capabilities explicitly instead of claiming
 // to be read-only while inherited MCP/apps could still mutate external state.
@@ -135,6 +241,11 @@ export class CodexSession extends EngineSession {
         this._config = config;
         this._usage = emptyUsage();
         this._threadId = null;
+        // Where this thread's rollout file lives, found once per thread.
+        this._rolloutPath = null;
+        // The window codex itself reported via token_count. Truer than the
+        // model table's guess, but never truer than an operator override.
+        this._measuredWindow = null;
         this._model = detectModel();
         this._child = null;
         this._interrupted = false;
@@ -151,10 +262,13 @@ export class CodexSession extends EngineSession {
             user: this._config.user,
             vaultPath: this._config.vaultPath,
             threadId: this._threadId,
-            contextWindow: contextWindowFor(
-                this._model,
-                this._config.contextWindowTokens
-            ),
+            // Operator override first, then the window codex itself reported,
+            // then the model table's guess. `contextWindowFor` with a blank
+            // model resolves to the override alone.
+            contextWindow:
+                contextWindowFor('', this._config.contextWindowTokens) ??
+                this._measuredWindow ??
+                contextWindowFor(this._model, null),
         };
     }
 
@@ -173,7 +287,27 @@ export class CodexSession extends EngineSession {
      */
     startNewThread() {
         this._threadId = null;
+        this._rolloutPath = null;
         return true;
+    }
+
+    /**
+     * The live-context measurement for this thread, as zero or one `context`
+     * events. Called at each completed item and at turn end: every completed
+     * item marks a sub-request codex just paid for, so the rollout file has a
+     * fresh token_count by then and the meter can move DURING a long agentic
+     * turn instead of lying until it ends.
+     */
+    _contextEvents() {
+        if (this._threadId === null) return [];
+        if (this._rolloutPath === null) {
+            this._rolloutPath = findRolloutPath(this._threadId);
+        }
+        if (this._rolloutPath === null) return [];
+        const count = latestTokenCount(this._rolloutPath);
+        if (count === null) return [];
+        if (count.window !== null) this._measuredWindow = count.window;
+        return [ev.context(count.used, this.info.contextWindow)];
     }
 
     /**
@@ -303,13 +437,17 @@ export class CodexSession extends EngineSession {
                 return this._mapItem(msg.item, 'updated');
 
             case 'item.completed':
-                return this._mapItem(msg.item, 'completed');
+                return [...this._mapItem(msg.item, 'completed'), ...this._contextEvents()];
 
             case 'turn.completed': {
+                // `msg.usage` is the turn's bill -- input summed across every
+                // sub-request -- and feeds accounting only. The live-context
+                // figure travels separately as a `context` event; see the
+                // rollout helpers above for why the two must never be mixed.
                 const usage = mapUsage(msg.usage);
                 if (usage !== null) this._usage = addUsage(this._usage, usage);
                 this._toolStarts.clear();
-                return [ev.turnEnd(usage)];
+                return [...this._contextEvents(), ev.turnEnd(usage)];
             }
 
             case 'turn.failed':
