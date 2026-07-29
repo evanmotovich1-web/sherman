@@ -16,6 +16,7 @@ import { StatusBar } from './StatusBar.js';
 import { Composer } from './Composer.js';
 import { Thinking, activityBudget } from './Thinking.js';
 import { ActivityLine } from './ActivityLine.js';
+import { copyNotice, copyText, lastReplyText } from '../clipboard.js';
 import { addUsage, emptyUsage } from '../engine/session.js';
 import { readVaultStats } from '../vault.js';
 import { createSessionLog } from '../sessionlog.js';
@@ -78,7 +79,19 @@ function formatTool(event, includeDuration) {
 /**
  * @param {{session: import('../engine/session.js').EngineSession, sessionId: string, sessionFactory?: (() => import('../engine/session.js').EngineSession), rows?: number}} props
  */
-export function App({ session, sessionId, sessionFactory = null, rows: rowsOverride }) {
+/**
+ * `clipboard` is injectable for one concrete reason: the real implementation
+ * shells out to pbcopy, and a test suite that exercised /copy would overwrite
+ * the operator's actual clipboard every time it ran. A test must not reach out
+ * of the process and take something of the user's away.
+ */
+export function App({
+    session,
+    sessionId,
+    sessionFactory = null,
+    rows: rowsOverride,
+    clipboard = copyText,
+}) {
     const { exit } = useApp();
 
     // The alternate screen has no scrollback, so the app owns the whole
@@ -115,6 +128,14 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
             stats: vaultStats,
         },
     ]);
+    // The transcript, mirrored into a ref. /copy and ctrl+y both need the
+    // newest reply at the moment the key is pressed, and both run from stable
+    // callbacks that would otherwise close over whatever `items` was when they
+    // were built -- copying the second-to-last reply, or nothing at all on the
+    // first one. The ref is the live array; `items` stays the render source.
+    const itemsRef = useRef(items);
+    useEffect(() => { itemsRef.current = items; }, [items]);
+
     const [busy, setBusy] = useState(false);
     const [activities, setActivities] = useState([]);
     const [lifecycle, setLifecycle] = useState(null);
@@ -255,6 +276,24 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
         setItems((prev) => [...prev, { id: nextId(), kind, text, ...(extra ?? {}) }]);
     }, []);
 
+    // Copying the last reply, from the source text rather than the screen.
+    //
+    // Reachable two ways -- /copy and ctrl+y -- and both land here so there is
+    // exactly one place where the wording is decided. `copyNotice` owns that
+    // decision: this function must not compose a success message of its own,
+    // because the whole point is that the shell never claims a copy it cannot
+    // evidence. An OSC 52 write is unacknowledged by design, and a notice that
+    // read "copied" after one would be a lie the terminal cannot contradict.
+    const copyLastReply = useCallback(() => {
+        const text = lastReplyText(itemsRef.current);
+        if (!text) {
+            commit('notice', 'Nothing to copy yet — Sherman has not replied in this session.');
+            return;
+        }
+        const result = clipboard(text, { stdout });
+        commit(result.ok ? 'notice' : 'error', copyNotice(result, text.split('\n').length));
+    }, [clipboard, commit, stdout]);
+
     const setBusyBoth = useCallback((value) => {
         busyRef.current = value;
         setBusy(value);
@@ -355,6 +394,10 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
                 }
                 if (command.name === 'help') {
                     commit('notice', helpText(parsed.args));
+                    return;
+                }
+                if (command.name === 'copy') {
+                    copyLastReply();
                     return;
                 }
                 if (command.name === 'goal') {
@@ -583,6 +626,18 @@ export function App({ session, sessionId, sessionFactory = null, rows: rowsOverr
         if (key.pageDown) return scroll(-Math.max(1, scrollState.viewport - 1));
         if (key.shift && key.upArrow) return scroll(1);
         if (key.shift && key.downArrow) return scroll(-1);
+
+        // ctrl+y copies the last reply. Free to bind: ctrl+c is the only other
+        // ctrl binding in the shell, and Composer.js drops every ctrl chord
+        // rather than inserting it, so nothing loses a keystroke. macOS maps
+        // ^Y to DSUSP at the tty layer, but raw mode clears IEXTEN, so it never
+        // reaches the driver -- verified against ink's own decoding, which
+        // reports it as input 'y' with key.ctrl set.
+        //
+        // Deliberately allowed while a turn is running: the reply you want is
+        // the one already on screen, and waiting for the engine to finish
+        // before you may copy older text serves nothing.
+        if (key.ctrl && input === 'y') return copyLastReply();
 
         if (!(key.ctrl && input === 'c')) return;
 

@@ -29,11 +29,30 @@ test('parses commands, multiline args, and literal slash escape', () => {
 test('registry drives suggestions and help', () => {
     assert.equal(commandFor('subagent')?.usage, '/subagent <task>');
     assert.deepEqual(suggestionsFor('/p').map((c) => c.name), ['plan']);
-    assert.deepEqual(suggestionsFor('/').map((c) => c.name), ['goal', 'plan', 'subagent', 'compact', 'help']);
+    assert.deepEqual(suggestionsFor('/').map((c) => c.name), ['goal', 'plan', 'subagent', 'compact', 'copy', 'help']);
+    // /compact and /copy share a prefix now, so neither may swallow the other.
+    assert.deepEqual(suggestionsFor('/co').map((c) => c.name), ['compact', 'copy']);
+    assert.deepEqual(suggestionsFor('/cop').map((c) => c.name), ['copy']);
     assert.equal(suggestionsFor('//plan').length, 0);
     assert.match(helpText(), /\/goal/);
     assert.match(helpText('plan'), /read-only sandbox/);
     assert.match(helpText('missing'), /Unknown command/);
+});
+
+// Mouse reporting has been on since it shipped, and it takes drag-select away
+// from the terminal for the whole time Sherman is mounted. Shift+drag has
+// always been the way back and was never written down anywhere the operator
+// looks. /help is where they look.
+test('help states the ctrl+y binding and the shift+drag selection override', () => {
+    const help = helpText();
+    assert.match(help, /ctrl\+y/, '/help does not mention the copy binding');
+    assert.match(help, /Shift\+drag/, '/help does not mention how to select text under mouse mode');
+
+    const copy = helpText('copy');
+    assert.match(copy, /ctrl\+y/);
+    // The command's own detail has to carry the honesty caveat: an operator
+    // reading /help copy is the one deciding whether to trust the notice.
+    assert.match(copy, /cannot be verified|cannot prove/i);
 });
 
 test('goal, plan, and worker envelopes preserve policy boundaries', () => {

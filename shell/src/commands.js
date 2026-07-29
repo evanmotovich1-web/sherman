@@ -27,6 +27,12 @@ export const COMMANDS = Object.freeze([
         detail: 'Runs one read-only turn that writes a handoff summary, then opens a new engine thread carrying only that summary. The transcript keeps every line; the engine does not. Runs automatically once a turn reports 90% of the context window.',
     },
     {
+        name: 'copy',
+        usage: '/copy',
+        summary: "copy the last Sherman reply to the clipboard",
+        detail: 'Copies the reply as plain text — no colour, no rule glyphs, no signature line. Also bound to ctrl+y. Where the clipboard write cannot be verified, the shell says so rather than reporting a copy it cannot prove.',
+    },
+    {
         name: 'help',
         usage: '/help [command]',
         summary: 'show commands and exact behavior',
@@ -76,7 +82,15 @@ export function helpText(name = '') {
         'Sherman commands',
         ...COMMANDS.map((command) => `${command.usage.padEnd(23)} ${command.summary}`),
         '',
-        'Up/down select · Tab completes · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
+        'Up/down select · Tab completes · ctrl+y copies the last reply · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
+        // Mouse reporting is on for the whole time the shell is mounted, which
+        // is what lets a click place the caret and the wheel scroll the
+        // transcript -- and it takes drag-select away from the terminal, since
+        // the terminal never sees the drag. Shift+drag is the standard override
+        // and it has worked the entire time; nobody was told. One line here is
+        // the difference between "selection is broken" and "selection has a
+        // modifier".
+        'Shift+drag to select text with the mouse — Sherman uses plain drag for its own clicks.',
     ].join('\n');
 }
 

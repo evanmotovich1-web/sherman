@@ -491,3 +491,99 @@ test('a finished task lingers, then leaves, and never enters the transcript', as
         rmSync(home, { recursive: true, force: true });
     }
 });
+
+// Both routes to the clipboard, end to end through the real App.
+//
+// `clipboard` is injected so this never touches the operator's actual
+// clipboard, and the fake records what it was handed: the assertion that
+// matters is that the text leaving the shell is the SOURCE reply, with no
+// signature line, no rule glyph and no ANSI, at whatever width the terminal
+// happens to be.
+// Both routes to the clipboard, end to end through the real App.
+//
+// `clipboard` is injected so this never touches the operator's actual
+// clipboard, and the fake records what it was handed: the assertion that
+// matters is that the text leaving the shell is the SOURCE reply, with no
+// signature line, no rule glyph and no ANSI, at whatever width the terminal
+// happens to be.
+//
+// Progress is tracked through `copied` rather than through rendered frames.
+// Ink writes incrementally, so a notice that appeared and was later redrawn is
+// not reliably present in the accumulated capture; the wording is asserted once
+// at the end, against the full frame unmount emits.
+test('/copy and ctrl+y both copy the last reply as plain text', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-shell-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const copied = [];
+    const clipboard = (text) => {
+        copied.push(text);
+        return { ok: true, method: 'pbcopy', confirmed: true, reason: null };
+    };
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+
+    const stdout = new PassThrough();
+    stdout.columns = 80;
+    stdout.rows = 24;
+    let captured = '';
+    stdout.on('data', (chunk) => { captured += chunk.toString(); });
+
+    const requests = [];
+    const instance = render(
+        React.createElement(App, {
+            session: fakeSession(requests, 'main'),
+            sessionId: '20260728_010000_copy01',
+            clipboard,
+        }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    let settled = false;
+    try {
+        // Ink's stdin handler is not attached on the tick render() returns.
+        await new Promise((resolve) => setTimeout(resolve, 120));
+
+        // Nothing has been said yet: the shell must decline rather than copy
+        // the launch frame, the banner, or an empty string.
+        stdin.write('\x19');
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        assert.equal(copied.length, 0, 'ctrl+y copied something before Sherman had replied');
+
+        // Waited on the engine call, not on a rendered frame, for the same
+        // incremental-write reason the wording assertion is deferred.
+        type(stdin, 'a question', 10);
+        await until(() => requests.length === 1);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        stdin.write('\x19');
+        await until(() => copied.length === 1);
+        assert.equal(copied[0], 'main response', 'ctrl+y did not copy the reply source text');
+
+        type(stdin, '/copy', 10);
+        await until(() => copied.length === 2);
+        assert.equal(copied[1], 'main response', '/copy did not copy the reply source text');
+
+        for (const text of copied) {
+            assert.doesNotMatch(text, /│/, 'the rule glyph leaked into the clipboard');
+            assert.doesNotMatch(text, /Sherman/, 'the signature line leaked into the clipboard');
+            assert.doesNotMatch(text, /\x1b/, 'an ANSI escape leaked into the clipboard');
+        }
+        settled = true;
+    } finally {
+        instance.unmount();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+
+    // Confirmed copies, and only those, are announced as copies.
+    if (settled) {
+        assert.match(plain(captured), /Copied the last reply to the clipboard \(1 line\)\./);
+    }
+});

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — thirteen checks, no framework.
+# smoke.sh — sixteen checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -18,6 +18,9 @@
 #      signed reply, factual trace, composer placeholder, and persistent status.
 #  12. A real codex reasoning payload renders as an explicit purple summary line.
 #  13. The Sherman Shell node:test suite passes.
+#  14. Mouse reporting is disabled on every exit path.
+#  15. Diff inks are semantic, scoped, and honest about truncation.
+#  16. The copy path claims only what its mechanism can prove.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -36,7 +39,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
-TOTAL_CHECKS=15
+TOTAL_CHECKS=16
 SMOKE_USER="smoke-tester"
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
@@ -1212,6 +1215,75 @@ else
         pass "green/red reach the terminal, retired ramp absent, truncation and unavailability stated"
     else
         fail "$(printf '%s' "$diff_err" | head -3)"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 16 --
+# The copy path, checked for the one thing that would make it dishonest: a
+# clipboard write the shell cannot verify, announced as one that happened.
+#
+# The mechanics are the machine's business -- whether pbcopy exists here, and
+# whether this terminal honours OSC 52, vary by machine and neither is this
+# repository's to guarantee. What IS guaranteed, on every machine, is that the
+# unverifiable branch never produces a sentence a reader would take as success.
+COPY_JS=$(cat <<'JS'
+import assert from 'node:assert/strict';
+import { copyNotice, copyText, lastReplyText } from './src/clipboard.js';
+import { helpText } from './src/commands.js';
+
+const tty = () => ({ isTTY: true, write: () => true });
+const missing = () => ({ error: Object.assign(new Error('enoent'), { code: 'ENOENT' }) });
+
+// pbcopy exit 0 is evidence; that alone earns the word "copied".
+const confirmed = copyText('reply', { run: () => ({ status: 0 }), stdout: tty() });
+assert.equal(confirmed.confirmed, true);
+assert.match(copyNotice(confirmed, 1), /^Copied /);
+
+// OSC 52 is write-only. The terminal never answers, so the notice must not
+// claim it landed, and must not contain the word a skimming reader stops at.
+const unverifiable = copyText('reply', { run: missing, stdout: tty() });
+assert.equal(unverifiable.method, 'osc52');
+assert.equal(unverifiable.confirmed, false, 'an unacknowledged write was marked confirmed');
+const notice = copyNotice(unverifiable, 1);
+assert.doesNotMatch(notice, /\bcopied\b/i, 'unverifiable write announced as a copy');
+assert.match(notice, /cannot confirm/i);
+
+// No mechanism at all is a real outcome, stated plainly.
+const none = copyText('reply', { run: missing, stdout: { isTTY: false, write: () => true } });
+assert.equal(none.ok, false);
+assert.match(copyNotice(none, 1), /^Copy unavailable: /);
+
+// The copy is the source text, never the rendered rows.
+assert.equal(
+    lastReplyText([
+        { kind: 'message', text: 'the reply' },
+        { kind: 'notice', text: 'a shell notice' },
+    ]),
+    'the reply'
+);
+
+// Mouse mode takes drag-select away from the terminal for as long as Sherman
+// is mounted. The override has to be written where the operator looks.
+assert.match(helpText(), /Shift\+drag/, '/help does not state the selection override');
+assert.match(helpText(), /ctrl\+y/, '/help does not state the copy binding');
+JS
+)
+
+echo
+echo "16. copy claims only what it can prove"
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot exercise the copy path"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    skip "shell/node_modules absent, run install.sh"
+else
+    copy_err=$(cd shell && node --input-type=module -e "$COPY_JS" 2>&1)
+    copy_status=$?
+
+    if [ "$copy_status" -eq 0 ]; then
+        pass "confirmed copies say copied; OSC 52 says it cannot confirm; no mechanism says unavailable"
+    else
+        fail "$(printf '%s' "$copy_err" | head -3)"
     fi
 fi
 
