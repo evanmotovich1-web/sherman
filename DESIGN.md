@@ -30,6 +30,20 @@ For the full rationale and original design, read the
 - Headless engines receive only the restricted tools needed to search, read,
   and write within their allowed vault scope.
 
+### Registries
+
+- The first-run wizard's provider menu renders from a registry in
+  `bin/sherman` — one `id|label|binary|status|reason` line per provider.
+  Enabling a future backend is flipping that provider's line to `available`
+  the day its backend is real; it is never new wizard flow. An unavailable
+  provider is listed with its reason and refuses selection, because a
+  selectable option that errors after selection is the one dishonest shape
+  the menu is not allowed to have.
+- Messaging channels (WhatsApp, Telegram) are deliberately absent from setup.
+  Nothing offers a connect flow until the Phase 3 bridge exists; when it
+  does, it reuses the same registry pattern — an entry added and flipped to
+  available — rather than growing a second wizard.
+
 ## Memory and access model
 
 The vault is company-owned and hidden from employees. A file on an employee's

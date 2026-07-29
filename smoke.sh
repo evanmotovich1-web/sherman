@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — nineteen checks, no framework.
+# smoke.sh — twenty checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -25,6 +25,8 @@
 #  18. The context meter marks an estimate as one, and only a measurement compacts.
 #  19. README.md states the Windows reality, points at the real installer, and
 #      names unbuilt channels only under its marked roadmap heading.
+#  20. The wizard lists an unavailable provider visibly, refuses its selection
+#      with the reason, and completes on the available one.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -43,7 +45,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
-TOTAL_CHECKS=19
+TOTAL_CHECKS=20
 SMOKE_USER="smoke-tester"
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
@@ -89,8 +91,10 @@ if [ -z "$TMPHOME" ] || [ -z "$STUBDIR" ] || [ "$TMPHOME" = "/" ] || [ "$TMPHOME
     exit 1
 fi
 
-printf '#!/bin/sh\nexit 0\n' > "$STUBDIR/claude"
-chmod +x "$STUBDIR/claude"
+# The wizard's registry lists codex as option 1 — the only available provider
+# today — so the piped answers select codex and need a codex stub on PATH.
+printf '#!/bin/sh\nexit 0\n' > "$STUBDIR/codex"
+chmod +x "$STUBDIR/codex"
 
 # --raw, not the default handoff: see the note at the top of this file.
 printf '1\nSmoke Tester\n' \
@@ -111,9 +115,9 @@ else
     got_user=$(/usr/bin/jq -r '.user // empty' "$CONFIG" 2>/dev/null)
     got_vault=$(/usr/bin/jq -r '.vault_path // empty' "$CONFIG" 2>/dev/null)
 
-    [ "$got_engine" = "claude" ] \
-        && pass "engine recorded as claude (answer 1 = Anthropic)" \
-        || fail "engine is '$got_engine', expected 'claude'"
+    [ "$got_engine" = "codex" ] \
+        && pass "engine recorded as codex (answer 1 = OpenAI, the available provider)" \
+        || fail "engine is '$got_engine', expected 'codex'"
 
     [ "$got_user" = "$SMOKE_USER" ] \
         && pass "user slugified to $SMOKE_USER" \
@@ -128,7 +132,7 @@ fi
 echo
 echo "3. assembled adapter carries vault, user and the PHI rule"
 
-ADAPTER="$TMPHOME/.sherman/workspace/CLAUDE.md"
+ADAPTER="$TMPHOME/.sherman/workspace/AGENTS.md"
 
 if [ ! -f "$ADAPTER" ]; then
     fail "no adapter assembled at $ADAPTER"
@@ -165,8 +169,8 @@ else
         && fail "splice token still present -- template copied, not assembled" \
         || pass "splice token replaced"
 
-    [ -f "$TMPHOME/.sherman/workspace/AGENTS.md" ] \
-        && fail "stale AGENTS.md alongside CLAUDE.md" \
+    [ -f "$TMPHOME/.sherman/workspace/CLAUDE.md" ] \
+        && fail "stale CLAUDE.md alongside AGENTS.md" \
         || pass "no stale sibling adapter"
 fi
 
@@ -203,9 +207,15 @@ echo "5. backend selection follows the config engine field"
 if ! command -v node >/dev/null 2>&1; then
     fail "node not found -- cannot check backend selection"
 else
-    # The sandbox config from check 2 records engine "claude", so the shell must
-    # pick the Claude stub and say it is not implemented -- never reach for codex.
-    sel_out=$(env HOME="$TMPHOME" node "$SHELL_ENTRY" --probe "smoke" 2>&1)
+    # The wizard can no longer produce an engine "claude" config (Anthropic is
+    # registered unavailable), but a hand-written one must keep behaving exactly
+    # as before: the shell picks the Claude stub and says it is not implemented
+    # -- never a crash, never a silent fall-through to codex.
+    CLAUDEHOME="$TMPHOME/claude-home"
+    mkdir -p "$CLAUDEHOME/.sherman"
+    printf '{"version":1,"engine":"claude","user":"%s","vault_path":"%s"}\n' \
+        "$SMOKE_USER" "$ROOT/vault" > "$CLAUDEHOME/.sherman/config.json"
+    sel_out=$(env HOME="$CLAUDEHOME" node "$SHELL_ENTRY" --probe "smoke" 2>&1)
 
     printf '%s' "$sel_out" | grep -qi "not implemented" \
         && pass "engine 'claude' selects the Claude stub" \
@@ -225,10 +235,11 @@ echo
 echo "6. --raw still execs the engine"
 
 # A stub that leaves evidence, so this asserts the exec actually happened rather
-# than merely that the launcher exited 0.
+# than merely that the launcher exited 0. The check-2 sandbox config records
+# codex, so the stub is codex.
 ENGINE_MARKER="$TMPHOME/engine-was-exec-d"
-printf '#!/bin/sh\ntouch "%s"\nexit 0\n' "$ENGINE_MARKER" > "$STUBDIR/claude"
-chmod +x "$STUBDIR/claude"
+printf '#!/bin/sh\ntouch "%s"\nexit 0\n' "$ENGINE_MARKER" > "$STUBDIR/codex"
+chmod +x "$STUBDIR/codex"
 
 env HOME="$TMPHOME" PATH="$STUBDIR:$PATH" ./bin/sherman --raw >/dev/null 2>&1
 
@@ -1491,6 +1502,37 @@ else
             fail "unbuilt channel named above the roadmap heading: $(printf '%s' "$stray" | head -1)"
         fi
     fi
+fi
+
+# ----------------------------------------------------------------- check 20 --
+echo
+echo "20. the wizard cannot sell a dead backend"
+
+WIZHOME="$TMPHOME/wizard-home"
+mkdir -p "$WIZHOME"
+
+# Answer 2 first (Anthropic, registered unavailable), then 1 (codex). The run
+# must refuse 2 with the reason, re-prompt, and complete on 1 -- selecting the
+# unavailable provider may never proceed and may never error after selection.
+wiz_out=$(printf '2\n1\nWiz Tester\n' \
+    | env HOME="$WIZHOME" PATH="$STUBDIR:$PATH" ./bin/sherman --raw 2>&1)
+wiz_status=$?
+
+printf '%s' "$wiz_out" | grep -q "Anthropic (Claude Code) — not available yet" \
+    && pass "Anthropic is listed, visibly unavailable" \
+    || fail "menu does not mark Anthropic as unavailable"
+
+printf '%s' "$wiz_out" | grep -q "not wired into the Sherman Shell yet" \
+    && pass "selecting it is refused with the reason" \
+    || fail "selecting the unavailable provider did not print the reason"
+
+if [ "$wiz_status" -ne 0 ]; then
+    fail "wizard run exited $wiz_status after the refusal"
+else
+    wiz_engine=$(/usr/bin/jq -r '.engine // empty' "$WIZHOME/.sherman/config.json" 2>/dev/null)
+    [ "$wiz_engine" = "codex" ] \
+        && pass "run completed on the available provider (engine=codex)" \
+        || fail "engine after refusal+retry is '$wiz_engine', expected 'codex'"
 fi
 
 # -------------------------------------------------------------------- result --

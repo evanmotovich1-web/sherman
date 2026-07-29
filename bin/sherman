@@ -56,12 +56,34 @@ PLACEHOLDER
 }
 
 # ------------------------------------------------------------------ engines --
+# The provider registry. One line per provider:
+#
+#     id|label|binary|status|reason
+#
+# The wizard's menu renders FROM this list, so adding a provider later — or
+# flipping one to available the day its backend is real — is one line here,
+# never new wizard flow. An unavailable provider is listed with its reason and
+# refuses selection: a selectable option that errors after selection is the
+# one dishonest shape the menu is not allowed to have.
+#
+# bash 3.2: plain string + line tools, no associative arrays. No `|` inside
+# any field.
+PROVIDERS='codex|OpenAI (Codex)|codex|available|
+claude|Anthropic (Claude Code)|claude|unavailable|the Claude Code backend is not wired into the Sherman Shell yet; Codex is the only working backend today'
+
+provider_count() {
+    printf '%s\n' "$PROVIDERS" | grep -c .
+}
+
+# $1 = 1-based registry line, $2 = field number (1 id, 2 label, 3 binary,
+# 4 status, 5 reason).
+provider_field() {
+    printf '%s\n' "$PROVIDERS" | sed -n "${1}p" | cut -d'|' -f"$2"
+}
+
 engine_binary() {
-    case "$1" in
-        claude) printf 'claude' ;;
-        codex)  printf 'codex' ;;
-        *) printf 'unknown-engine' ;;
-    esac
+    printf '%s\n' "$PROVIDERS" \
+        | awk -F'|' -v id="$1" '$1 == id { print $3; found = 1 } END { if (!found) print "unknown-engine" }'
 }
 
 engine_install_hint() {
@@ -182,19 +204,45 @@ run_wizard() {
     # 1. Provider. This IS the engine choice. Sherman performs no OAuth of its
     #    own -- the engine's native browser login fires on first launch if it
     #    is not already authenticated.
+    #
+    #    The menu renders from the provider registry. Unavailable providers are
+    #    shown -- silence would read as "does not exist" -- but refuse
+    #    selection with their reason and re-prompt.
+    echo "Sign in with:"
+    total=$(provider_count)
+    i=1
+    while [ "$i" -le "$total" ]; do
+        if [ "$(provider_field "$i" 4)" = "available" ]; then
+            echo "  [$i] $(provider_field "$i" 2)"
+        else
+            echo "  [$i] $(provider_field "$i" 2) — not available yet"
+        fi
+        i=$((i + 1))
+    done
+
     engine=""
     while [ -z "$engine" ]; do
-        printf 'Sign in with: [1] Anthropic  [2] OpenAI  > '
+        printf 'Choose a number > '
         if ! read -r reply; then
             echo >&2
             echo "No answer given. Aborting." >&2
             exit 1
         fi
         case "$reply" in
-            1) engine="claude" ;;
-            2) engine="codex" ;;
-            *) echo "  Enter 1 or 2." ;;
+            ''|*[!0-9]*)
+                echo "  Enter a number between 1 and $total."
+                continue
+                ;;
         esac
+        if [ "$reply" -lt 1 ] || [ "$reply" -gt "$total" ]; then
+            echo "  Enter a number between 1 and $total."
+            continue
+        fi
+        if [ "$(provider_field "$reply" 4)" != "available" ]; then
+            echo "  $(provider_field "$reply" 2) is not available yet — $(provider_field "$reply" 5)."
+            continue
+        fi
+        engine=$(provider_field "$reply" 1)
     done
 
     # Fail before writing any config if the engine is missing.

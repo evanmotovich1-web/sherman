@@ -3,6 +3,21 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-07-29 — Changed: the wizard renders from a provider registry
+
+- The first-run provider menu now renders from a registry in `bin/sherman`
+  (one `id|label|binary|status|reason` line per provider). Codex is the only
+  available provider; Anthropic is listed as visibly unavailable and refuses
+  selection with the reason, instead of proceeding into a shell whose Claude
+  backend is a stub that errors on every turn.
+- Adding or enabling a provider later is one registry line, not new wizard
+  flow. The seam — including why messaging channels are absent from setup —
+  is recorded in `DESIGN.md`.
+- Smoke checks 2/3/5/6 repaired for the codex-first reality; new check 20
+  proves the unavailable provider is shown, refused with its reason, and that
+  the run still completes on the available one. A hand-written
+  `engine: claude` config still selects the stub exactly as before.
+
 ## 2026-07-29 — Added: README, ahead of going public
 
 - Audited all 57 commits of history for secrets before anything else: clean.
