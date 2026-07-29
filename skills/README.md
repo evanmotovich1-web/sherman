@@ -26,9 +26,11 @@ skill, when not to, and what "done" looks like.
 
 ## The starting set
 
-These five were derived from `agent/SYSTEM.md` — the vault-first rule, the
-no-PHI floor, and the stated purpose ("reports, SOPs, formats, comms,
-lookups"). They are a starting set to edit, not a fixed library.
+The company-work skills were derived from `agent/SYSTEM.md` — the vault-first
+rule, the no-PHI floor, and the stated purpose ("reports, SOPs, formats, comms,
+lookups"). The `agent` category is Sherman's own operating loop: how a lesson
+survives a session, and how a session gets judged. All of it is a starting set
+to edit, not a fixed library.
 
 | Skill | Category | For |
 | --- | --- | --- |
@@ -37,6 +39,13 @@ lookups"). They are a starting set to edit, not a fixed library.
 | `phi-boundary` | compliance | recognize PHI, refuse it, redirect |
 | `sop-draft` | documents | write or revise a procedure in the company's shape |
 | `company-document` | documents | produce a report or memo from the approved format |
+| `self-improvement` | agent | record a durable lesson from being corrected |
+| `session-eval` | agent | judge whether the session used skills and the vault, unprompted |
+| `capability-gap` | agent | find work that happened badly for want of a skill or tool |
+
+`session-eval` and `capability-gap` are driven by `/eval`, which also runs
+automatically when a session that had turns ends. That turn is read-only by
+construction: it judges and proposes, and a person decides what gets written.
 
 ## Adding one
 

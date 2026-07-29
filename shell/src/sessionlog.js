@@ -26,6 +26,20 @@ export function createSessionLog(sessionId) {
     let prepared = false;
 
     return {
+        /**
+         * Where this session's turns are being written.
+         *
+         * Exposed because the evals read the log rather than the transcript:
+         * the transcript is React state that dies with the process, and a judge
+         * that graded a conversation from memory would be grading a summary of
+         * itself. The path is returned even when logging has died, and the
+         * reader is expected to fail honestly if the file is not there.
+         */
+        path: file,
+
+        /** True once a write has failed; the log is off for the rest of the session. */
+        get failed() { return dead; },
+
         append(role, text) {
             if (dead) return;
             try {

@@ -27,6 +27,12 @@ export const COMMANDS = Object.freeze([
         detail: 'Runs one read-only turn that writes a handoff summary, then opens a new engine thread carrying only that summary. The transcript keeps every line; the engine does not. Runs automatically once a turn reports 90% of the context window.',
     },
     {
+        name: 'eval',
+        usage: '/eval [gaps|conduct]',
+        summary: 'grade this session against the skills, and propose missing ones',
+        detail: 'Runs one read-only turn that reads this session\'s log and reports where skills and the vault were used or missed, whether durable knowledge was written, and what capability was missing. It judges and proposes; it never writes. Runs automatically when a session with turns in it ends.',
+    },
+    {
         name: 'copy',
         usage: '/copy',
         summary: "copy the last Sherman reply to the clipboard",
@@ -68,7 +74,13 @@ export function suggestionsFor(value) {
     const text = value.trimStart();
     if (!text.startsWith('/') || text.startsWith('//') || /\s/.test(text)) return [];
     const prefix = text.slice(1).toLowerCase();
-    return COMMANDS.filter((command) => command.name.startsWith(prefix)).slice(0, 6);
+    // Every first-party command, not a window onto them. The cap was 6, which
+    // was the whole registry when it was written; the seventh command silently
+    // pushed /help off the palette — the one command a new employee needs most,
+    // hidden by an arithmetic accident rather than a decision. The palette's own
+    // layout already bounds itself against the viewport (see CommandMenu), so
+    // the list does not need a second, blinder limit here.
+    return COMMANDS.filter((command) => command.name.startsWith(prefix));
 }
 
 export function helpText(name = '') {
@@ -183,6 +195,55 @@ export function carryOverEnvelope(summary, text) {
         'USER REQUEST',
         text,
     ].join('\n');
+}
+
+/**
+ * The end-of-session evaluation turn.
+ *
+ * Read-only, and that is not a default — an eval that could write would be
+ * grading a brain it is simultaneously editing, with nothing left to check it.
+ * The `session-eval` and `capability-gap` skills both say so; this enforces it
+ * at the sandbox.
+ *
+ * The judge reads the session LOG, not the transcript. The transcript is React
+ * state that dies with the process, and a judge working from its own memory of
+ * a conversation is grading a summary it wrote itself. The log is the record.
+ *
+ * @param {string} logPath absolute path to this session's JSONL log
+ * @param {{gaps?: boolean}} options `gaps` adds the capability-gap pass
+ */
+export function evalRequest(logPath, { gaps = true } = {}) {
+    if (!logPath) return null;
+    return {
+        text: [
+            'END-OF-SESSION EVALUATION TURN',
+            'This session is ending. Grade your own conduct in it.',
+            '',
+            `The session log is at ${logPath} — one JSON object per line,`,
+            '{role, at, text}, with role of user, sherman, or worker. Read it first.',
+            'Judge only from that file and from the current state of the vault and',
+            'skills/. You do not have the conversation in context, and you must not',
+            'reconstruct it from memory.',
+            '',
+            'Follow the session-eval skill. Report on all five of its checks, citing',
+            'the specific turn behind every judgment, and say "not applicable" where',
+            'the session contained no work of that kind rather than claiming a pass.',
+            gaps
+                ? 'Then follow the capability-gap skill and propose at most two missing '
+                  + 'skills, or none if nothing is supported by the evidence.'
+                : null,
+            '',
+            'This turn is READ-ONLY. Do not write to the vault, to skills/, or to',
+            'agent/capabilities.json. If a durable lesson is warranted, say so and',
+            'let the operator run it deliberately.',
+            'Never quote patient-identifying data, including to report that the',
+            'boundary was tested — describe the shape and say the specifics were',
+            'withheld. The Sherman operating contract and no-PHI rule remain',
+            'authoritative.',
+        ].filter(Boolean).join('\n'),
+        mode: 'read-only',
+        source: 'eval',
+    };
 }
 
 export function workerRequest(task, goal) {

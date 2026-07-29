@@ -26,6 +26,7 @@ import {
     carryOverEnvelope,
     commandFor,
     compactRequest,
+    evalRequest,
     goalEnvelope,
     helpText,
     parseSubmission,
@@ -141,6 +142,13 @@ export function App({
     // first one. The ref is the live array; `items` stays the render source.
     const itemsRef = useRef(items);
     useEffect(() => { itemsRef.current = items; }, [items]);
+
+    // Whether this session has anything worth grading, and whether it has been
+    // graded. A session that was launched and quit has no conduct to judge, and
+    // spending a real engine turn to say so on every exit would be a tax on
+    // opening the shell.
+    const turnsRef = useRef(0);
+    const evalRanRef = useRef(false);
 
     const [busy, setBusy] = useState(false);
     const [activities, setActivities] = useState([]);
@@ -457,6 +465,23 @@ export function App({
                 commit('notice', 'planning turn · read-only sandbox');
             }
 
+            if (parsed.kind === 'command' && parsed.name === 'eval') {
+                request = evalRequest(log.path, { gaps: parsed.args !== 'conduct' });
+                if (!request) {
+                    commit('error', 'No session log to evaluate.');
+                    return;
+                }
+                if (log.failed) {
+                    // The log is where the judgment comes from. Grading a
+                    // session whose record stopped being written would produce
+                    // a confident report about a fraction of what happened.
+                    commit('error', 'The session log stopped being written, so there is nothing complete to grade.');
+                    return;
+                }
+                evalRanRef.current = true;
+                commit('notice', 'evaluating this session · read-only · judging conduct, not answers');
+            }
+
             if (parsed.kind === 'command' && parsed.name === 'subagent') {
                 if (!parsed.args) {
                     commit('error', 'Usage: /subagent <task>');
@@ -585,6 +610,7 @@ export function App({
                                 const used = Number.isFinite(event.usage?.input)
                                     ? event.usage.input
                                     : null;
+                                turnsRef.current += 1;
                                 setContextUsed(used);
                                 // The measured figure supersedes the estimate
                                 // outright. Blending a fact with a guess yields
@@ -690,6 +716,29 @@ export function App({
             activeSessionRef.current.interrupt();
             return;
         }
+
+        // The end-of-session evaluation, run on the way out.
+        //
+        // Only when the session actually had a turn: launching the shell and
+        // quitting has no conduct to grade, and spending a real engine turn to
+        // say so would be a tax on opening it.
+        //
+        // The escape hatch is deliberate and load-bearing. The eval sets busy,
+        // so the NEXT ctrl+c takes the interrupt branch above and stops it, and
+        // the one after that exits — an eval can never trap the operator in a
+        // shell they asked to leave. `evalRanRef` is set before the turn starts
+        // rather than after it, so an interrupted eval does not re-run on the
+        // way out and turn one exit into two.
+        if (turnsRef.current > 0 && !evalRanRef.current && !log.failed) {
+            evalRanRef.current = true;
+            commit('notice', 'evaluating this session before exit · ctrl+c to skip');
+            submit('/eval').finally(() => {
+                session.dispose();
+                exit();
+            });
+            return;
+        }
+
         session.dispose();
         exit();
     });
