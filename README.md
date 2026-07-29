@@ -33,7 +33,7 @@ says so instead of guessing.
 ## Install (macOS)
 
 ```sh
-git clone <repo-url> sherman   # the public URL lands when this repo is published
+git clone https://github.com/evanmotovich1-web/sherman.git
 cd sherman
 ./install.sh
 ```
