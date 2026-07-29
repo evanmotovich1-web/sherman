@@ -8,3 +8,8 @@ graphify-out/
 .env
 .env.*
 *.local
+
+# Private per-user memory is runtime state for THIS machine's user. The repo
+# is public: a person's private memory must be impossible to commit here.
+vault/memory/private/*
+!vault/memory/private/.keep
