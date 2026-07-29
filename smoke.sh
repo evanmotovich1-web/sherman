@@ -643,17 +643,36 @@ const fullReplyLines = renderToString(
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
-// 80 columns, one gutter column each side => a 78-cell reply box. The
-// signature is embedded in the top border one dash in, the body sits inside
-// the side borders, and the bottom border replaces the old trailing blank row
-// as the thing that terminates the reply.
+// One gutter column, then the two-cell rule indent. The signature stands on
+// its own row sharing the rule's left edge, and the reply ends when its text
+// ends — no bottom border, and no trailing blank row either, because the next
+// user turn carries the air between turns.
 if (
-    fullReplyLines.length !== 3 ||
-    fullReplyLines[0] !== ' ╭─ Sherman ' + '─'.repeat(66) + '╮' ||
-    fullReplyLines[1] !== ' │ reply body' + ' '.repeat(65) + '│' ||
-    fullReplyLines[2] !== ' ╰' + '─'.repeat(76) + '╯'
+    fullReplyLines.length !== 2 ||
+    fullReplyLines[0] !== '   Sherman' ||
+    fullReplyLines[1] !== '   │ reply body'
 ) {
     mappingMissing.push('signed Sherman reply geometry and trailing rhythm');
+}
+
+// The rule must stand in the same column as the trace rows above it. Diff,
+// tool and self-talk hard-code the prefix `  │ `; the reply's rule is an Ink
+// border. Different machinery, one left edge — a drift here is a bug.
+const alignmentLines = renderToString(
+    React.createElement(Transcript, {
+        items: [
+            { id: 'align-tool', kind: 'tool', text: 'read vault/wiki/index.md' },
+            { id: 'align-reply', kind: 'message', text: 'aligned' },
+        ],
+        columns: 80,
+    }),
+    { columns: 80 }
+).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
+const ruleColumns = new Set(
+    alignmentLines.filter((line) => line.includes('│')).map((line) => line.indexOf('│'))
+);
+if (ruleColumns.size !== 1) {
+    mappingMissing.push('reply rule aligned with the activity trace gutter');
 }
 
 const longReplyInput = '0123456789'.repeat(20);
@@ -664,16 +683,17 @@ const longReplyLines = renderToString(
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
-const longBodyLines = longReplyLines.slice(1, -1);
-// Body rows now live inside the box: gutter, '│', one padding space, the
-// wrapped chunk, padding out to the closing '│'. Every row is exactly the
-// 79 cells of gutter + box, and the chunks still reassemble the input.
+// Row 0 is the signature; everything after it is body. Each body row is the
+// gutter, the two-cell indent, the rule, one padding space, then the wrapped
+// chunk — the rule repeating on EVERY row is what proves Ink painted it down
+// the measured height rather than only beside the first line. The chunks still
+// reassemble the input exactly, so no text was dropped at the wrap.
+const longBodyLines = longReplyLines.slice(1);
 if (
     longBodyLines.length < 3 ||
-    longBodyLines.some((line) => !line.startsWith(' │ ')) ||
-    longBodyLines.some((line) => !line.endsWith('│')) ||
-    longBodyLines.some((line) => [...line].length !== 79) ||
-    longBodyLines.map((line) => line.slice(3).replace(/ *│$/, '')).join('') !== longReplyInput
+    longBodyLines.some((line) => !line.startsWith('   │ ')) ||
+    maxWidth(longReplyLines.join('\n')) > 80 ||
+    longBodyLines.map((line) => line.slice(5)).join('') !== longReplyInput
 ) {
     mappingMissing.push('long Sherman reply wraps without overflow or dropped text');
 }
@@ -782,9 +802,11 @@ const poll = setInterval(() => {
             if (sent.length !== 1 || sent[0] !== 'read\nthe sop') {
                 missing.push('multi-line paste preserved until Enter');
             }
-            // The signature is ON the border now, not on a row of its own: the
-            // top border row must literally read ╭─ Sherman ───…───╮.
-            if (!/╭─ Sherman ─+╮/.test(plain)) missing.push('Sherman reply label');
+            // The signature is back on a row of its own, standing above the
+            // rule at the shared left edge, with the body beside the rule under
+            // it. Both rows are asserted: a signature with no ruled body under
+            // it would mean the frame collapsed to a bare label.
+            if (!/\n {3}Sherman\n {3}│ /.test(plain)) missing.push('Sherman reply label');
             // Asserted against the accumulated capture, which holds every frame
             // written during the turn: the completed line with its measured
             // duration must be RENDERED when the tool finishes. It is deliberately

@@ -71,6 +71,21 @@ const ROUND = { topLeft: '╭', top: '─', topRight: '╮' };
 const BORDER_LABEL_OFFSET = 1;
 
 /**
+ * RETIRED, DELIBERATELY KEPT. Nothing calls this any more.
+ *
+ * Replies used to be a four-sided box whose top row carried the signature, and
+ * this helper is what drew that row. The reply frame is a left rule now (see
+ * `ShermanMessage`), so there is no top border to embed a label in, and the
+ * worker frame did not keep the old style either — running one speaker in a box
+ * and the other against a rule would preserve exactly the two-visual-language
+ * problem the rule exists to remove.
+ *
+ * It stays because it is the one genuine Hermes technique in this codebase: a
+ * cell-for-cell port of `render-border.ts`, correct under every width, and the
+ * next component that wants a labelled border should start from this rather
+ * than rediscovering the clamp. Retiring it costs three unreachable functions;
+ * deleting it costs the technique.
+ *
  * Hermes' `embedTextInBorder`, ported cell-for-cell from
  * `hermes-ink/src/ink/render-border.ts:33-66`, specialised to `align:'start'`.
  *
@@ -133,29 +148,58 @@ function TitledTopBorder({ width, label, labelColor }) {
     );
 }
 
-/** Hermes-sized reply: a box whose top border carries the signature. */
+// The reply frame: a signature line, then the body against a left rule.
+//
+//     Sherman
+//     │ The vault stores one durable
+//     │ fact per file.
+//
+// The rule sits at the SAME offset as the diff, self-talk and tool rows, whose
+// prefix is the literal `  │ ` two cells in. That alignment is the entire point
+// of the change: the transcript is one column of speech with one left edge, and
+// a reply whose rule stood a cell off from the trace above it would read as a
+// different kind of object rather than the same conversation continuing.
+//
+// The rule is drawn by Ink's own border machinery with three sides switched
+// off, NOT by prefixing each line with `│` the way Diff.js does. Diff rows are
+// `wrap:'truncate'` single lines, so a per-line prefix is exact there. Replies
+// wrap, and the number of rows a reply occupies is known only after Yoga has
+// measured it — a prefix loop would have to predict the wrap to place its
+// glyphs, and would drop the rule on every continuation row it guessed wrong.
+// Ink paints the border down whatever height the box ends up being, so the rule
+// runs the full block at every width by construction.
+const RULE_INDENT = 2;
+
 function ShermanMessage({ text, width, worker = false }) {
     const safeText = safeTerminalText(text, { preserveNewlines: true });
-    if (width < 6) {
+    // Below this there is no room for indent + rule + padding + a cell of text.
+    if (width < RULE_INDENT + 3) {
         return React.createElement(Text, { wrap: 'truncate' }, safeText);
     }
     const labelColor = worker ? color.secondary : color.accent;
     return React.createElement(
         Box,
         { flexDirection: 'column', width: Math.max(1, width) },
-        React.createElement(TitledTopBorder, {
-            width: Math.max(1, width),
-            label: worker ? ' ◇ Worker 01 ' : ' Sherman ',
-            labelColor,
-        }),
+        React.createElement(
+            Box,
+            { marginLeft: RULE_INDENT },
+            React.createElement(
+                Text,
+                { color: labelColor, bold: true, wrap: 'truncate' },
+                worker ? '◇ Worker 01' : 'Sherman'
+            )
+        ),
         React.createElement(
             Box,
             {
                 borderStyle: 'round',
                 borderColor: color.frame,
                 borderTop: false,
-                width: Math.max(1, width),
-                paddingX: 1,
+                borderRight: false,
+                borderBottom: false,
+                marginLeft: RULE_INDENT,
+                width: width - RULE_INDENT,
+                paddingLeft: 1,
                 // Yoga stretches this body to its explicit-width parent. Keep
                 // horizontal overflow visible so geometry errors fail loudly.
             },
@@ -349,12 +393,13 @@ export function Transcript({ items, columns, offset = 0, onWindow }) {
                         // Air above each user turn — the rhythm that makes turns
                         // read as turns.
                         marginTop: item.kind === 'user' ? 1 : 0,
-                        // Replies used to need a trailing blank row to separate
-                        // them from the next turn. The reply box now closes
-                        // itself with a bottom border, so that row would be a
-                        // second terminator — and it would cost a transcript row
-                        // that the border already spends, pushing one more item
-                        // off the top of the clip.
+                        // No trailing blank row under a reply. The left rule
+                        // does not close itself the way the old bottom border
+                        // did, but it does not need to: the next user turn
+                        // carries marginTop:1, so the air between turns is
+                        // spent once, by the turn that starts — and spending it
+                        // twice would cost a transcript row and push one more
+                        // item off the top of the clip.
                         marginBottom: 0,
                     },
                     React.createElement(Item, { item, width, rows: size.rows })

@@ -506,7 +506,7 @@ test('multiline user prompts align continuation rows under the body', () => {
     assert.deepEqual(output, [' ❯ line one', '   line two', '   line three']);
 });
 
-test('reply geometry is a signed box whose label lives in the top border', () => {
+test('reply geometry is a signature line above a left rule', () => {
     const reply = rawRows(renderToString(
         React.createElement(Transcript, {
             items: [{ id: 'reply', kind: 'message', text: 'Concise response.' }],
@@ -514,14 +514,103 @@ test('reply geometry is a signed box whose label lives in the top border', () =>
         }),
         { columns: 80 }
     ));
-    // 80 columns, one column of transcript gutter each side => a 78-cell box.
-    // The signature is embedded in the top border after a single dash, and the
-    // bottom border — not a trailing blank row — terminates the reply.
+    // One column of transcript gutter, then the two-cell rule indent. The
+    // signature stands on its own row above the rule and shares its left edge;
+    // there is no top, right or bottom border left to carry it.
     assert.deepEqual(reply, [
-        ` ╭─ Sherman ${'─'.repeat(78 - 12)}╮`,
-        ` │ Concise response.${' '.repeat(78 - 20)}│`,
-        ` ╰${'─'.repeat(76)}╯`,
+        '   Sherman',
+        '   │ Concise response.',
     ]);
+});
+
+// The whole point of the rule is that the transcript has ONE left edge. Diff,
+// tool and self-talk rows hard-code the prefix `  │ `; the reply builds its
+// rule out of an Ink border instead, so the two are produced by completely
+// different machinery and nothing but a test keeps them at the same offset.
+// AGENTS.md calls a mismatch here a bug, not a detail.
+test('the reply rule sits at the same column as the diff and tool gutters', () => {
+    const rows = rawRows(renderToString(
+        React.createElement(Transcript, {
+            items: [
+                { id: 'tool', kind: 'tool', text: 'read vault/wiki/index.md' },
+                {
+                    id: 'diff',
+                    kind: 'diff',
+                    diff: {
+                        path: 'vault/wiki/a.md', changeKind: 'update', available: true,
+                        added: 1, removed: 0, lines: [{ sign: '+', text: 'one fact' }], more: 0,
+                    },
+                },
+                { id: 'reply', kind: 'message', text: 'Aligned.' },
+            ],
+            columns: 80,
+        }),
+        { columns: 80 }
+    ));
+    const ruleColumns = new Set(
+        rows.filter((line) => line.includes('│')).map((line) => line.indexOf('│'))
+    );
+    assert.equal(
+        ruleColumns.size,
+        1,
+        `trace and reply rules drifted apart: columns ${[...ruleColumns].join(', ')}`
+    );
+});
+
+// A reply that wraps is the common case, and the rule is drawn by Ink across
+// the measured height rather than prefixed per line precisely so it survives
+// one. A rule that stopped after the first row would leave the continuation
+// text floating unattributed in the transcript.
+test('the reply rule runs the full height of a wrapped reply', () => {
+    for (const columns of [60, 200]) {
+        const body = 'wrap '.repeat(80).trim();
+        const rows = contentRows(renderToString(
+            React.createElement(Transcript, {
+                items: [{ id: 'reply', kind: 'message', text: body }],
+                columns,
+            }),
+            { columns }
+        ));
+        const [signature, ...bodyRows] = rows;
+        assert.match(signature, /^ {3}Sherman$/, `${columns}-column reply lost its signature line`);
+        assert.ok(bodyRows.length > 1, `${columns}-column reply did not wrap, so this proves nothing`);
+        for (const [index, line] of bodyRows.entries()) {
+            assert.match(
+                line,
+                /^ {3}│ /,
+                `${columns}-column reply lost its rule on wrapped row ${index + 1}`
+            );
+        }
+        assert.ok(
+            maxWidth(renderToString(
+                React.createElement(Transcript, {
+                    items: [{ id: 'reply', kind: 'message', text: body }],
+                    columns,
+                }),
+                { columns }
+            )) <= columns,
+            `${columns}-column reply overflowed its width`
+        );
+    }
+});
+
+// The narrow fallback. Below indent + rule + padding + a cell of text there is
+// no frame to draw, and the reply degrades to bare truncated text rather than
+// rendering a rule with nothing beside it or overflowing the viewport.
+test('a reply too narrow to frame degrades to plain text without overflowing', () => {
+    for (const columns of [3, 5, 6]) {
+        const output = renderToString(
+            React.createElement(Transcript, {
+                items: [{ id: 'reply', kind: 'message', text: 'Concise response.' }],
+                columns,
+            }),
+            { columns }
+        );
+        assert.ok(
+            maxWidth(output) <= columns,
+            `${columns}-column reply overflowed: ${JSON.stringify(rawRows(output))}`
+        );
+    }
 });
 
 // The launch frame is the transcript's only item before the first turn, and on
@@ -556,8 +645,13 @@ test('live transcript geometry anchors the newest of two turns at 80x24', async 
         { id: 'm2', kind: 'worker-message', text: 'Worker reply.' },
     ], 80, 24);
 
+    // Row 23 is the LAST row of a 24-row viewport. This read 22 while a reply
+    // ended in a bottom border, which spent the final row on frame rather than
+    // on speech; the left rule spends nothing after the text, so the newest
+    // words now sit flush against the bottom edge. Same invariant — newest
+    // content anchored at the bottom — one row tighter.
     const frameRows = rawRows(output);
-    assert.equal(frameRows.findIndex((line) => line.includes('Worker reply.')), 22);
+    assert.equal(frameRows.findIndex((line) => line.includes('Worker reply.')), 23);
 });
 
 test('live transcript clips oldest turns and renders newest rows once', async () => {
