@@ -171,15 +171,18 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     assert.doesNotMatch(wideCompact, /\bVault\b/);
     assert.match(wideFull, /\bVault\b/);
 
+    // The stacked boundary moved 40/41 -> 43/44 with the identity block: a
+    // stacked frame carries the identity under the mark now, and at 41-43 rows
+    // that pile would overflow the chrome, so the compact card holds until 44.
     const stackedCompact = plain(renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_boundary', columns: 40, rows: 40,
+            info, stats, sessionId: '20260728_010000_boundary', columns: 40, rows: 43,
         }),
         { columns: 40 }
     ));
     const stackedFull = plain(renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_boundary', columns: 40, rows: 41,
+            info, stats, sessionId: '20260728_010000_boundary', columns: 40, rows: 44,
         }),
         { columns: 40 }
     ));
@@ -210,13 +213,15 @@ test('the mark scales with the tall panel and stays compact below it', () => {
 
     // The scale rule itself, independent of rendering. A stretched body with
     // room in both axes earns 2; every other case is the compact rendition.
-    assert.equal(markScaleFor({ bodyRows: 24, stack: false, inner: 100 }), 2);
+    // The doubled mark shares its column with the identity block, so the rows
+    // it needs are the 22-row art plus the gap and three identity lines: 26.
+    assert.equal(markScaleFor({ bodyRows: 26, stack: false, inner: 100 }), 2);
     assert.equal(markScaleFor({ bodyRows: null, stack: false, inner: 100 }), 1);
-    assert.equal(markScaleFor({ bodyRows: 24, stack: true, inner: 100 }), 1);
-    // One row short of the doubled art, and one column short of leaving the
+    assert.equal(markScaleFor({ bodyRows: 26, stack: true, inner: 100 }), 1);
+    // One row short of art + identity, and one column short of leaving the
     // knowledge column its 20 — both must refuse rather than clip.
-    assert.equal(markScaleFor({ bodyRows: 21, stack: false, inner: 100 }), 1);
-    assert.equal(markScaleFor({ bodyRows: 24, stack: false, inner: 47 }), 1);
+    assert.equal(markScaleFor({ bodyRows: 25, stack: false, inner: 100 }), 1);
+    assert.equal(markScaleFor({ bodyRows: 26, stack: false, inner: 56 }), 1);
 
     const frame = (rows) => renderToString(
         React.createElement(LaunchScreen, {

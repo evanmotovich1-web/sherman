@@ -38,11 +38,21 @@ import { safeTerminalText } from './sanitize.js';
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 
-// The mark is 12 columns; four columns of breathing room separate it from the
-// information column without making narrow terminals pay for oversized art.
-const LEFT_COLUMN = 16;
-// The same four columns of breathing room, around the doubled mark.
-const LEFT_COLUMN_LARGE = markSize(2).columns + 4;
+// The company Sherman works for. The one string on the launch frame that is
+// copy rather than a measured value, and it is the company's actual name.
+const COMPANY = 'Sherman Abrams Labs';
+
+// The left column carries the mark AND the identity block beneath it now —
+// model · company, the vault path, the session — centered, the reference's
+// arrangement. Its width is what the identity lines need: the model·company
+// line runs ~33 cells with a typical model name, so 37 gives it two cells of
+// air. The mark (12 or 24 wide) centers inside the same column either way,
+// which is why the doubled mark no longer needs a wider column of its own.
+const LEFT_COLUMN = 37;
+const LEFT_COLUMN_LARGE = Math.max(markSize(2).columns + 4, LEFT_COLUMN);
+// Mark, one blank row, then the three identity lines.
+const IDENTITY_ROWS = 3;
+const LEFT_ROWS = markSize(1).rows + 1 + IDENTITY_ROWS;
 const PANEL_PAD_X = 2;
 const LABEL = 9;
 
@@ -53,7 +63,7 @@ const LABEL = 9;
 // spread into it; below it, nothing changes — the compact card stays canonical
 // for short terminals, which is the size most launches actually happen at.
 //
-// The threshold sits above the compact cutoffs (29/41) so the two never fight:
+// The threshold sits above the compact cutoffs (29/44) so the two never fight:
 // a terminal is either short enough for the compact card or tall enough to
 // stretch, never switching modes on the same row.
 //
@@ -94,11 +104,12 @@ const MARK_ROWS = markSize(1).rows;
 const MARK_ROWS_LARGE = markSize(2).rows;
 
 /**
- * Rows the right column occupies when it hugs its content: five identity
- * fields, then the Vault and Keys sections, each a title plus its lines, with
- * one blank row between sections. An unreadable vault renders one line where a
- * readable one renders two, and the budget has to follow that or a blocked
- * vault would stretch by one row more than it earned.
+ * Rows the right column occupies when it hugs its content: the registry
+ * sections, the Vault section, and the closing tally, with one blank row
+ * between sections. Identity is not here any more — it lives under the mark.
+ * An unreadable vault renders one line where a readable one renders two, and
+ * the budget has to follow that or a blocked vault would stretch by one row
+ * more than it earned.
  */
 function knowledgeRows(stats, registry, caps = null) {
     const vaultLines = stats.ok ? 2 : 1;
@@ -111,15 +122,15 @@ function knowledgeRows(stats, registry, caps = null) {
         return 1 + shown;
     };
 
-    // Base: identity, the Vault section, and the closing tally, with a blank
-    // row between each. This is what the column costs when the lists are gone.
-    const base = 5 + 1 + (1 + vaultLines) + 1 + 1;
+    // Base: the Vault section and the closing tally, with a blank row between
+    // them. This is what the column costs when the lists are gone.
+    const base = (1 + vaultLines) + 1 + 1;
     if (caps && caps.tools === 0 && caps.skills === 0) return base;
 
     return (
-        base
-        + 1 + registryRows(registry.tools, caps?.tools)
+        registryRows(registry.tools, caps?.tools)
         + 1 + registryRows(registry.skills, caps?.skills)
+        + 1 + base
     );
 }
 
@@ -140,7 +151,7 @@ export function listBudget({ height, wordmark, stack, stats, registry }) {
     const full = { tools: null, skills: null };
 
     // Two rows for the status strip and the composer beneath the frame.
-    const allowedInner = height - 2 - wordmark - LAUNCH_FIXED_ROWS - (stack ? MARK_ROWS + 1 : 0);
+    const allowedInner = height - 2 - wordmark - LAUNCH_FIXED_ROWS - (stack ? LEFT_ROWS + 1 : 0);
     const natural = knowledgeRows(stats, registry, null);
     if (allowedInner >= natural) return full;
 
@@ -202,7 +213,11 @@ function tallPanelRows(width, height, naturalInnerRows) {
  */
 export function markScaleFor({ bodyRows, stack, inner }) {
     if (!bodyRows || stack) return 1;
-    if (bodyRows < MARK_ROWS_LARGE) return 1;
+    // The doubled mark shares its column with the identity block now, so the
+    // rows it must fit are the art PLUS the gap and the three identity lines —
+    // gating on the art alone would double the mark into a body one row too
+    // short and push the identity past the budget the panel promised.
+    if (bodyRows < MARK_ROWS_LARGE + 1 + IDENTITY_ROWS) return 1;
     if (inner < LEFT_COLUMN_LARGE + 20) return 1;
     return 2;
 }
@@ -301,14 +316,22 @@ function VersionBorder({ width }) {
     if (sha && dirty > 0) label += ` · +${dirty}`;
 
     const text = ` ${label} `;
-    const fill = Math.max(0, width - 3 - [...text].length);
+    // Centered in the border, the reference's placement. The fill splits
+    // around the label; the halves differ by at most one dash on odd widths,
+    // and the corners always survive because the fills are clamped, not the
+    // corners. Bold accent rather than muted for the same reason the reference
+    // sets its title line in its one bright colour: this row is the panel's
+    // name, not a footnote on it.
+    const fill = Math.max(0, width - 2 - [...text].length);
+    const leftFill = Math.floor(fill / 2);
+    const rightFill = fill - leftFill;
 
     return React.createElement(
         Text,
         { wrap: 'truncate' },
-        React.createElement(Text, { color: color.frame }, '╭─'),
-        React.createElement(Text, { color: color.muted }, text),
-        React.createElement(Text, { color: color.frame }, '─'.repeat(fill) + '╮')
+        React.createElement(Text, { color: color.frame }, '╭' + '─'.repeat(leftFill)),
+        React.createElement(Text, { color: color.accent, bold: true }, text),
+        React.createElement(Text, { color: color.frame }, '─'.repeat(rightFill) + '╮')
     );
 }
 
@@ -436,33 +459,40 @@ function Section({ title, lines }) {
     );
 }
 
-/** Identity values lead the right column so operational context is visible first. */
-function IdentityFields({ info, sessionId, width }) {
-    const valueBudget = Math.max(1, width - LABEL);
+/**
+ * The identity block, centered under the mark — the reference's arrangement,
+ * with the company where the reference credits its lab:
+ *
+ *       gpt-5-codex · Sherman Abrams Labs
+ *          /Users/moto/code/sherman/vault
+ *       Session: 20260728_220719_8bf52c
+ *
+ * Three lines, same values as ever (session.info and the launcher), just
+ * placed. The engine and user do not vanish from the shell — the status strip
+ * carries engine·model persistently, and the compact card still prints the
+ * user — but this block is the portrait, and a portrait is not a form.
+ */
+function MarkIdentity({ info, sessionId, width }) {
+    const budget = Math.max(1, width);
     return React.createElement(
         Box,
-        { flexDirection: 'column' },
-        React.createElement(Field, {
-            label: 'model',
-            value: info.model,
-            valueColor: color.valueModel,
-            bold: true,
-        }),
-        React.createElement(Field, {
-            label: 'engine',
-            value: info.engine,
-            valueColor: color.valueEngine,
-        }),
-        React.createElement(Field, {
-            label: 'user',
-            value: info.user,
-            valueColor: color.valueUser,
-        }),
-        React.createElement(Field, {
-            label: 'vault',
-            value: truncatePath(info.vaultPath, valueBudget),
-        }),
-        React.createElement(Field, { label: 'session', value: sessionId ?? '—' })
+        { flexDirection: 'column', alignItems: 'center', width },
+        React.createElement(
+            Text,
+            { wrap: 'truncate' },
+            React.createElement(Text, { color: color.valueModel, bold: true }, safeTerminalText(info.model)),
+            React.createElement(Text, { color: color.muted }, ` · ${COMPANY}`)
+        ),
+        React.createElement(
+            Text,
+            { color: color.muted, wrap: 'truncate' },
+            truncatePath(info.vaultPath, budget)
+        ),
+        React.createElement(
+            Text,
+            { color: color.muted, wrap: 'truncate' },
+            `Session: ${sessionId ?? '—'}`
+        )
     );
 }
 
@@ -476,11 +506,10 @@ function IdentityFields({ info, sessionId, width }) {
  */
 function Knowledge({ stats, registry, caps, info, sessionId, width, stretch = false }) {
     // Built as a list so the uniform inter-section gap is applied in one place.
+    // Identity is not a section here any more — it sits under the mark, in the
+    // left column, which leaves this column entirely to what Sherman can do
+    // and what it currently knows.
     const sections = [];
-
-    sections.push(
-        React.createElement(IdentityFields, { key: 'identity', info, sessionId, width })
-    );
 
     // What Sherman can do, ahead of what it currently knows: the lists are the
     // reason the operator can predict what a request will get them, and the
@@ -642,7 +671,13 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
     const inner = Math.max(1, panel - 2 - PANEL_PAD_X * 2);
     const stack = inner < LEFT_COLUMN + 20;
     // The welcome sentence and its margin cost two rows after either panel.
-    const compactPanel = height < (stack ? 41 : 29);
+    // The stacked cutoff moved 41 -> 44 when the identity block joined the
+    // left column: a stacked frame is the wordmark, the mark, the identity AND
+    // the knowledge floor stacked vertically, and at 41-43 rows that pile
+    // overflows the two rows the chrome is owed. Below 44 the compact card —
+    // which already carries model, user, vault and session in four rows — is
+    // the honest fit.
+    const compactPanel = height < (stack ? 44 : 29);
 
     // Stacked, the mark sits above the knowledge column and the two heights
     // add; side by side, the taller of the two sets the natural height.
@@ -654,7 +689,7 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
         registry: reg,
     });
     const known = knowledgeRows(stats, reg, caps);
-    const naturalInner = stack ? MARK_ROWS + 1 + known : Math.max(MARK_ROWS, known);
+    const naturalInner = stack ? LEFT_ROWS + 1 + known : Math.max(LEFT_ROWS, known);
     const bodyRows = compactPanel ? null : tallPanelRows(width, height, naturalInner);
 
     // The budget is settled before the mark is sized, so the larger rendition
@@ -712,7 +747,16 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
                             justifyContent: 'flex-start',
                             alignItems: 'center',
                         },
-                        React.createElement(Mark, { scale: markScale })
+                        React.createElement(Mark, { scale: markScale }),
+                        React.createElement(
+                            Box,
+                            { marginTop: 1 },
+                            React.createElement(MarkIdentity, {
+                                info,
+                                sessionId,
+                                width: leftWidth,
+                            })
+                        )
                     ),
                     React.createElement(
                         Box,

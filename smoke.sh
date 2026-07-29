@@ -315,7 +315,25 @@ for (const rows of ROWS) {
         console.error('panel bottom border not found at ' + rows + ' rows');
         process.exit(1);
     }
-    fullPanelModes.push(plain.some((line) => line.includes('│                  Vault')));
+    // The full panel is detected by its Vault SECTION TITLE — capital-V
+    // Vault as the last word on a bordered row (the mark art may share the
+    // row to its left). Matched structurally, not by exact column: the title
+    // indent follows the left column width, which has already moved once
+    // (identity joined the mark) and broke a hardcoded-offset version of this
+    // line. The compact card cannot false-positive: it prints lowercase
+    // vault as a field label followed by its value, never as a last word.
+    //
+    // No apostrophes in this comment, deliberately: the whole check sits in a
+    // bash 3.2 $() substitution, whose scanner counts quotes even inside a
+    // quoted heredoc, and an odd apostrophe here reads as an unclosed string
+    // that swallows the rest of the file.
+    fullPanelModes.push(plain.some((line) => {
+        if (!line.startsWith('│')) return false;
+        const inner = line.trimEnd().endsWith('│')
+            ? line.trimEnd().slice(1, -1)
+            : line.trimEnd().slice(1);
+        return inner.trimEnd().endsWith(' Vault');
+    }));
 }
 
 if (fullPanelModes[0] || !fullPanelModes[1]) {
