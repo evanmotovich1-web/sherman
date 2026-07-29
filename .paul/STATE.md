@@ -2,25 +2,31 @@
 
 ## Current Position
 
-Milestone: v0.1 Evan-only local prototype — 🟡 In progress (4 of 6 phases)
-Phase: 6 (Session identity & the live turn UI) — ✅ COMPLETE (2/2 plans)
+Milestone: v0.1 Evan-only local prototype — 🟡 In progress (5 of 7 phases)
+Phase: 7 (Public-repo readiness) — ✅ COMPLETE (1/1 plan)
 Plan: None active. Ready to plan.
-Status: Sessions are identifiable and attributable; the shell stages turns
-Hermes-style with true data only. Nothing pushed.
-Last activity: 2026-07-26 — Phase 6 complete: both checkpoints approved
+Status: The repo is ready for Evan to flip public. Secret audit of all 57
+prior commits ran CLEAN. README exists under the honesty laws; the wizard
+renders from a provider registry and cannot sell the stubbed Claude backend;
+install.sh claims only what it verified. Smoke 18 → 21 checks, all green;
+shell tests 128/128. Nothing pushed (a private origin now exists — see Git
+State). Flipping visibility remains Evan's action.
+Last activity: 2026-07-29 — Phase 7 complete: commits 1b07221, a7e87f3,
+8d66fb2, 8899d45
 
 Progress:
-- Milestone v0.1: [██████░░░░] 4/6 phases (command, shell, launch screen, session/turn UI done; vault seed and skills remain)
+- Milestone v0.1: [███████░░░] 5/7 phases (command, shell, launch screen, session/turn UI, public-readiness done; vault seed and skills remain)
 - Phase 1: [██████████] 100% (1/1 plan)
 - Phase 4: [██████████] 100% (2/2 plans)
 - Phase 5: [██████████] 100% (1/1 plan)
 - Phase 6: [██████████] 100% (2/2 plans)
+- Phase 7: [██████████] 100% (1/1 plan)
 
 ## Loop Position
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [06-01 + 06-02 loops complete — Phase 6 closed]
+  ✓        ✓        ✓     [07-01 loop complete — Phase 7 closed]
 ```
 
 Every loop closed cleanly:
@@ -33,6 +39,7 @@ Every loop closed cleanly:
 | `05-01` launch screen v2 | 4/4 PASS (2 gaps fixed) + checkpoint approved | 8/8 Pass | `a8ab909` |
 | `06-01` session identity + first frame v3 | 4/4 PASS + checkpoint approved | 6/6 Pass | `99331f3` |
 | `06-02` live turn UI | 4/4 PASS (1 D17 gap fixed) + checkpoint approved | 5/5 Pass | `f4b7518` |
+| `07-01` public-repo readiness | 3/3 PASS (+1 follow-up commit) | 5/5 Pass | `1b07221` `a7e87f3` `8d66fb2` `8899d45` |
 
 Details: `.paul/phases/04-sherman-shell/04-01-SUMMARY.md`, `04-02-SUMMARY.md`,
 `.paul/phases/05-launch-screen-v2/05-01-SUMMARY.md`,
@@ -166,7 +173,11 @@ after every commit, and never commit `graphify-out/`.
 ## Git State
 
 Branch: `main`
-Remotes: none configured — **nothing pushed, by design (Evan pushes)**
+Remotes: `origin` → https://github.com/evanmotovich1-web/sherman.git
+(private; Evan created and pushes it — discovered 2026-07-29, this file
+previously said "none"). **This session pushed nothing, per C5.** Because a
+remote exists, smoke check 10's `sherman update` now performs a real
+`git pull --ff-only` and a nested smoke run.
 Feature branches: none — all work on `main`
 
 Phase 4 commits: `7a9b4dd` (04-01 plan), `1f75e0a` (engine layer), `7536aa2`,
@@ -185,16 +196,14 @@ first frame v3), `0275b24` (06-01 close), `f4b7518` (06-02 live turn UI).
 
 ## Session Continuity
 
-Last session: 2026-07-26
-Stopped at: Phase 6 complete — sessions identifiable and attributable, the
-first frame and the turn UI both carry the Hermes structure in Sherman's
-palette, eleven smoke checks green
-Next action: **Answer design-doc §7 Q1** (the 3–5 tasks employees burn the
-most hours on) to unblock Phase 3 skills. Four phases have now built an
-excellent, identifiable, staged chassis around an empty vault — and the
-attribution rule shipped BEFORE the first facts, so everything the vault
-learns from here is traceable. Alternatives: the board view (unblocked, D17
-pattern established), or let the Codex track finish the vault seed.
+Last session: 2026-07-29
+Stopped at: Phase 7 complete — the repo is publishable: history audited
+clean, README under the honesty laws, registry-driven wizard, verify-then-
+claim installer, twenty-one smoke checks green
+Next action: **Evan's calls, not a session's:** (1) flip repo visibility if
+the audit report satisfies him; (2) answer design-doc §7 Q1 (the 3–5 tasks
+employees burn the most hours on) to unblock Phase 3 skills — still the one
+answer standing between Sherman and being useful.
 Resume file: `.paul/ROADMAP.md`
 
 Probed for Phase 6 (recorded in the plans, headline here): Ink 7 per-side

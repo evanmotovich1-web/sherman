@@ -179,6 +179,22 @@ like the reference: opener fills the viewport, turns render as bullet → live
 trace → signed box, the bar carries true segments in red. Eleven smoke checks
 green.
 
+### Phase 7 — Public-repo readiness ✅ Complete (2026-07-29, 1/1 plan)
+
+Evan intends to flip the repo public. Before that is sane: a full-history
+secret audit (ran clean — 57 commits, no credentials, no PHI, no captured
+state; details in `07-01-PLAN.md`), a README that exists and tells only the
+truth, a first-run wizard that cannot offer the stubbed Claude backend as a
+selectable option, and an installer whose success lines follow checks rather
+than attempts. The honesty laws that govern the shell apply to the README and
+installer identically.
+
+Plans: `07-01` ✅ (README + gitignore hygiene, provider-registry wizard,
+verify-then-claim installer) — commits `1b07221`, `a7e87f3`, `8d66fb2`,
+`8899d45`. Smoke 18 → 21, all green; shell tests 128/128 held. Exit
+condition met: nothing in the README, wizard, or installer advertises a
+capability that is not wired. Flipping visibility remains Evan's action.
+
 ## Milestone v0.2 — Installer + second admin device + Codex adapter ⚪ Not started
 
 Full `curl | bash` wizard, `docs/ONBOARDING.md`, admin vault sync (pull on
