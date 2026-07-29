@@ -3,6 +3,24 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-07-29 — Changed: install.sh provisions missing prerequisites itself
+
+- A machine without Node 22+ gets the official build downloaded from
+  nodejs.org into `~/.sherman/runtime` (pinned v22.23.2, all four
+  darwin/linux × arm64/x64 tarballs verified to exist) and linked next to
+  `sherman` — no sudo, nothing outside Sherman's own directories. A machine
+  without the codex CLI gets `npm install -g @openai/codex`. Both claims
+  follow verification (`node --version`, `codex --version`); failed
+  downloads say so. Signing in remains the engine's own first-launch login —
+  the one thing no installer can do.
+- `SHERMAN_INSTALL_NO_FETCH=1` disables all network fetches and says so
+  plainly; smoke uses it to stay offline. Check 21 asserts the guard's
+  honesty; new check 22 exercises the real download → extract → link →
+  verify chain against a stub curl serving a fake tarball, and proves an npm
+  that produced no codex is refused an "installed" line.
+- README and docs/WINDOWS.md updated: prerequisites shrank to what genuinely
+  stays yours (macOS or WSL2, the sign-in, git+curl).
+
 ## 2026-07-29 — Added: a Windows install route, stated as untested
 
 - `docs/WINDOWS.md` documents the WSL2 route end to end — Node 22 via nvm,

@@ -28,34 +28,29 @@ are both wrong on the Windows mount).
 
    Reboot if asked, open Ubuntu, create your Linux user.
 
-2. **Inside Ubuntu — Node 22+** (Ubuntu's default `nodejs` is too old):
+2. **Inside Ubuntu — the basics** (git, curl and jq; Ubuntu images vary):
 
    ```sh
-   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-   exec bash
-   nvm install 22
+   sudo apt-get update && sudo apt-get install -y git curl jq
    ```
 
-3. **The Codex CLI, with its own sign-in:**
+3. **Sherman** — the installer provisions the rest itself:
 
    ```sh
-   npm install -g @openai/codex
-   codex
-   ```
-
-   Complete Codex's native login. WSL2 forwards localhost to Windows, so the
-   browser step normally works from Windows' own browser; if nothing opens,
-   Codex prints the URL to open by hand.
-
-4. **Sherman:**
-
-   ```sh
-   sudo apt-get install -y jq git
    git clone https://github.com/evanmotovich1-web/sherman.git
    cd sherman
    ./install.sh
    sherman
    ```
+
+   If Node 22+ or the Codex CLI are missing, `install.sh` installs them
+   (Node from nodejs.org into `~/.sherman/runtime`, codex via
+   `npm install -g` — no sudo). Each "installed" line it prints follows a
+   verification; a failed download says so.
+
+4. **Sign in** — on first launch, Codex runs its own login. WSL2 forwards
+   localhost to Windows, so the browser step normally opens in Windows' own
+   browser; if nothing opens, Codex prints the URL to open by hand.
 
    Use Windows Terminal — the banner and the shell are 256-colour ANSI.
 

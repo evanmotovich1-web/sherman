@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — twenty-one checks, no framework.
+# smoke.sh — twenty-two checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -29,7 +29,11 @@
 #      with the reason, and completes on the available one.
 #  21. install.sh claims only what it verified: an npm that exits 0 while
 #      producing nothing is never reported as installed, the linked line
-#      matches readlink, and a missing npm degrades to the NOTE.
+#      matches readlink, a missing npm degrades to the NOTE, and disabled
+#      fetches are said plainly with no install claim.
+#  22. Auto-provisioning, offline: a stub curl serves a fake Node tarball and
+#      the extract → link → verify chain earns its "installed" line, while an
+#      npm that produced no codex is refused one.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -48,7 +52,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
-TOTAL_CHECKS=21
+TOTAL_CHECKS=22
 SMOKE_USER="smoke-tester"
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
@@ -1566,7 +1570,10 @@ printf '{}\n' > "$FAKEROOT/shell/package.json"
 printf '#!/bin/sh\nexit 0\n' > "$NPMSTUB/npm"
 chmod +x "$NPMSTUB/npm"
 
-lying_out=$(env HOME="$IHOME" PATH="$NPMSTUB:/usr/bin:/bin" \
+# SHERMAN_INSTALL_NO_FETCH: the installer now auto-provisions Node and codex
+# from the network; smoke must stay offline, and the guard's honesty is
+# itself part of what this check asserts.
+lying_out=$(env HOME="$IHOME" PATH="$NPMSTUB:/usr/bin:/bin" SHERMAN_INSTALL_NO_FETCH=1 \
     bash "$FAKEROOT/install.sh" 2>&1)
 lying_status=$?
 
@@ -1580,6 +1587,15 @@ else
     printf '%s' "$lying_out" | grep -q "did not produce" \
         && pass "the empty install is reported as what it is" \
         || fail "no honest NOTE about npm producing nothing"
+
+    # With fetches disabled and node/codex absent, the auto-provision paths
+    # must say they were skipped -- and must not claim an install.
+    if printf '%s' "$lying_out" | grep -q "network fetches are disabled" \
+        && ! printf '%s' "$lying_out" | grep -q "installed (verified"; then
+        pass "disabled fetches are said plainly, with no install claim"
+    else
+        fail "the no-fetch run claimed or hid provisioning work"
+    fi
 
     # The "linked" line is a claim; verify the state it claims. The sandbox
     # HOME has no ~/.local, so the installer's candidate list lands on ~/bin.
@@ -1596,7 +1612,8 @@ else
 fi
 
 # No npm at all: the graceful path must survive and must not claim installs.
-nonpm_out=$(env HOME="$IHOME" PATH="/usr/bin:/bin" bash "$FAKEROOT/install.sh" 2>&1)
+nonpm_out=$(env HOME="$IHOME" PATH="/usr/bin:/bin" SHERMAN_INSTALL_NO_FETCH=1 \
+    bash "$FAKEROOT/install.sh" 2>&1)
 nonpm_status=$?
 
 if [ "$nonpm_status" -ne 0 ]; then
@@ -1606,6 +1623,81 @@ elif printf '%s' "$nonpm_out" | grep -q "npm not found" \
     pass "missing npm degrades to the NOTE, with no installed claim"
 else
     fail "npm-missing run made a claim it could not verify"
+fi
+
+# ----------------------------------------------------------------- check 22 --
+echo
+echo "22. auto-provisioning claims follow checks, offline"
+
+# The download path, exercised with no network: a stub curl serves a locally
+# built fake Node tarball, so the extract → link → verify chain runs for
+# real. The fake npm inside it produces no codex, so the codex claim must
+# honestly fail even though npm exited 0.
+PHOME="$TMPHOME/provision-home"
+PROVROOT="$TMPHOME/provision-repo"
+CURLSTUB="$TMPHOME/curl-stub"
+FIXTURES="$TMPHOME/node-fixture"
+mkdir -p "$PHOME" "$PROVROOT/bin" "$PROVROOT/shell" "$CURLSTUB"
+cp install.sh "$PROVROOT/install.sh"
+printf '#!/bin/sh\nexit 0\n' > "$PROVROOT/bin/sherman"
+printf '{}\n' > "$PROVROOT/shell/package.json"
+
+# Mirror install.sh's platform mapping so the fixture name matches what it
+# will ask for on this machine.
+case "$(uname -s)" in
+    Darwin) prov_os="darwin" ;;
+    Linux)  prov_os="linux" ;;
+esac
+case "$(uname -m)" in
+    arm64|aarch64) prov_arch="arm64" ;;
+    x86_64)        prov_arch="x64" ;;
+esac
+PROV_NODE_VERSION=$(sed -n 's/^NODE_VERSION="\([^"]*\)".*/\1/p' install.sh | head -1)
+FIXDIR="$FIXTURES/node-v$PROV_NODE_VERSION-$prov_os-$prov_arch/bin"
+mkdir -p "$FIXDIR"
+printf '#!/bin/sh\necho "v%s"\n' "$PROV_NODE_VERSION" > "$FIXDIR/node"
+printf '#!/bin/sh\nexit 0\n' > "$FIXDIR/npm"
+printf '#!/bin/sh\nexit 0\n' > "$FIXDIR/npx"
+chmod +x "$FIXDIR/node" "$FIXDIR/npm" "$FIXDIR/npx"
+tar -czf "$FIXTURES/node.tgz" -C "$FIXTURES" "node-v$PROV_NODE_VERSION-$prov_os-$prov_arch"
+
+# The stub honours `curl ... -o <dest>` by copying the fixture there.
+cat > "$CURLSTUB/curl" <<STUB
+#!/bin/sh
+dest=""
+while [ \$# -gt 0 ]; do
+    if [ "\$1" = "-o" ]; then dest="\$2"; shift; fi
+    shift
+done
+[ -n "\$dest" ] && cp "$FIXTURES/node.tgz" "\$dest" && exit 0
+exit 1
+STUB
+chmod +x "$CURLSTUB/curl"
+
+prov_out=$(env HOME="$PHOME" PATH="$CURLSTUB:/usr/bin:/bin" \
+    bash "$PROVROOT/install.sh" 2>&1)
+prov_status=$?
+
+if [ "$prov_status" -ne 0 ]; then
+    fail "provisioning run exited $prov_status: $(printf '%s' "$prov_out" | tail -2)"
+else
+    if printf '%s' "$prov_out" | grep -q "node v$PROV_NODE_VERSION installed (verified"; then
+        got_node=$("$PHOME/bin/node" --version 2>/dev/null)
+        [ "$got_node" = "v$PROV_NODE_VERSION" ] \
+            && pass "node claim matches an executable node on the link path" \
+            || fail "claimed node v$PROV_NODE_VERSION but the linked node says '$got_node'"
+    else
+        fail "the provisioned node was not claimed as verified: $(printf '%s' "$prov_out" | grep -i note | head -2)"
+    fi
+
+    # npm exited 0 but installed nothing, so a codex claim would be a lie.
+    if printf '%s' "$prov_out" | grep -q "codex CLI installed (verified"; then
+        fail "claimed codex installed though npm produced nothing"
+    elif printf '%s' "$prov_out" | grep -q "no working codex CLI was found afterward"; then
+        pass "an npm that produced no codex is reported honestly"
+    else
+        fail "no honest NOTE about the missing codex CLI"
+    fi
 fi
 
 # -------------------------------------------------------------------- result --

@@ -38,24 +38,27 @@ cd sherman
 ./install.sh
 ```
 
-`install.sh` is idempotent and does three things: makes the launcher
-executable, runs `npm install` for the shell's dependencies, and symlinks
-`sherman` into the first writable directory of `~/.local/bin`, `~/bin`,
-`/usr/local/bin`. That is all it installs — see prerequisites for what it
-expects you to bring.
+`install.sh` is idempotent and handles the prerequisites itself: it makes
+the launcher executable, symlinks `sherman` into the first writable
+directory of `~/.local/bin`, `~/bin`, `/usr/local/bin`, installs the
+shell's npm dependencies — and if Node 22+ or the Codex CLI are missing, it
+installs those too (Node from nodejs.org into `~/.sherman/runtime`, codex
+via `npm install -g`; no sudo, nothing outside Sherman's own directories).
+Every "installed" line it prints follows a verification, and a failed
+download says so instead.
 
 **Windows:** Sherman has never been run on Windows. There is no native
 installer; the one route worth trying is WSL2, documented honestly in
 [docs/WINDOWS.md](docs/WINDOWS.md) — whoever tries it first is the first test.
 **Linux:** untested there too — macOS is the only platform Sherman has run on.
 
-### Prerequisites (install.sh does not provide these)
+### What stays yours (install.sh cannot do these)
 
-- **macOS.** The vault write-boundary is enforced by the macOS sandbox.
-- **Node.js 22+** — the Sherman Shell is a Node (Ink) app. Without Node, only
-  `sherman --raw` works.
-- **The Codex CLI, signed in** — `npm install -g @openai/codex`, then its own
-  native login with your OpenAI account. Sherman performs no OAuth of its own.
+- **macOS** — the vault write-boundary is enforced by the macOS sandbox.
+  (Windows only via WSL2, untested: [docs/WINDOWS.md](docs/WINDOWS.md).)
+- **Signing in to Codex** — the engine's own browser login runs on first
+  launch, on your OpenAI account. Sherman performs no OAuth of its own and
+  no installer can do this for you.
 - **Claude Code is not required.** It works only through `sherman --raw`; the
   Claude backend for the Sherman Shell is not built yet.
 
