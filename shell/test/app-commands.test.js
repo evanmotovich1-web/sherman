@@ -402,13 +402,13 @@ test('rows override preserves composer at one row and admits status at two', asy
     }
 });
 
-test('a finished task lingers, then leaves, and never enters the transcript', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'sherman-linger-test-'));
+test('a finished task commits to the trace; only the running copy leaves', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-trace-test-'));
     const oldHome = process.env.HOME;
     process.env.HOME = home;
 
-    // The turn is held open past the linger, so what is measured is the linger
-    // expiring on its own rather than turn-end clearing everything.
+    // The turn is held open after completion, so what is measured is the
+    // committed row surviving on its own — not turn-end tidying the screen.
     let releaseTurn;
     const release = new Promise((resolve) => { releaseTurn = resolve; });
     const usage = zeroUsage();
@@ -429,6 +429,11 @@ test('a finished task lingers, then leaves, and never enters the transcript', as
                 label: 'read scanner.js', category: 'read',
                 outcome: 'succeeded', durationMs: 900,
             };
+            yield {
+                kind: 'tool', id: 'tool-2', phase: 'completed', glyph: '›',
+                label: 'npm test', category: 'command',
+                outcome: 'failed', durationMs: 2100,
+            };
             await release;
             yield { kind: 'turn-end', usage };
         },
@@ -447,7 +452,7 @@ test('a finished task lingers, then leaves, and never enters the transcript', as
     stdout.on('data', (chunk) => { writes.push(chunk.toString()); });
 
     const instance = render(
-        React.createElement(App, { session, sessionId: '20260728_010000_linger' }),
+        React.createElement(App, { session, sessionId: '20260728_010000_trace' }),
         { stdin, stdout, exitOnCtrlC: false, patchConsole: false, debug: true }
     );
 
@@ -457,60 +462,37 @@ test('a finished task lingers, then leaves, and never enters the transcript', as
         await until(() => writes.some((write) => plain(write).includes('❯ go')));
         stdin.write('\r');
 
-        // Completion is rendered: the outcome mark and the engine's measured
-        // duration both reach the screen.
-        await until(() => writes.some((write) => plain(write).includes('✓ read scanner.js  0.9s')));
+        // The completed row commits into the trace, in the reference shape:
+        // glyph, padded category tag, the engine's label, measured duration.
+        await until(() => latestFrame(writes).includes('📖 read    read scanner.js  0.9s'));
+        const frame = latestFrame(writes);
+        assert.match(frame, /│ 📖 read {4}read scanner\.js {2}0\.9s/, 'the committed row lost its trace shape');
 
-        // ...and then it goes, on its own, while the turn is still running. The
-        // face animates on a timer, so fresh frames keep arriving to observe.
-        writes.length = 0;
-        await until(
-            () => writes.length > 0 && !latestFrame(writes).includes('read scanner.js'),
-            4000
-        );
-        const settled = latestFrame(writes);
-        assert.ok(
-            !settled.includes('read scanner.js'),
-            'the finished task should have left the screen'
-        );
-        // Still busy, so the line stays -- with the honest generic, not a stale
-        // claim about a task that already finished.
-        assert.match(settled, /─ \(.+\) ─ working ─/);
+        // Success carries NO outcome mark — in a trace where nearly every row
+        // succeeds, the absence is what carries information...
+        assert.doesNotMatch(frame, /✓/, 'a successful row printed a redundant ✓');
+        // ...and a failure keeps its mark.
+        assert.match(frame, /💻 \$ {7}npm test ×  2\.1s/, 'the failed row lost its outcome mark');
+
+        // Committed means committed: the rows persist while the turn runs on,
+        // with no live duplicate beneath them — one event, one row on screen.
+        const occurrences = frame.split('read scanner.js').length - 1;
+        assert.equal(occurrences, 1, 'the completed task renders twice (trace and live slot)');
 
         releaseTurn();
-        await until(() => writes.some((write) => plain(write).includes('Ask about company operations')));
-
-        // The permanent record holds messages, not the tool trace: nothing about
-        // the finished task survives anywhere on the final screen.
-        const final = latestFrame(writes);
-        assert.ok(!final.includes('read scanner.js'), 'tool line must not be committed');
-        assert.ok(!final.includes('0.9s'), 'tool duration must not be committed');
+        await until(() => latestFrame(writes).includes('❯ Ask about company operations…'));
+        assert.match(
+            latestFrame(writes),
+            /│ 📖 read {4}read scanner\.js {2}0\.9s/,
+            'the committed trace row did not survive the turn ending'
+        );
     } finally {
+        releaseTurn();
         instance.unmount();
         process.env.HOME = oldHome;
         rmSync(home, { recursive: true, force: true });
     }
 });
-
-// Both routes to the clipboard, end to end through the real App.
-//
-// `clipboard` is injected so this never touches the operator's actual
-// clipboard, and the fake records what it was handed: the assertion that
-// matters is that the text leaving the shell is the SOURCE reply, with no
-// signature line, no rule glyph and no ANSI, at whatever width the terminal
-// happens to be.
-// Both routes to the clipboard, end to end through the real App.
-//
-// `clipboard` is injected so this never touches the operator's actual
-// clipboard, and the fake records what it was handed: the assertion that
-// matters is that the text leaving the shell is the SOURCE reply, with no
-// signature line, no rule glyph and no ANSI, at whatever width the terminal
-// happens to be.
-//
-// Progress is tracked through `copied` rather than through rendered frames.
-// Ink writes incrementally, so a notice that appeared and was later redrawn is
-// not reliably present in the accumulated capture; the wording is asserted once
-// at the end, against the full frame unmount emits.
 test('/copy and ctrl+y both copy the last reply as plain text', async () => {
     const home = mkdtempSync(join(tmpdir(), 'sherman-shell-test-'));
     const oldHome = process.env.HOME;

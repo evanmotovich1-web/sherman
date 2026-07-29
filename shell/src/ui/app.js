@@ -11,7 +11,7 @@ import { Box, Text, useApp, useInput, useStdin, useStdout, useWindowSize } from 
 import { Transcript } from './Transcript.js';
 import { historyLabel, scrollBy } from './scrollback.js';
 import { enableMouse, parseMouse } from './mouse.js';
-import { color } from './theme.js';
+import { color, ACTIVITY_GLYPH } from './theme.js';
 import { StatusBar } from './StatusBar.js';
 import { Composer } from './Composer.js';
 import { Thinking, activityBudget } from './Thinking.js';
@@ -46,15 +46,43 @@ const nextId = () => `i${seq++}`;
 const WHEEL_ROWS = 3;
 
 /**
- * How long a finished task stays on screen before it goes.
- *
- * Completed tool lines are no longer committed to the transcript, so this is
- * the ONLY window in which a finished task is visible. Long enough to register
- * that the thing landed and read its duration; short enough that a burst of
- * quick tasks does not queue up into a standing list. A turn ending sooner than
- * this still clears everything -- the turn being over outranks the linger.
+ * The category tag a committed trace row carries beside its glyph, in the
+ * reference's register: `$` for a shell command the way a prompt writes one,
+ * short nouns for the rest. Padded to one width so the detail column lines up
+ * down the trace. A category with no entry falls back to its own name — a new
+ * engine category must never render untagged, because an untagged row reads as
+ * a different KIND of thing rather than an unstyled one.
  */
-export const ACTIVITY_LINGER_MS = 1000;
+const TRACE_TAG = Object.freeze({
+    command: '$',
+    read: 'read',
+    'file-change': 'patch',
+    'web-search': 'search',
+    mcp: 'mcp',
+    subagent: 'agent',
+    plan: 'plan',
+    tool: 'tool',
+});
+const TRACE_TAG_WIDTH = Math.max(...Object.values(TRACE_TAG).map((t) => t.length));
+
+/**
+ * One committed trace row: glyph, padded tag, the engine's own label, and the
+ * measured duration. `✓` is not printed on success — in a trace where nearly
+ * every row succeeds, the mark is noise and its ABSENCE is what must carry
+ * information, so only failures and declines keep their outcome mark.
+ */
+function traceLine(event) {
+    const glyph = ACTIVITY_GLYPH[event.category] ?? '';
+    const tag = (TRACE_TAG[event.category] ?? String(event.category ?? 'tool')).padEnd(TRACE_TAG_WIDTH);
+    // Only a REPORTED success goes unmarked. The engine always sets an
+    // outcome (see codex.js toolOutcome), so an event without one is malformed
+    // — and rendering it bare would silently claim a success nobody reported.
+    const outcome = event.outcome === 'succeeded' ? '' : ` ${OUTCOME_MARK[event.outcome] ?? '?'}`;
+    const duration = typeof event.durationMs === 'number'
+        ? `  ${(event.durationMs / 1000).toFixed(1)}s`
+        : '';
+    return `${glyph ? `${glyph} ` : ''}${tag}  ${event.label}${outcome}${duration}`;
+}
 
 /** Outcome marks, shared so a row's glyph and its text cannot disagree. */
 const OUTCOME_MARK = {
@@ -560,12 +588,14 @@ export function App({
                             setLifecycle(event.text);
                             break;
 
-                        // A tool row is live chrome, not transcript history: it
-                        // shows while the task runs, flips to its outcome and
-                        // duration when the engine reports completion, then
-                        // leaves after ACTIVITY_LINGER_MS. Nothing about it is
-                        // committed, so a turn's permanent record is the
-                        // messages and file diffs, not the tool trace.
+                        // A RUNNING tool is live chrome: it shows on the
+                        // activity slot while the task runs and leaves the
+                        // moment it completes. A COMPLETED tool commits to the
+                        // transcript — glyph, category tag, label, measured
+                        // duration — so the session reads as a permanent trace
+                        // of what the engine actually did, the way the
+                        // reference's does. Every committed row is a reported
+                        // engine event; the trace still never invents a line.
                         case 'tool': {
                             const done = event.phase === 'completed';
                             const entry = {
@@ -590,13 +620,12 @@ export function App({
                                 return next;
                             });
                             if (done) {
-                                const timer = setTimeout(() => {
-                                    lingerTimersRef.current.delete(event.id);
-                                    setActivities((current) =>
-                                        current.filter((a) => a.id !== event.id)
-                                    );
-                                }, ACTIVITY_LINGER_MS);
-                                lingerTimersRef.current.set(event.id, timer);
+                                commit('tool', traceLine(event));
+                                // Committed is the record; the live slot's copy
+                                // would be the same row twice on one screen.
+                                setActivities((current) =>
+                                    current.filter((a) => a.id !== event.id)
+                                );
                             }
                             break;
                         }

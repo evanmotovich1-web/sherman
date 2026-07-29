@@ -737,8 +737,8 @@ const fakeSession = {
         sent.push(text);
         yield { kind: 'turn-start' };
         yield { kind: 'reasoning', text: 'checking the vault' };
-        yield { kind: 'tool', id: 'tool-1', phase: 'started', glyph: '›', label: 'patch smoke.sh' };
-        yield { kind: 'tool', id: 'tool-1', phase: 'completed', glyph: '›', label: 'patch smoke.sh', durationMs: 900 };
+        yield { kind: 'tool', id: 'tool-1', phase: 'started', glyph: '›', label: 'patch smoke.sh', category: 'file-change' };
+        yield { kind: 'tool', id: 'tool-1', phase: 'completed', glyph: '›', label: 'patch smoke.sh', category: 'file-change', outcome: 'succeeded', durationMs: 900 };
         // A real engine does not end the turn in the same tick a tool finishes.
         // The gap matters here: a completed tool line is LIVE chrome now, shown
         // for ACTIVITY_LINGER_MS and never committed, so without a beat for the
@@ -812,14 +812,13 @@ const poll = setInterval(() => {
             // it. Both rows are asserted: a signature with no ruled body under
             // it would mean the frame collapsed to a bare label.
             if (!/\n {3}Sherman\n {3}│ /.test(plain)) missing.push('Sherman reply label');
-            // Asserted against the accumulated capture, which holds every frame
-            // written during the turn: the completed line with its measured
-            // duration must be RENDERED when the tool finishes. It is deliberately
-            // not asserted on the final screen -- these rows are transient by
-            // design and are gone a second later. That they actually go is pinned
-            // in shell/test/app-commands.test.js, where the timing is testable.
-            if (!plain.includes('› patch smoke.sh  0.9s')) {
-                missing.push('completed trace line with duration, while the turn is live');
+            // The completed tool COMMITS to the transcript now — glyph, padded
+            // category tag, label, measured duration — so it is asserted on the
+            // final screen, where a permanent row must still be. No ✓ on a
+            // successful row: in a trace where nearly everything succeeds, the
+            // absence of a mark is what carries information.
+            if (!plain.includes('📝 patch   patch smoke.sh  0.9s')) {
+                missing.push('committed trace row with glyph, tag and duration');
             }
 
             // The raw capture, not the stripped one: 1049h/1049l anywhere in
