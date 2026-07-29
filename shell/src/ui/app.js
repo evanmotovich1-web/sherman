@@ -17,6 +17,7 @@ import { Composer } from './Composer.js';
 import { Thinking, activityBudget } from './Thinking.js';
 import { ActivityLine } from './ActivityLine.js';
 import { copyNotice, copyText, lastReplyText } from '../clipboard.js';
+import { projectContext } from '../contextestimate.js';
 import { addUsage, emptyUsage } from '../engine/session.js';
 import { readVaultStats } from '../vault.js';
 import { loadRegistry } from '../registry.js';
@@ -239,6 +240,11 @@ export function App({
     // Latest per-turn input, not the running total. Codex reports this on
     // turn.completed and, for resumed threads, it is the current context size.
     const [contextUsed, setContextUsed] = useState(null);
+    // Characters this turn has genuinely sent and received. Codex reports no
+    // usage until turn.completed, so between those two moments the meter is
+    // driven by what actually crossed the wire -- see contextestimate.js. Reset
+    // at the head of every turn; ignored entirely once a measured figure lands.
+    const [liveChars, setLiveChars] = useState(null);
     const [info, setInfo] = useState(() => session.info);
 
     // Real clocks for the status bar: when this session started, and how long
@@ -299,6 +305,14 @@ export function App({
         commit(result.ok ? 'notice' : 'error', copyNotice(result, text.split('\n').length));
     }, [clipboard, commit, stdout]);
 
+    /** Add engine output to this turn's running character count. */
+    const addStreamed = useCallback((text) => {
+        if (typeof text !== 'string' || text.length === 0) return;
+        setLiveChars((prev) => (prev === null
+            ? null
+            : { ...prev, streamed: prev.streamed + text.length }));
+    }, []);
+
     const setBusyBoth = useCallback((value) => {
         busyRef.current = value;
         setBusy(value);
@@ -322,6 +336,11 @@ export function App({
             clearLingerTimers();
             setActivities([]);
             setLifecycle(null);
+            // No live estimate for a compaction turn. It exists to SHRINK the
+            // context, so a meter climbing through it would point the wrong way
+            // — and the figure that matters lands as a real measurement on the
+            // next turn of the new thread anyway.
+            setLiveChars(null);
             activeSessionRef.current = session;
             turnStartRef.current = Date.now();
 
@@ -471,6 +490,13 @@ export function App({
             clearLingerTimers();
             setActivities([]);
             setLifecycle(null);
+            // Seed this turn's live character count with what is being sent.
+            // A worker's tokens are not the main thread's context, so a worker
+            // turn must never move the main meter.
+            setLiveChars(isWorker ? null : {
+                sent: (typeof request === 'string' ? request : request.text ?? '').length,
+                streamed: 0,
+            });
             activeSessionRef.current = engine;
             turnStartRef.current = Date.now();
 
@@ -488,6 +514,7 @@ export function App({
                         case 'message':
                             commit(messageKind, event.text);
                             log.append(isWorker ? 'worker' : 'sherman', event.text);
+                            if (!isWorker) addStreamed(event.text);
                             break;
 
                         // Self-talk commits immediately, so it appears in the
@@ -496,6 +523,7 @@ export function App({
                         // which is part of the record of the turn.
                         case 'reasoning':
                             commit('selftalk', event.text);
+                            if (!isWorker) addStreamed(event.text);
                             break;
 
                         // Lifecycle, by contrast, is transient. "starting…" is
@@ -558,9 +586,21 @@ export function App({
                                     ? event.usage.input
                                     : null;
                                 setContextUsed(used);
+                                // The measured figure supersedes the estimate
+                                // outright. Blending a fact with a guess yields
+                                // a guess, so the guess is simply dropped.
+                                setLiveChars(null);
                                 setInfo(session.info);
 
                                 const window = session.info.contextWindow;
+                                // `used` here is the engine's own reported
+                                // figure, and compaction is gated on it alone.
+                                // The live estimate must NEVER reach this call:
+                                // compaction discards real conversation, and
+                                // discarding it on a guessed number would throw
+                                // away context nobody measured. The estimate
+                                // moves a meter; only a measurement moves the
+                                // session.
                                 if (shouldAutoCompact(used, window)) {
                                     autoCompactPercent = Math.round((used / window) * 100);
                                 }
@@ -661,6 +701,16 @@ export function App({
     const showActivityLine = busy && activityBudget(columns, rows) >= 2;
 
     // Launch-only remains top-anchored. Once conversation items exist, the
+    // The meter's figure, and whether it is measured or projected. Computed
+    // here rather than inside StatusBar so the estimate's inputs stay in the
+    // component that owns the turn -- StatusBar renders what it is told and
+    // never reaches for engine state of its own.
+    const projected = projectContext({
+        measured: contextUsed,
+        sentChars: liveChars?.sent ?? 0,
+        streamedChars: liveChars?.streamed ?? 0,
+    });
+
     // transcript owns the available height and anchors newest content above the
     // factual activity, status, and reserved composer rows.
     return React.createElement(
@@ -701,7 +751,8 @@ export function App({
             ? React.createElement(StatusBar, {
                   info,
                   usage,
-                  contextUsed,
+                  contextUsed: projected ? projected.used : null,
+                  contextEstimated: projected ? projected.estimated : false,
                   busy,
                   sessionStart,
                   lastTurnMs,

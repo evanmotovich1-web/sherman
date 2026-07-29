@@ -171,6 +171,26 @@ contained change.
 Until then, 04-02's UI carries the perceived-responsiveness load: an activity
 indicator and an elapsed timer, so a wait never reads as a dead screen.
 
+### The context meter under this transport
+
+`turn.completed.usage` is the only usage this transport carries. Re-verified
+against codex-cli 0.145.0 by capturing a live turn: seven events, and only the
+last had a `usage` key. `codex exec --help` exposes no usage-streaming flag, and
+the `TokenUsageUpdatedNotification` present in the binary belongs to app-server,
+not to `exec`.
+
+So the meter would sit frozen on the previous turn's figure for the whole of a
+long turn, which reads as a broken widget. It now shows a local estimate during
+a turn — `~` on the figure and the percent, a lighter `▒` fill — built from the
+characters actually sent and actually streamed back. See
+`src/contextestimate.js` for why it is crude on purpose and why it understates.
+
+**The estimate never reaches compaction.** Compaction discards real
+conversation; doing that on a guessed number would throw away context nobody
+measured. `shouldAutoCompact` is called only with `turn.completed` usage, and
+smoke check 18 pins both halves — the mark on screen and the gate on the
+decision.
+
 ## Permissions: the engine is sealed inside the vault
 
 This is the §4 company-data boundary enforced at the engine, and it is the same

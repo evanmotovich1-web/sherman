@@ -1,8 +1,19 @@
 // Hermes-sized status rule: state · engine/model · real context · session
 //
 // Every segment has a real source. Context appears only when both values exist:
-// the latest turn's reported input tokens and a known/overridden model window.
-// The bar never estimates either side and never animates as fake progress.
+// a token figure and a known/overridden model window.
+//
+// The token figure has TWO sources now, and the difference is visible on screen
+// rather than only in the types. Between turns it is Codex's reported input
+// count — measured, solid bar, plain number. During a turn Codex reports
+// nothing at all (verified against codex-cli 0.145.0; see contextestimate.js),
+// so the meter shows a local estimate: `~` on both the figure and the percent,
+// a lighter ▒ fill, and never the over-window red. The measured value replaces
+// it at turn end rather than being averaged with it.
+//
+// The window side is never estimated, and the bar still never animates as fake
+// progress — a moving estimate is driven by characters that genuinely arrived,
+// not by a timer.
 
 import React from 'react';
 import { Text, Box, useWindowSize, useAnimation } from 'ink';
@@ -51,7 +62,23 @@ function formatDuration(ms) {
     return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-function contextSegment(used, window, busy) {
+/**
+ * The context meter.
+ *
+ * `estimated` marks a figure Codex has not reported yet — see
+ * contextestimate.js for why one exists at all. It is never rendered as a bare
+ * number: a `~` leads both the token figure and the percentage, so the two
+ * places a reader actually looks both say "about". The mark is in the PLAIN
+ * text, not only in the colour, because a narrow terminal drops to `tinyPlain`
+ * and a colour-blind or NO_COLOR terminal drops the tint entirely — an estimate
+ * distinguished only by ink would read as measured in exactly the conditions
+ * where the operator is least able to check.
+ *
+ * The bar itself also stops short of solid while estimating: a filled cell is a
+ * claim about a tenth of the window, and the estimate cannot see the system
+ * prompt, the files Codex read, or its own reasoning tokens, so it understates.
+ */
+function contextSegment(used, window, busy, estimated = false) {
     if (!Number.isFinite(used) || used < 0 || !Number.isFinite(window) || window <= 0) {
         return null;
     }
@@ -61,38 +88,49 @@ function contextSegment(used, window, busy) {
     const filled = ratio >= 1
         ? METER_CELLS
         : Math.max(0, Math.floor(ratio * METER_CELLS));
-    const contextTint = ratio > 1 ? color.error : color.accent;
-    const label = `${formatK(used)}/${formatK(window)}`;
-    const bar = `${'█'.repeat(filled)}${'░'.repeat(METER_CELLS - filled)}`;
+    // An estimate never borrows the alarm colour. Red says "you are over the
+    // window", which is a measured claim this figure has not earned.
+    const contextTint = ratio > 1 && !estimated ? color.error : color.accent;
+    const mark = estimated ? '~' : '';
+    const label = `${mark}${formatK(used)}/${formatK(window)}`;
+    const pct = `${mark}${percent}%`;
+    // Estimated fill reads as the lighter ▒ rather than the solid █, so the
+    // meter's own texture says provisional before any number is read.
+    const fillGlyph = estimated ? '▒' : '█';
+    const bar = `${fillGlyph.repeat(filled)}${'░'.repeat(METER_CELLS - filled)}`;
 
     return {
         key: 'context',
-        plain: `${label} · [${bar}] ${percent}%`,
-        compactPlain: `[${bar}] ${percent}%`,
-        tinyPlain: `${percent}%`,
+        plain: `${label} · [${bar}] ${pct}`,
+        compactPlain: `[${bar}] ${pct}`,
+        tinyPlain: pct,
         spans: [
             { text: `${label} · [`, tint: color.muted },
-            { text: '█'.repeat(filled), tint: contextTint, dim: !busy, bold: busy },
+            { text: fillGlyph.repeat(filled), tint: contextTint, dim: estimated || !busy, bold: busy && !estimated },
             { text: '░'.repeat(METER_CELLS - filled), tint: color.meterEmpty, dim: true },
-            { text: `] ${percent}%`, tint: contextTint, dim: !busy, bold: busy },
+            { text: `] ${pct}`, tint: contextTint, dim: estimated || !busy, bold: busy && !estimated },
         ],
         compactSpans: [
             { text: '[', tint: color.frame, dim: !busy },
-            { text: '█'.repeat(filled), tint: contextTint, dim: !busy, bold: busy },
+            { text: fillGlyph.repeat(filled), tint: contextTint, dim: estimated || !busy, bold: busy && !estimated },
             { text: '░'.repeat(METER_CELLS - filled), tint: color.meterEmpty, dim: true },
-            { text: `] ${percent}%`, tint: contextTint, dim: !busy, bold: busy },
+            { text: `] ${pct}`, tint: contextTint, dim: estimated || !busy, bold: busy && !estimated },
         ],
-        tinySpans: [{ text: `${percent}%`, tint: contextTint, dim: !busy, bold: busy }],
+        tinySpans: [{ text: pct, tint: contextTint, dim: estimated || !busy, bold: busy && !estimated }],
     };
 }
 
 /**
- * @param {{info: object, usage: object, contextUsed?: number|null, busy?: boolean, sessionStart?: number, lastTurnMs?: number|null, columns?: number, goal?: string, vaultOk?: boolean}} props
+ * @param {{info: object, usage: object, contextUsed?: number|null, contextEstimated?: boolean, busy?: boolean, sessionStart?: number, lastTurnMs?: number|null, columns?: number, goal?: string, vaultOk?: boolean}} props
  */
 export function StatusBar({
     info,
     usage,
     contextUsed = null,
+    // True when contextUsed is a local estimate rather than a figure Codex
+    // reported. Defaults false so every existing call site keeps meaning
+    // "measured" without having to say so.
+    contextEstimated = false,
     busy = false,
     sessionStart,
     lastTurnMs = null,
@@ -170,7 +208,7 @@ export function StatusBar({
         });
     }
 
-    const context = contextSegment(contextUsed, info.contextWindow, busy);
+    const context = contextSegment(contextUsed, info.contextWindow, busy, contextEstimated);
     if (context) {
         segments.push(context);
     } else if ((usage?.total ?? 0) > 0) {

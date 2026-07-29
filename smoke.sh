@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — seventeen checks, no framework.
+# smoke.sh — eighteen checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -22,6 +22,7 @@
 #  15. Diff inks are semantic, scoped, and honest about truncation.
 #  16. The copy path claims only what its mechanism can prove.
 #  17. The capability registry matches reality where reality is checkable.
+#  18. The context meter marks an estimate as one, and only a measurement compacts.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -40,7 +41,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
-TOTAL_CHECKS=17
+TOTAL_CHECKS=18
 SMOKE_USER="smoke-tester"
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
@@ -1357,6 +1358,83 @@ else
         pass "$registry_out; every command-backed tool exists and no skill is malformed"
     else
         fail "$(printf '%s' "$registry_out" | head -3)"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 18 --
+# Codex reports usage once per turn, at turn.completed -- verified by capturing
+# a real turn's JSONL from codex-cli 0.145.0. The meter therefore shows a local
+# ESTIMATE while a turn runs, and the two ways that could become a lie are both
+# checked here:
+#
+#   1. The estimate must be visibly marked in the PLAIN text, not only in the
+#      colour. Narrow strips drop to the percentage alone and NO_COLOR drops the
+#      tint, and an estimate distinguished only by ink reads as measured exactly
+#      where the operator can least check it.
+#   2. Compaction must never see it. Compaction discards real conversation, and
+#      doing that on a guessed number would throw away context nobody measured.
+ESTIMATE_JS=$(cat <<'JS'
+import assert from 'node:assert/strict';
+import React from 'react';
+import { renderToString } from 'ink';
+import chalk from 'chalk';
+import { projectContext } from './src/contextestimate.js';
+import { shouldAutoCompact } from './src/commands.js';
+import { StatusBar } from './src/ui/StatusBar.js';
+
+chalk.level = 0;
+const plain = (v) => v.replace(/\x1b\[[0-9;]*m/g, '');
+const info = {
+    engine: 'codex', model: 'm', user: 'u', vaultPath: '/v',
+    contextWindow: 100000, threadId: null,
+};
+const usage = { input: 0, cachedInput: 0, output: 0, reasoning: 0, total: 0 };
+const bar = (props) => plain(renderToString(
+    React.createElement(StatusBar, { info, usage, columns: 110, sessionStart: Date.now(), ...props }),
+    { columns: 110 }
+));
+
+// Anything in flight is an estimate, and says so on screen.
+const live = projectContext({ measured: 40000, sentChars: 400, streamedChars: 800 });
+assert.equal(live.estimated, true, 'an in-flight figure was tagged measured');
+const estimated = bar({ contextUsed: live.used, contextEstimated: true, busy: true });
+assert.match(estimated, /~\d+\.\d+k\/100\.0k/, 'the estimated token figure is unmarked');
+assert.match(estimated, /~\d+%/, 'the estimated percentage is unmarked');
+assert.match(estimated, /▒/, 'the estimated bar is not visually provisional');
+
+// A settled turn is measured, and carries no mark at all.
+const settled = projectContext({ measured: 40000, sentChars: 0, streamedChars: 0 });
+assert.equal(settled.estimated, false);
+const measured = bar({ contextUsed: settled.used });
+assert.doesNotMatch(measured, /~/, 'a measured figure was marked as an estimate');
+assert.match(measured, /█/, 'the measured bar lost its solid fill');
+
+// Absence stays absence: nothing measured and nothing sent is no figure.
+assert.equal(projectContext({ measured: null, sentChars: 0, streamedChars: 0 }), null);
+
+// The compaction gate is arithmetic on a real number and nothing else. An
+// estimate 200% over the window is not a reason to discard a conversation.
+assert.equal(shouldAutoCompact(90_000, 100_000), true);
+assert.equal(shouldAutoCompact(null, 100_000), false);
+process.stdout.write('estimate marked ~, measured bare, compaction gated on measurement');
+JS
+)
+
+echo
+echo "18. the context meter is honest about what it measured"
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot render the status meter"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    skip "shell/node_modules absent, run install.sh"
+else
+    estimate_out=$(cd shell && node --input-type=module -e "$ESTIMATE_JS" 2>&1)
+    estimate_status=$?
+
+    if [ "$estimate_status" -eq 0 ]; then
+        pass "$estimate_out"
+    else
+        fail "$(printf '%s' "$estimate_out" | head -3)"
     fi
 fi
 

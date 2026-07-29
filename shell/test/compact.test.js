@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -171,5 +171,88 @@ test('App auto-compacts at 90% and seeds the fresh thread with the summary', asy
     } finally {
         instance.unmount();
         process.env.HOME = oldHome;
+    }
+});
+
+// Compaction never sees the estimate.
+//
+// The estimate exists to move the meter, and the danger it introduces is that
+// something ACTS on a moved meter. Compaction discards real conversation, so it
+// is gated on the engine's own reported figure alone. Here the engine streams
+// 8000 characters — roughly 2000 estimated tokens against a 1000-token window,
+// so 200% — and then reports a real usage of 10%. If compaction could read the
+// estimate this turn would compact twice over. It must not compact at all.
+//
+// The meter's RENDERING is asserted in contextestimate.test.js instead: off a
+// TTY Ink only emits a frame on unmount, so a mid-turn meter cannot be observed
+// from here, and a test that pretended to observe it would be checking nothing.
+test('compaction fires on the measured figure alone, never on the estimate', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-shell-estimate-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const threads = [];
+    const sent = [];
+    let turnEnded = false;
+    const flood = 'x'.repeat(8000);
+
+    const session = {
+        info: {
+            engine: 'fake', model: 'fake-model', user: 'test-user',
+            vaultPath: '/tmp/sherman/vault', threadId: 't1', contextWindow: 1000,
+        },
+        usage: zeroUsage(),
+        async *send(request) {
+            sent.push(request);
+            yield { kind: 'turn-start' };
+            yield { kind: 'message', text: flood };
+            yield { kind: 'turn-end', usage: { ...zeroUsage(), input: 100, total: 110 } };
+            turnEnded = true;
+        },
+        startNewThread() { threads.push('new'); return true; },
+        interrupt() {},
+        dispose() {},
+    };
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+
+    const stdout = new PassThrough();
+    stdout.columns = 120;
+    stdout.rows = 24;
+    let captured = '';
+    stdout.on('data', (chunk) => { captured += chunk.toString(); });
+
+    const instance = render(
+        React.createElement(App, { session, sessionId: '20260728_010000_estimate' }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        stdin.write('a question');
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        stdin.write('\r');
+
+        await until(() => turnEnded);
+        // Settle time for any compaction the shell might have decided to start.
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        assert.equal(sent.length, 1, 'a second engine turn ran; compaction fired on an estimate');
+        assert.deepEqual(threads, [], 'a fresh thread was started on an estimated figure');
+
+        instance.unmount();
+        assert.doesNotMatch(
+            plain(captured),
+            /compacting automatically/,
+            'auto-compaction announced on an estimate'
+        );
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
     }
 });
