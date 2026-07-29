@@ -112,7 +112,10 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
             assert.match(plain(output), /\/help/);
         } else {
             assert.match(plain(output), /\bVault\b/);
-            assert.match(plain(output), /\bKeys\b/);
+            // The closing tally is unconditional above the compact cutoff: the
+            // Available Tools and Available Skills lists give up rows on a
+            // short terminal, but the counts they summarize never do.
+            assert.match(plain(output), /\d+ tools · \d+ skills · \/help for commands/);
         }
     }
 
@@ -238,13 +241,20 @@ test('the mark scales with the tall panel and stays compact below it', () => {
     assert.match(plain(frame(60)), /████ {16}████/);
     assert.match(plain(frame(60)), /██████ {12}██████/);
 
-    // The scale flips between 45 and 46 rows, where the stretched body first
-    // reaches the doubled art's 22 rows. Across that flip the frame grows by
-    // exactly the one row the height budget bought — growing the mark may never
-    // grow the panel, because the budget was settled before the mark was sized.
-    assert.equal(markRun(frame(45)), 10);
-    assert.equal(markRun(frame(46)), 20);
-    assert.equal(rawRows(frame(46)).length, rawRows(frame(45)).length + 1);
+    // The scale flips between 49 and 50 rows, where the stretched body first
+    // reaches the doubled art's 22 rows. This flip used to sit at 45/46; the
+    // Available Tools and Available Skills lists made the knowledge column
+    // taller, so the panel now has to be four rows taller before the mark has
+    // headroom to double. That is the trade deliberately taken — the lists are
+    // the reason to open the panel, the doubled mark is decoration — and it is
+    // pinned here so the shift is a recorded decision rather than a drift.
+    //
+    // Across the flip the frame grows by exactly the one row the height budget
+    // bought: growing the mark may never grow the panel, because the budget was
+    // settled before the mark was sized.
+    assert.equal(markRun(frame(49)), 10);
+    assert.equal(markRun(frame(50)), 20);
+    assert.equal(rawRows(frame(50)).length, rawRows(frame(49)).length + 1);
 });
 
 test('launch matrix preserves borders and budgets across stack boundaries', () => {

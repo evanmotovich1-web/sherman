@@ -19,6 +19,7 @@ import { ActivityLine } from './ActivityLine.js';
 import { copyNotice, copyText, lastReplyText } from '../clipboard.js';
 import { addUsage, emptyUsage } from '../engine/session.js';
 import { readVaultStats } from '../vault.js';
+import { loadRegistry } from '../registry.js';
 import { createSessionLog } from '../sessionlog.js';
 import {
     carryOverEnvelope,
@@ -119,6 +120,9 @@ export function App({
         vaultPath: session.info.vaultPath,
         user: session.info.user,
     }));
+    // Read once, for the same reason as the vault stats: the registry is a
+    // property of the installation, not of the frame.
+    const [registry] = useState(() => loadRegistry());
     const [items, setItems] = useState(() => [
         {
             id: nextId(),
@@ -126,6 +130,7 @@ export function App({
             info: session.info,
             sessionId,
             stats: vaultStats,
+            registry,
         },
     ]);
     // The transcript, mirrored into a ref. /copy and ctrl+y both need the

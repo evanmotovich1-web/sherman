@@ -28,6 +28,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { color } from './theme.js';
+import { fitCategory, loadRegistry } from '../registry.js';
 import { Wordmark, wordmarkRows } from './Wordmark.js';
 import { Mark, markSize } from './Mark.js';
 import { safeTerminalText } from './sanitize.js';
@@ -75,9 +76,75 @@ const MARK_ROWS_LARGE = markSize(2).rows;
  * readable one renders two, and the budget has to follow that or a blocked
  * vault would stretch by one row more than it earned.
  */
-function knowledgeRows(stats) {
+function knowledgeRows(stats, registry, caps = null) {
     const vaultLines = stats.ok ? 2 : 1;
-    return 5 + 1 + (1 + vaultLines) + 1 + (1 + 3);
+    // A registry section is its title plus one row per category, or its title
+    // plus the one row that says why it is unavailable.
+    const registryRows = (result, cap) => {
+        if (!result.ok) return 1 + 1;
+        const shown = cap === undefined || cap === null ? result.categories.length
+            : Math.min(result.categories.length, cap);
+        return 1 + shown;
+    };
+
+    // Base: identity, the Vault section, and the closing tally, with a blank
+    // row between each. This is what the column costs when the lists are gone.
+    const base = 5 + 1 + (1 + vaultLines) + 1 + 1;
+    if (caps && caps.tools === 0 && caps.skills === 0) return base;
+
+    return (
+        base
+        + 1 + registryRows(registry.tools, caps?.tools)
+        + 1 + registryRows(registry.skills, caps?.skills)
+    );
+}
+
+/**
+ * How many category rows each registry section may print.
+ *
+ * Derived from the frame that will actually be drawn rather than from a
+ * threshold constant: the launch frame must leave the status rule and the
+ * composer their two rows, and the lists are the only part of the panel that
+ * can give rows back. Below the point where a section could show a title and
+ * even one group, BOTH lists are dropped and the closing tally carries the
+ * counts alone — `15 tools · 5 skills` is still the whole truth, and a section
+ * header over nothing is not.
+ *
+ * Returns `{tools, skills}` row caps, or nulls meaning "no limit".
+ */
+export function listBudget({ height, wordmark, stack, stats, registry }) {
+    const full = { tools: null, skills: null };
+
+    // Two rows for the status strip and the composer beneath the frame.
+    const allowedInner = height - 2 - wordmark - LAUNCH_FIXED_ROWS - (stack ? MARK_ROWS + 1 : 0);
+    const natural = knowledgeRows(stats, registry, null);
+    if (allowedInner >= natural) return full;
+
+    const base = knowledgeRows(stats, registry, { tools: 0, skills: 0 });
+    // Each section costs a blank row and a title before its first group.
+    const listRoom = allowedInner - base - 4;
+    if (listRoom < 2) return { tools: 0, skills: 0 };
+
+    // Split what is left, giving the odd row to tools: it is the longer list,
+    // so it is the one that loses most from a cap.
+    const skills = Math.floor(listRoom / 2);
+    return { tools: listRoom - skills, skills };
+}
+
+/**
+ * The registry, read once per process.
+ *
+ * The panel's values are frozen at launch by design (see the file header), and
+ * the registry is a property of the installation rather than of the frame, so
+ * re-reading it on every render would be disk IO inside a render pass to
+ * produce an identical answer. App passes the loaded registry down with the
+ * transcript item; this cache serves direct renders — fixtures and tests —
+ * without making `registry` a required prop at every call site.
+ */
+let registryCache = null;
+function cachedRegistry() {
+    if (registryCache === null) registryCache = loadRegistry();
+    return registryCache;
 }
 
 /**
@@ -233,6 +300,99 @@ function Field({ label, value, valueColor = color.muted, bold = false }) {
     );
 }
 
+/**
+ * A registry section: a lit title over one dim-labelled line per category.
+ *
+ *     Available Tools
+ *     session: goal, plan, subagent, compact
+ *     file: read_file, search_files, +2 more
+ *
+ * The three weights are the structure Hermes uses — lit title, receding
+ * category label, readable items — rendered in this house's inks rather than
+ * its. theme.js already records that translation: Sherman's accent 205 exists
+ * "matching Hermes's use of one bright yellow", so a second bright hue here
+ * would be a fifth palette in a file whose first rule is one vivid anchor.
+ *
+ * `result` is the loader's discriminated return. An unavailable registry prints
+ * why in the muted weight and prints NO count, because a section that rendered
+ * an empty list would say "Sherman has no skills" when the truth is "this
+ * install could not be read" — different problems that must not look the same.
+ */
+function Registry({ title, result, width, maxRows = Infinity }) {
+    if (!result.ok) {
+        return React.createElement(
+            Box,
+            { flexDirection: 'column' },
+            React.createElement(Text, { color: color.accent, bold: true, wrap: 'truncate' }, title),
+            React.createElement(Text, { color: color.muted, wrap: 'truncate' }, `  ${result.reason}`)
+        );
+    }
+
+    // A short terminal cannot show every category. Dropping the tail silently
+    // would understate the toolset, so the last row spends itself saying how
+    // many categories it could not show — the same contract fitCategory keeps
+    // horizontally, applied vertically.
+    const overflowed = result.categories.length > maxRows;
+    const visible = overflowed
+        ? result.categories.slice(0, Math.max(0, maxRows - 1))
+        : result.categories;
+    const hiddenCategories = result.categories.length - visible.length;
+
+    const lines = visible.map((category, index) => {
+        const { label, shown, more } = fitCategory(category.name, category.items, Math.max(1, width));
+        return React.createElement(
+            Text,
+            { key: index, wrap: 'truncate' },
+            React.createElement(Text, { color: color.tertiary }, label),
+            React.createElement(Text, { color: color.muted }, shown.join(', ')),
+            more > 0
+                ? React.createElement(
+                      Text,
+                      { color: color.secondary },
+                      `${shown.length > 0 ? ', ' : ''}+${more} more`
+                  )
+                : null
+        );
+    });
+
+    if (hiddenCategories > 0) {
+        lines.push(
+            React.createElement(
+                Text,
+                { key: 'overflow', color: color.secondary, wrap: 'truncate' },
+                `+${hiddenCategories} more ${hiddenCategories === 1 ? 'group' : 'groups'}`
+            )
+        );
+    }
+
+    return React.createElement(
+        Box,
+        { flexDirection: 'column' },
+        React.createElement(Text, { color: color.accent, bold: true, wrap: 'truncate' }, title),
+        ...lines
+    );
+}
+
+/**
+ * The closing tally: `15 tools · 5 skills · /help for commands`.
+ *
+ * A registry that failed to load contributes NO number — its segment is
+ * omitted, exactly as VersionBorder omits a missing sha rather than printing a
+ * placeholder. The `/help` hint is unconditional because it is true regardless.
+ */
+function Totals({ tools, skills }) {
+    const segments = [];
+    if (tools.ok) segments.push(plural(tools.count, 'tool'));
+    if (skills.ok) segments.push(plural(skills.count, 'skill'));
+    segments.push('/help for commands');
+
+    return React.createElement(
+        Text,
+        { color: color.muted, wrap: 'truncate' },
+        segments.join(' · ')
+    );
+}
+
 function Section({ title, lines }) {
     return React.createElement(
         Box,
@@ -286,16 +446,7 @@ function IdentityFields({ info, sessionId, width }) {
  * sections spread across the panel's extra rows instead of clumping at its top
  * and leaving the rest of the box empty.
  */
-function Knowledge({ stats, info, sessionId, width, stretch = false }) {
-    const vaultLines = stats.ok
-        ? [
-              `${plural(stats.wiki, 'wiki page')} · ${plural(stats.shared, 'shared fact')}`,
-              `${plural(stats.private, 'private fact')} · ${plural(stats.inbox, 'inbox item')}`,
-          ]
-        : // Unreachable is a different problem from empty, and the panel should
-          // not let them look the same.
-          ['unreadable — check vault_path in ~/.sherman/config.json'];
-
+function Knowledge({ stats, registry, caps, info, sessionId, width, stretch = false }) {
     // Built as a list so the uniform inter-section gap is applied in one place.
     const sections = [];
 
@@ -303,16 +454,51 @@ function Knowledge({ stats, info, sessionId, width, stretch = false }) {
         React.createElement(IdentityFields, { key: 'identity', info, sessionId, width })
     );
 
+    // What Sherman can do, ahead of what it currently knows: the lists are the
+    // reason the operator can predict what a request will get them, and the
+    // vault counts are a fact about this install rather than a capability.
+    // Dropped entirely when the frame cannot afford a title plus one group.
+    // The tally below still reports both totals, so nothing is concealed.
+    if (!(caps.tools === 0 && caps.skills === 0)) {
+        sections.push(
+            React.createElement(Registry, {
+                key: 'tools',
+                title: 'Available Tools',
+                result: registry.tools,
+                width,
+                maxRows: caps.tools ?? Infinity,
+            }),
+            React.createElement(Registry, {
+                key: 'skills',
+                title: 'Available Skills',
+                result: registry.skills,
+                width,
+                maxRows: caps.skills ?? Infinity,
+            })
+        );
+    }
+
+    // The vault line survives the Keys section's removal because it is the one
+    // thing here that can be BROKEN. An unreadable vault is the difference
+    // between Sherman answering from company knowledge and Sherman guessing,
+    // and the launch frame is where that has to be visible.
     sections.push(
-        React.createElement(Section, { key: 'vault', title: 'Vault', lines: vaultLines }),
         React.createElement(Section, {
-            key: 'keys',
-            title: 'Keys',
-            lines: [
-                'enter    send',
-                '/        commands · tab completes',
-                'ctrl+c   interrupt, again to exit',
-            ],
+            key: 'vault',
+            title: 'Vault',
+            lines: stats.ok
+                ? [
+                      `${plural(stats.wiki, 'wiki page')} · ${plural(stats.shared, 'shared fact')}`,
+                      `${plural(stats.private, 'private fact')} · ${plural(stats.inbox, 'inbox item')}`,
+                  ]
+                : // Unreachable is a different problem from empty, and the panel
+                  // should not let them look the same.
+                  ['unreadable — check vault_path in ~/.sherman/config.json'],
+        }),
+        React.createElement(Totals, {
+            key: 'totals',
+            tools: registry.tools,
+            skills: registry.skills,
         })
     );
 
@@ -412,7 +598,8 @@ function welcome(stats) {
  * `rows` is injectable for the same reason and selects only the short-terminal
  * summary; full launch cards always hug their content.
  */
-export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
+export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }) {
+    const reg = registry ?? cachedRegistry();
     const measured = useWindowSize();
     const width = typeof columns === 'number' ? columns : measured.columns;
     const height = typeof rows === 'number' ? rows : measured.rows;
@@ -431,7 +618,14 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
 
     // Stacked, the mark sits above the knowledge column and the two heights
     // add; side by side, the taller of the two sets the natural height.
-    const known = knowledgeRows(stats);
+    const caps = listBudget({
+        height,
+        wordmark: wordmarkRows(width),
+        stack,
+        stats,
+        registry: reg,
+    });
+    const known = knowledgeRows(stats, reg, caps);
     const naturalInner = stack ? MARK_ROWS + 1 + known : Math.max(MARK_ROWS, known);
     const bodyRows = compactPanel ? null : tallPanelRows(width, height, naturalInner);
 
@@ -501,6 +695,8 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows }) {
                         },
                         React.createElement(Knowledge, {
                             stats,
+                            registry: reg,
+                            caps,
                             info,
                             sessionId,
                             width: stack ? inner : rightWidth,

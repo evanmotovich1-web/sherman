@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — sixteen checks, no framework.
+# smoke.sh — seventeen checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -21,6 +21,7 @@
 #  14. Mouse reporting is disabled on every exit path.
 #  15. Diff inks are semantic, scoped, and honest about truncation.
 #  16. The copy path claims only what its mechanism can prove.
+#  17. The capability registry matches reality where reality is checkable.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -39,7 +40,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
-TOTAL_CHECKS=16
+TOTAL_CHECKS=17
 SMOKE_USER="smoke-tester"
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
@@ -1284,6 +1285,78 @@ else
         pass "confirmed copies say copied; OSC 52 says it cannot confirm; no mechanism says unavailable"
     else
         fail "$(printf '%s' "$copy_err" | head -3)"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 17 --
+# agent/capabilities.json is hand-maintained, which is the whole risk: a launch
+# screen advertising a capability that does not exist is exactly the confident-
+# and-wrong the operating contract forbids. Half of it is statically checkable,
+# and that half is checked here.
+#
+#   verify: "command"  must name a real first-party shell command
+#   verify: "engine"   granted by the adapter; not checkable from here, so it
+#                      is counted and reported rather than silently trusted
+#
+# Skills are checked against the directory that defines them, so a skill that
+# would not load can never be counted on the launch screen as one that works.
+REGISTRY_JS=$(cat <<'JS'
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { COMMANDS } from './src/commands.js';
+import { loadSkills, loadTools } from './src/registry.js';
+
+const root = new URL('..', import.meta.url).pathname;
+
+const tools = loadTools(root);
+assert.equal(tools.ok, true, `capability registry did not load: ${tools.reason}`);
+assert.ok(tools.count > 0, 'capability registry declares no tools');
+
+// Every command-backed tool must be a command that exists.
+const declared = JSON.parse(readFileSync(new URL('../agent/capabilities.json', import.meta.url), 'utf8'));
+const commandNames = new Set(COMMANDS.map((c) => c.name));
+const missing = [];
+let engineBacked = 0;
+for (const set of declared.toolsets) {
+    for (const tool of set.tools) {
+        if (tool.verify === 'command') {
+            if (!commandNames.has(tool.name)) missing.push(`${set.name}:${tool.name}`);
+        } else if (tool.verify === 'engine') {
+            engineBacked += 1;
+        } else {
+            missing.push(`${set.name}:${tool.name} has no verify field`);
+        }
+    }
+}
+assert.deepEqual(missing, [], `registry claims tools that do not exist: ${missing.join(', ')}`);
+assert.ok(engineBacked > 0, 'no engine-backed tools declared');
+
+// Skills are the directory. A malformed one is a skill that will not work, and
+// it must never be counted as one that does.
+const skills = loadSkills(root);
+assert.equal(skills.ok, true, `skills did not load: ${skills.reason}`);
+assert.ok(skills.count > 0, 'no skills found');
+assert.deepEqual(skills.malformed, [], `malformed skills: ${skills.malformed.join(', ')}`);
+
+process.stdout.write(`${tools.count} tools (${engineBacked} engine-backed) · ${skills.count} skills`);
+JS
+)
+
+echo
+echo "17. the capability registry matches reality"
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot load the registry"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    skip "shell/node_modules absent, run install.sh"
+else
+    registry_out=$(cd shell && node --input-type=module -e "$REGISTRY_JS" 2>&1)
+    registry_status=$?
+
+    if [ "$registry_status" -eq 0 ]; then
+        pass "$registry_out; every command-backed tool exists and no skill is malformed"
+    else
+        fail "$(printf '%s' "$registry_out" | head -3)"
     fi
 fi
 

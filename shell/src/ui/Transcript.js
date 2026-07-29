@@ -215,6 +215,7 @@ function Item({ item, width, rows }) {
             return React.createElement(LaunchScreen, {
                 info: item.info,
                 stats: item.stats,
+                registry: item.registry,
                 sessionId: item.sessionId,
                 columns: width,
                 rows,

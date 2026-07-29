@@ -1,0 +1,78 @@
+{
+  "$comment": [
+    "Sherman's declared capabilities, grouped the way the launch screen shows them.",
+    "",
+    "This file is hand-maintained and engine-agnostic on purpose: it says what",
+    "SHERMAN can do, not what a particular engine happens to expose this week.",
+    "That is also its risk. A hand-maintained list can drift from reality, and a",
+    "launch screen advertising a capability that does not work is exactly the kind",
+    "of confident-and-wrong the operating contract forbids.",
+    "",
+    "So the entries divide by what backs them, and smoke.sh check 17 verifies the",
+    "half that is checkable:",
+    "",
+    "  verify: 'command'  backed by a first-party shell command. The name must",
+    "                     appear in shell/src/commands.js COMMANDS, and the check",
+    "                     fails if it does not.",
+    "  verify: 'engine'   backed by the engine's own tools, reached through the",
+    "                     adapter. Not statically checkable from here; listed",
+    "                     because the adapter grants it, and REMOVED the moment",
+    "                     that stops being true.",
+    "",
+    "Nothing goes in this file speculatively. If a capability is planned but not",
+    "working, it does not belong here — the launch screen is not a roadmap."
+  ],
+  "toolsets": [
+    {
+      "name": "session",
+      "summary": "steer the session itself",
+      "tools": [
+        { "name": "goal", "verify": "command" },
+        { "name": "plan", "verify": "command" },
+        { "name": "subagent", "verify": "command" },
+        { "name": "compact", "verify": "command" }
+      ]
+    },
+    {
+      "name": "transcript",
+      "summary": "read back what was said",
+      "tools": [
+        { "name": "copy", "verify": "command" },
+        { "name": "help", "verify": "command" }
+      ]
+    },
+    {
+      "name": "vault",
+      "summary": "the company brain",
+      "tools": [
+        { "name": "search_vault", "verify": "engine" },
+        { "name": "read_vault", "verify": "engine" },
+        { "name": "write_vault", "verify": "engine" }
+      ]
+    },
+    {
+      "name": "file",
+      "summary": "read and change files in the workspace",
+      "tools": [
+        { "name": "read_file", "verify": "engine" },
+        { "name": "search_files", "verify": "engine" },
+        { "name": "write_file", "verify": "engine" },
+        { "name": "patch", "verify": "engine" }
+      ]
+    },
+    {
+      "name": "shell",
+      "summary": "run commands in the sandbox",
+      "tools": [
+        { "name": "run_command", "verify": "engine" }
+      ]
+    },
+    {
+      "name": "web",
+      "summary": "look things up outside the company",
+      "tools": [
+        { "name": "web_search", "verify": "engine" }
+      ]
+    }
+  ]
+}

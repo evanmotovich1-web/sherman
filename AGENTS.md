@@ -10,12 +10,19 @@ The skills and vault knowledge are the product; the launcher, shell, and engine 
 
 - `.paul/` — implementation plans, roadmap, state, and phase records.
 - `adapters/` — thin, engine-specific wrapper templates for Claude Code and Codex.
-- `agent/` — the canonical Sherman persona and operating contract in `SYSTEM.md`.
+- `agent/` — the canonical Sherman persona and operating contract in `SYSTEM.md`,
+  plus `capabilities.json`, the hand-maintained registry the launch screen reads
+  for **Available Tools**. Nothing goes in it speculatively: a capability that
+  does not work yet does not belong there, because the launch screen is not a
+  roadmap. Command-backed entries are verified by smoke check 17.
 - `bin/` — the installed `sherman` launcher and wizard entry point.
 - `docs/` — setup, onboarding, and operator documentation.
 - `logo/` — plain and ANSI terminal banners.
 - `shell/` — Sherman-owned TUI; it drives engines headlessly.
-- `skills/` — company-work skills, one folder with a `SKILL.md` per skill.
+- `skills/` — company-work skills, one folder with a `SKILL.md` per skill. The
+  front matter (`name`, `category`, `summary`) is what the launch screen lists;
+  see `skills/README.md`. `name` must match the directory or smoke check 17
+  fails the skill rather than counting one that will not load.
 - `vault/` — Sherman's company brain: wiki, inbox, shared memory, and private memory.
 - `graphify-out/` — generated local code graph; regenerable and never committed.
 
