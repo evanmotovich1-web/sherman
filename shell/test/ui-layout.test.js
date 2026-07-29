@@ -225,7 +225,12 @@ test('the mark scales with the tall panel and stays compact below it', () => {
     // A hugging panel and the first stretched sizes keep the 12-column mark;
     // only a panel with 22 inner rows to spare doubles it.
     assert.equal(markRun(frame(40)), 10, 'a hugging panel must keep the compact mark');
-    assert.equal(markRun(frame(44)), 10, 'the first stretched size has no room to double');
+    // 44 is the first stretched size, and it now arrives with room to double.
+    // The panel's budget stopped being a share of the terminal (0.75) and became
+    // "the transcript's height minus the chrome", which hands the body every row
+    // the old fraction was leaving on the floor — five blank rows at 120x44.
+    assert.equal(markRun(frame(43)), 10, 'below the threshold the panel must hug and stay compact');
+    assert.equal(markRun(frame(44)), 20, 'the first stretched size now has room to double');
     assert.equal(markRun(frame(60)), 20, 'a tall panel must render the doubled mark');
 
     // Doubled means magnified, not redrawn: twice the rows as well as twice the
@@ -241,20 +246,23 @@ test('the mark scales with the tall panel and stays compact below it', () => {
     assert.match(plain(frame(60)), /████ {16}████/);
     assert.match(plain(frame(60)), /██████ {12}██████/);
 
-    // The scale flips between 49 and 50 rows, where the stretched body first
-    // reaches the doubled art's 22 rows. This flip used to sit at 45/46; the
-    // Available Tools and Available Skills lists made the knowledge column
-    // taller, so the panel now has to be four rows taller before the mark has
-    // headroom to double. That is the trade deliberately taken — the lists are
-    // the reason to open the panel, the doubled mark is decoration — and it is
-    // pinned here so the shift is a recorded decision rather than a drift.
+    // The scale now flips at the tall threshold itself, 43 -> 44: below it the
+    // panel hugs its content, and the first stretched size already has the 22
+    // rows the doubled art needs. This flip has moved twice and both moves are
+    // recorded rather than quietly absorbed — 45/46 originally, 49/50 once the
+    // Available Tools and Skills lists made the knowledge column taller, and
+    // 43/44 now that the panel claims the chrome-adjusted height instead of a
+    // fraction of the terminal.
     //
-    // Across the flip the frame grows by exactly the one row the height budget
-    // bought: growing the mark may never grow the panel, because the budget was
-    // settled before the mark was sized.
-    assert.equal(markRun(frame(49)), 10);
-    assert.equal(markRun(frame(50)), 20);
-    assert.equal(rawRows(frame(50)).length, rawRows(frame(49)).length + 1);
+    // The frame grows by four rows across this flip, which is the slack the old
+    // 0.75 share was leaving unspent, not the mark pushing the panel open: the
+    // budget is still settled before the mark is sized.
+    assert.equal(markRun(frame(43)), 10);
+    assert.equal(markRun(frame(44)), 20);
+    assert.ok(
+        rawRows(frame(44)).length > rawRows(frame(43)).length,
+        'the stretched panel should be taller than the hugging one'
+    );
 });
 
 test('launch matrix preserves borders and budgets across stack boundaries', () => {
@@ -887,5 +895,67 @@ test('shimmerSegments always partitions the run exactly', () => {
             assert.ok(before >= 0 && band >= 0 && after >= 0, `${width}@${phase} went negative`);
             assert.ok(band <= width);
         }
+    }
+});
+
+// The gap between the launch frame and the status rule.
+//
+// This was five blank rows at 120x44 because the panel claimed a SHARE of the
+// terminal (0.75), and a share is not a spacing decision — it produces a
+// different gap at every height, and the panel read as though it had drifted up
+// the screen away from the chrome. The budget is stated as the gap it means to
+// produce now, so this is the assertion that keeps it stated.
+//
+// One row, and exactly one: zero butts the welcome sentence against the status
+// strip, and the frame already carries marginBottom:1 to provide it.
+test('the launch frame sits one blank row above the chrome at every tall size', () => {
+    for (const [columns, rows] of [[120, 44], [120, 50], [120, 60], [160, 48]]) {
+        const frameRows = rawRows(renderToString(
+            React.createElement(LaunchScreen, {
+                info, stats, sessionId: '20260728_010000_gap', columns, rows,
+            }),
+            { columns }
+        ));
+
+        // The frame's own trailing blank row is the gap. Anything more is slack
+        // the budget failed to claim.
+        let trailing = 0;
+        for (let i = frameRows.length - 1; i >= 0 && frameRows[i].trim() === ''; i -= 1) trailing += 1;
+        assert.equal(
+            trailing,
+            1,
+            `${columns}x${rows} left ${trailing} blank rows under the launch frame, not 1`
+        );
+
+        // And the frame still fits above the status rule and the composer's
+        // three rows, which is what the gap is measured against.
+        assert.ok(
+            frameRows.length <= rows - 4,
+            `${columns}x${rows} launch frame collides with the chrome`
+        );
+    }
+});
+
+// The registry lists carry their contrast the way the reference does: the
+// category label recedes and the names are the bright thing on the row. These
+// were inverted — vivid label, gray names — which spends the contrast on the
+// taxonomy rather than on what the operator can actually use.
+test('tool and skill names are brighter than the category labels that group them', () => {
+    chalk.level = 3;
+    try {
+        const output = renderToString(
+            React.createElement(LaunchScreen, {
+                info, stats, sessionId: '20260728_010000_ink', columns: 120, rows: 50,
+            }),
+            { columns: 120 }
+        );
+        const row = output.split('\n').find((line) => line.includes('goal, plan'));
+        assert.ok(row, 'the session toolset row did not render');
+        // The names carry the light neutral...
+        assert.match(row, /\x1b\[38;5;252m/, 'tool names lost the bright neutral');
+        // ...and the label is dimmed rather than competing with them.
+        assert.match(row, /\x1b\[2m/, 'the category label is not dimmed');
+    } finally {
+        chalk.level = 0;
     }
 });

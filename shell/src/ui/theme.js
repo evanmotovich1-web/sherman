@@ -35,6 +35,21 @@ export const color = {
     // Secondary structural text.
     muted: 'gray',
 
+    // The readable neutral for dense lists — the tool and skill names on the
+    // launch panel.
+    //
+    // Those names were 'gray', the same ink as structural chrome, and the panel
+    // read flat next to the reference: there, the category labels RECEDE and the
+    // names are near-white, so the eye lands on the thing you can actually use.
+    // Ours had it inverted — vivid labels, dull names — which spends the
+    // contrast on the taxonomy instead of the content.
+    //
+    // 252 is a light neutral, not a fifth hue: it competes with nothing in the
+    // brand ramp and is the same move the reference makes with its off-white.
+    // The vividness comes from the CONTRAST between a receded label and a bright
+    // name, not from turning up the saturation on everything.
+    value: c(252),
+
     // The status strip's chip fill. Every existing foreground in that strip is
     // either gray, pink 205, purple 135, or blue 39, so the chip has to sit
     // below all four without introducing a fifth hue. 236 is a neutral dark

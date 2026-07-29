@@ -56,10 +56,34 @@ const LABEL = 9;
 // The threshold sits above the compact cutoffs (29/41) so the two never fight:
 // a terminal is either short enough for the compact card or tall enough to
 // stretch, never switching modes on the same row.
+//
+// Lowering this to 30 was tried, to close the same slack on mid-height
+// terminals, and reverted: it breaks the documented hug at 40 rows and starves
+// the mark at another size. Below this threshold the panel still hugs and the
+// slack still falls under it — a known, bounded gap at sizes between the
+// compact cutoff and here, not an oversight.
 const TALL_MIN_ROWS = 44;
-// Share of the terminal the whole launch frame may occupy. The remainder is
-// deliberate: the status rule, the composer, and the room a first turn needs.
-const TALL_SHARE = 0.75;
+
+// What the frame leaves between itself and the status rule.
+//
+// This used to be a share of the terminal (0.75), and a share is not a spacing
+// decision — it is a number that produces a different gap at every height. At
+// 120x44 it left FIVE blank rows under the welcome line while the reference
+// leaves one, and the panel read as though it had drifted up the screen away
+// from the chrome rather than sitting above it.
+//
+// So the budget is stated as the gap it is actually trying to produce. The
+// frame claims the transcript's height minus the chrome it must not collide
+// with. The separating blank row is NOT added here: the launch frame already
+// carries marginBottom:1 under its welcome sentence, so an extra tail row would
+// spend two rows on one gap. One blank row between the welcome line and the
+// status rule is the target, and the frame already owns it.
+//
+// Rows below the transcript at launch: the status rule, and the composer's
+// three (top border, prompt, bottom border). The activity line is not counted —
+// it only exists during a turn, by which point the launch frame has scrolled.
+const CHROME_ROWS = 4;
+const LAUNCH_TAIL_ROWS = 0;
 // Rows the frame spends outside the panel body at every size: the marginTop
 // above the panel, the panel's own top and bottom border rows, the marginTop
 // above the welcome line, the welcome line, and the trailing marginBottom.
@@ -157,7 +181,9 @@ function cachedRegistry() {
  */
 function tallPanelRows(width, height, naturalInnerRows) {
     if (height < TALL_MIN_ROWS) return null;
-    const frame = Math.floor(height * TALL_SHARE);
+    // The height the whole frame may occupy so exactly LAUNCH_TAIL_ROWS blank
+    // rows remain between it and the status rule.
+    const frame = height - CHROME_ROWS - LAUNCH_TAIL_ROWS;
     const body = frame - wordmarkRows(width) - LAUNCH_FIXED_ROWS;
     return body > naturalInnerRows ? body : null;
 }
@@ -343,8 +369,10 @@ function Registry({ title, result, width, maxRows = Infinity }) {
         return React.createElement(
             Text,
             { key: index, wrap: 'truncate' },
-            React.createElement(Text, { color: color.tertiary }, label),
-            React.createElement(Text, { color: color.muted }, shown.join(', ')),
+            // Label recedes, names carry the light. Inverting these two is what
+            // made the panel read flat — see color.value in theme.js.
+            React.createElement(Text, { color: color.secondary, dimColor: true }, label),
+            React.createElement(Text, { color: color.value }, shown.join(', ')),
             more > 0
                 ? React.createElement(
                       Text,
