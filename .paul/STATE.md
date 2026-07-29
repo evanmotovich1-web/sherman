@@ -173,11 +173,12 @@ after every commit, and never commit `graphify-out/`.
 ## Git State
 
 Branch: `main`
-Remotes: `origin` → https://github.com/evanmotovich1-web/sherman.git
-(private; Evan created and pushes it — discovered 2026-07-29, this file
-previously said "none"). **This session pushed nothing, per C5.** Because a
-remote exists, smoke check 10's `sherman update` now performs a real
-`git pull --ff-only` and a nested smoke run.
+Remotes: `origin` → https://github.com/evanmotovich1-web/sherman.git —
+**PUBLIC since 2026-07-29**, flipped at Evan's explicit direction after the
+clean secret audit; the push (3ac5b0a..74b7c43) was likewise Evan-directed,
+so C5 held: pushing stayed his call. Because a remote exists, smoke check
+10's `sherman update` now performs a real `git pull --ff-only` and a nested
+smoke run.
 Feature branches: none — all work on `main`
 
 Phase 4 commits: `7a9b4dd` (04-01 plan), `1f75e0a` (engine layer), `7536aa2`,
@@ -200,10 +201,10 @@ Last session: 2026-07-29
 Stopped at: Phase 7 complete — the repo is publishable: history audited
 clean, README under the honesty laws, registry-driven wizard, verify-then-
 claim installer, twenty-one smoke checks green
-Next action: **Evan's calls, not a session's:** (1) flip repo visibility if
-the audit report satisfies him; (2) answer design-doc §7 Q1 (the 3–5 tasks
-employees burn the most hours on) to unblock Phase 3 skills — still the one
-answer standing between Sherman and being useful.
+Next action: The repo is public and pushed (Evan-directed, 2026-07-29).
+What remains is **design-doc §7 Q1** (the 3–5 tasks employees burn the most
+hours on) to unblock Phase 3 skills — still the one answer standing between
+Sherman and being useful.
 Resume file: `.paul/ROADMAP.md`
 
 Probed for Phase 6 (recorded in the plans, headline here): Ink 7 per-side
