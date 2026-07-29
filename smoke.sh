@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — eighteen checks, no framework.
+# smoke.sh — nineteen checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -23,6 +23,8 @@
 #  16. The copy path claims only what its mechanism can prove.
 #  17. The capability registry matches reality where reality is checkable.
 #  18. The context meter marks an estimate as one, and only a measurement compacts.
+#  19. README.md states the Windows reality, points at the real installer, and
+#      names unbuilt channels only under its marked roadmap heading.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -41,7 +43,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
-TOTAL_CHECKS=18
+TOTAL_CHECKS=19
 SMOKE_USER="smoke-tester"
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
@@ -1452,6 +1454,42 @@ else
         pass "$estimate_out"
     else
         fail "$(printf '%s' "$estimate_out" | head -3)"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 19 --
+echo
+echo "19. README claims only what is wired"
+
+if [ ! -f README.md ]; then
+    fail "README.md does not exist"
+else
+    # The Windows line must be an explicit sentence, not silence -- silence
+    # reads as "supported".
+    if grep -q "never been run on Windows" README.md; then
+        pass "Windows status stated plainly"
+    else
+        fail "README does not state that Sherman has never been run on Windows"
+    fi
+
+    if grep -q '\./install\.sh' README.md; then
+        pass "install section points at the real installer"
+    else
+        fail "README never mentions ./install.sh"
+    fi
+
+    # Unbuilt integrations may appear ONLY at or below the marked roadmap
+    # heading. Anywhere above it, they read as a feature menu of dead options.
+    roadmap_line=$(grep -n '^## Not built yet' README.md | head -1 | cut -d: -f1)
+    if [ -z "$roadmap_line" ]; then
+        fail "README has no '## Not built yet' roadmap heading"
+    else
+        stray=$(awk -v limit="$roadmap_line" 'NR < limit && /WhatsApp|Telegram/ { print NR": "$0 }' README.md)
+        if [ -z "$stray" ]; then
+            pass "unbuilt channels named only under the roadmap heading"
+        else
+            fail "unbuilt channel named above the roadmap heading: $(printf '%s' "$stray" | head -1)"
+        fi
     fi
 fi
 

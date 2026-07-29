@@ -3,6 +3,22 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-07-29 — Added: README, ahead of going public
+
+- Audited all 57 commits of history for secrets before anything else: clean.
+  No credentials in any commit; the committed `.mcp.json` carries only env-var
+  placeholders; no `.env`, captured config, or session logs ever landed.
+- Added `.env`, `.env.*`, and `*.local` to `.gitignore` as standing hygiene.
+- Wrote the first `README.md` under the same honesty laws as the shell: the
+  install section says what `install.sh` actually does, prerequisites name
+  what it does not provide (Node 22+, the Codex CLI and its login), Windows is
+  stated plainly as never-run, and unbuilt integrations appear only under a
+  marked "Not built yet" heading. The safety section describes the real
+  boundary — the default-deny macOS sandbox and the no-PHI floor — and does
+  not claim approval-gated writes, because `approval_policy="never"` is the
+  wired truth.
+- Smoke check 19 now guards the README's honesty mechanically.
+
 ## 2026-07-28 — Building: launch and chrome rewrite
 
 - Reversed the v6.1 tall launch panel introduced in `45ae8b9`. Launch cards now
