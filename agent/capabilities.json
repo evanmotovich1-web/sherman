@@ -31,7 +31,8 @@
         { "name": "plan", "verify": "command" },
         { "name": "subagent", "verify": "command" },
         { "name": "compact", "verify": "command" },
-        { "name": "eval", "verify": "command" }
+        { "name": "eval", "verify": "command" },
+        { "name": "exit", "verify": "command" }
       ]
     },
     {
@@ -39,6 +40,7 @@
       "summary": "read back what was said",
       "tools": [
         { "name": "copy", "verify": "command" },
+        { "name": "clear", "verify": "command" },
         { "name": "help", "verify": "command" }
       ]
     },

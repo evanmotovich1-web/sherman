@@ -436,6 +436,10 @@ export function App({
         [clearLingerTimers, commit, goal, log, session, setBusyBoth]
     );
 
+    // The newest submit, for the one command that recurses into it: /exit runs
+    // the end-of-session eval as a real submission, and a callback cannot name
+    // itself inside its own useCallback body.
+    const submitRef = useRef(null);
     const submit = useCallback(
         async (text) => {
             const parsed = parseSubmission(text);
@@ -459,6 +463,30 @@ export function App({
                 }
                 if (command.name === 'copy') {
                     copyLastReply();
+                    return;
+                }
+                if (command.name === 'clear') {
+                    // The screen, not the record: the engine thread keeps its
+                    // context (/compact is what resets it) and the session log
+                    // on disk keeps every line, including this command.
+                    setItems([]);
+                    commit('notice', 'transcript cleared · engine context unchanged — /compact is what resets context');
+                    return;
+                }
+                if (command.name === 'exit') {
+                    // The same contract as the second ctrl+c: a session with
+                    // turns is graded on the way out, and the eval turn is
+                    // interruptible (ctrl+c) so it can never trap the operator
+                    // in a shell they asked to leave. `evalRanRef` is set
+                    // before the turn starts, so an interrupted eval does not
+                    // re-run and turn one exit into two.
+                    if (turnsRef.current > 0 && !evalRanRef.current && !log.failed) {
+                        evalRanRef.current = true;
+                        commit('notice', 'evaluating this session before exit · ctrl+c to skip');
+                        await submitRef.current('/eval');
+                    }
+                    session.dispose();
+                    exit();
                     return;
                 }
                 if (command.name === 'goal') {
@@ -717,8 +745,9 @@ export function App({
                 await compactSession('');
             }
         },
-        [carryOver, clearLingerTimers, commit, compactSession, goal, session, sessionFactory, setBusyBoth, log]
+        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, session, sessionFactory, setBusyBoth, log]
     );
+    submitRef.current = submit;
 
     // Two-stage Ctrl+C, proven in a pty at plan time. Ink is started with
     // exitOnCtrlC:false so this handler is what decides.

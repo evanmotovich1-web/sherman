@@ -39,10 +39,22 @@ export const COMMANDS = Object.freeze([
         detail: 'Copies the reply as plain text — no colour, no rule glyphs, no signature line. Also bound to ctrl+y. Where the clipboard write cannot be verified, the shell says so rather than reporting a copy it cannot prove.',
     },
     {
+        name: 'clear',
+        usage: '/clear',
+        summary: 'clear the transcript from the screen',
+        detail: 'Clears the shell scrollback only. The engine thread and its context are untouched — /compact is what resets context — and the session log on disk keeps every line.',
+    },
+    {
         name: 'help',
         usage: '/help [command]',
         summary: 'show commands and exact behavior',
         detail: 'Lists first-party shell commands. Type // to send a literal slash-prefixed prompt.',
+    },
+    {
+        name: 'exit',
+        usage: '/exit',
+        summary: 'end the session and leave the shell',
+        detail: 'The same path as pressing ctrl+c twice: a session with turns in it is evaluated first (ctrl+c skips the eval), then the shell closes.',
     },
 ]);
 
@@ -136,10 +148,11 @@ export function planRequest(task, goal) {
     };
 }
 
-// Compaction fires on the same number the status meter prints: the latest
-// turn's reported input tokens over the model's known window. No estimate is
-// involved on either side, so the shell never compacts on a guess -- an unknown
-// window (no meter) simply never auto-compacts.
+// Compaction fires on the same number the status meter prints: the engine's
+// measured live-context figure (a `context` event) over the model's known
+// window. Neither an estimate nor the turn's cumulative token bill is involved
+// on either side, so the shell never compacts on a guess -- an unknown window
+// (no meter) simply never auto-compacts.
 export const AUTO_COMPACT_RATIO = 0.9;
 
 /** @returns {boolean} */

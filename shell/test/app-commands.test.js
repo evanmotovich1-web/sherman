@@ -569,3 +569,137 @@ test('/copy and ctrl+y both copy the last reply as plain text', async () => {
         assert.match(plain(captured), /Copied the last reply to the clipboard \(1 line\)\./);
     }
 });
+
+// /clear wipes the SCREEN and nothing else: the engine session is not touched
+// (no dispose, no new thread — /compact owns context) and the record survives
+// in the session log. Off a TTY Ink emits its frame on unmount, so the visible
+// proof is that the final frame carries the notice and not the cleared reply.
+test('/clear empties the transcript without touching the engine', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-clear-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const requests = [];
+    const session = fakeSession(requests, 'main');
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+
+    const stdout = new PassThrough();
+    stdout.columns = 80;
+    stdout.rows = 24;
+    const writes = [];
+    stdout.on('data', (chunk) => { writes.push(chunk.toString()); });
+
+    const instance = render(
+        React.createElement(App, { session, sessionId: '20260729_010000_clear1' }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    try {
+        type(stdin, 'a question', 40);
+        await until(() => requests.length === 1);
+        // Let the turn's teardown settle before clearing what it rendered.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        type(stdin, '/clear', 0);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        instance.unmount();
+        // The last frame that shows the notice must be a frame the cleared
+        // reply is no longer in.
+        const frame = latestFrame(writes, (f) => f.includes('transcript cleared'));
+        assert.ok(frame, 'the /clear notice never rendered');
+        assert.doesNotMatch(frame, /main response/, 'the cleared reply is still on screen');
+        assert.equal(session.disposed(), 0, '/clear must not dispose the engine session');
+        assert.equal(requests.length, 1, '/clear must not send an engine turn');
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+// /exit is the second ctrl+c spelled as a command: with no turns there is no
+// conduct to grade, so it disposes and leaves without spending an eval turn.
+test('/exit on an untouched session leaves without an eval turn', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-exit-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const requests = [];
+    const session = fakeSession(requests, 'main');
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+
+    const stdout = new PassThrough();
+    stdout.columns = 80;
+    stdout.rows = 24;
+    stdout.on('data', () => {});
+
+    const instance = render(
+        React.createElement(App, { session, sessionId: '20260729_020000_exit01' }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    try {
+        type(stdin, '/exit', 40);
+        await instance.waitUntilExit();
+        assert.equal(requests.length, 0, 'an untouched session must not spend an eval turn on exit');
+        assert.equal(session.disposed(), 1, '/exit must dispose the engine session');
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+// With turns in the session, /exit grades first: the eval request goes out
+// read-only, and only after it completes does the shell dispose and leave.
+test('/exit runs the end-of-session eval before leaving a used session', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-exit-eval-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const requests = [];
+    const session = fakeSession(requests, 'main');
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+
+    const stdout = new PassThrough();
+    stdout.columns = 80;
+    stdout.rows = 24;
+    stdout.on('data', () => {});
+
+    const instance = render(
+        React.createElement(App, { session, sessionId: '20260729_030000_exit02' }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    try {
+        type(stdin, 'real work', 40);
+        await until(() => requests.length === 1);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        type(stdin, '/exit', 0);
+        await instance.waitUntilExit();
+
+        assert.equal(requests.length, 2, '/exit on a used session must run exactly one eval turn');
+        assert.equal(requests[1].source, 'eval');
+        assert.equal(requests[1].mode, 'read-only');
+        assert.equal(session.disposed(), 1);
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
