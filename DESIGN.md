@@ -4,8 +4,9 @@ Sherman Abrams is a company operations agent with one identity, one skill set,
 and one company brain across two interchangeable engines. It is a clean,
 standalone product: not agentic-os, not Pi machinery, and not a custom model.
 
-For the full rationale and original design, read the
-[Sherman Abrams agent plan](/Users/moto/code/agentic-os/plans/PLAN-2026-07-25-sherman-abrams-agent.md).
+The original rationale was drafted 2026-07-25 in Evan's private planning
+notes, outside this repository; everything from them that still matters is
+carried in this document and in the decisions table below.
 
 ## Runtime architecture
 
@@ -66,7 +67,7 @@ patient records, named-patient results, or any other PHI.
 
 | Phase | Outcome | State |
 | --- | --- | --- |
-| 1 — Evan-only local prototype | Launcher, wizard, persona, adapter assembly, banner, starter vault, Sherman Shell, and first company skills prove “type `sherman`; the agent appears and knows the business” on one Mac | Shell v7 landed 2026-07-27; launch/chrome rewrite building 2026-07-28; first skills still open |
+| 1 — Evan-only local prototype | Launcher, wizard, persona, adapter assembly, banner, starter vault, Sherman Shell, and first company skills prove “type `sherman`; the agent appears and knows the business” on one Mac | Shell v7 landed 2026-07-27; launch/chrome rewrite landed 2026-07-28; the first eight company skills shipped (see `skills/README.md`) |
 | 2 — Second admin device | Full installer/onboarding, admin vault sync, and the Codex path proven on another admin machine | Not started |
 | 3 — Employees and always-on service | Always-on vault host, scoped vault service, per-user credentials, WhatsApp bridge, and employee onboarding | Not started |
 

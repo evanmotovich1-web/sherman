@@ -8,7 +8,8 @@ tracked file.
 
 1. Open Obsidian.
 2. Choose **Open folder as vault**.
-3. Select `/Users/moto/code/sherman/vault`.
+3. Select the `vault/` directory inside your sherman clone
+   (for example `~/code/sherman/vault`).
 4. Confirm that Obsidian shows the Sherman `wiki`, `inbox`, and `memory`
    folders.
 
@@ -57,7 +58,7 @@ literal key in `.mcp.json`, this repository, the vault, a commit, or chat.
 3. Run:
 
    ```sh
-   cd /Users/moto/code/sherman
+   cd <your sherman clone>
    claude mcp list
    ```
 
