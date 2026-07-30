@@ -5,14 +5,23 @@ route, not a supported platform: whoever follows it first is the first test.
 If you do, please report what you find — this page should carry facts, not
 guesses, and today it carries a plan and a script, not a test result.
 
-**Native Windows (PowerShell / cmd) is not supported.** Two hard reasons, not
-packaging laziness:
+**Native Windows (PowerShell / cmd) is not supported.** Two reasons, one of
+which has weakened since this page was first written:
 
-1. The launcher (`bin/sherman`) and installer are bash.
+1. The launcher (`bin/sherman`) and installer are bash. Nothing Sherman
+   ships runs natively in PowerShell except the bootstrap below, which
+   exists to reach WSL2.
 2. Sherman's safety model leans on an OS sandbox confining the engine's
-   writes to the vault. That boundary has been proven by an escape test on
-   macOS only. There is no native-Windows equivalent wired, and Sherman does
-   not ship boundaries it cannot enforce.
+   writes to the vault, proven by an escape test on macOS only. Codex
+   itself now ships a native Windows sandbox — restricted tokens plus
+   ACLs, honoring the same `writable_roots` Sherman configures — so the
+   OS-level mechanism exists where it once did not
+   (openai.com/index/building-codex-windows-sandbox). But Sherman has not
+   wired it, nobody has re-run the escape test against it, and OpenAI's
+   own account says its unelevated mode's network suppression is advisory
+   rather than enforced. An unwired, unverified boundary is still a
+   boundary Sherman does not ship. If a native route is ever built, it
+   starts from this fact, not from zero.
 
 What exists for Windows is a bootstrap, `install.ps1`, that automates the
 WSL2 route below and then hands off to the repo's own `install.sh` inside
