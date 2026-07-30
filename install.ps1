@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.11'
+$Build = '2026-07-30.12'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -330,11 +330,27 @@ if ($LASTEXITCODE -eq 0) {
 
 # ------------------------------------------------------------------- clone --
 # Into the Linux filesystem on purpose -- /mnt/c has the wrong permissions
-# and the wrong speed for a working tree. An existing clone is left exactly
-# as it is: this script never touches a tree that might hold someone's work.
+# and the wrong speed for a working tree. An existing CLEAN clone is
+# fast-forwarded so fixes in the repo actually reach this machine -- run 9
+# on real hardware failed on a launcher bug that had been fixed for two
+# builds, because the stale clone was 'left untouched'. A tree with local
+# changes is still left exactly as it is: this script never overwrites work.
 & wsl.exe -d $Distro -- bash -lc "test -d ~/sherman/.git"
 if ($LASTEXITCODE -eq 0) {
-    Say "existing clone found at ~/sherman inside $Distro (left untouched)"
+    & wsl.exe -d $Distro -- bash -lc "git -C ~/sherman diff --quiet 2>/dev/null && git -C ~/sherman diff --cached --quiet 2>/dev/null"
+    if ($LASTEXITCODE -eq 0) {
+        Say "existing clean clone found at ~/sherman; bringing it up to date"
+        & wsl.exe -d $Distro -- bash -lc "git -C ~/sherman pull --ff-only"
+        if ($LASTEXITCODE -eq 0) {
+            Say "clone is current (verified: git pull --ff-only succeeded)"
+        } else {
+            Note "the update did not apply (network, or a diverged branch)."
+            Say  "Continuing with the clone as it is."
+        }
+    } else {
+        Say "existing clone at ~/sherman has local changes (left untouched --"
+        Say "this script never overwrites work; fixes arrive when it is clean)"
+    }
 } else {
     Say "cloning $RepoUrl into ~/sherman inside $Distro"
     & wsl.exe -d $Distro -- bash -lc "git clone $RepoUrl ~/sherman"
