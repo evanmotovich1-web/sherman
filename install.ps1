@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.7'
+$Build = '2026-07-30.8'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -330,13 +330,31 @@ Write-Host ""
 & wsl.exe -d $Distro -- bash -lc "cd ~/sherman && ./install.sh"
 $installExit = $LASTEXITCODE
 
-& wsl.exe -d $Distro -- bash -lc "command -v sherman >/dev/null 2>&1 || test -x ~/.local/bin/sherman"
+# install.sh links sherman into the first writable of ~/.local/bin, ~/bin,
+# /usr/local/bin -- but a login shell does not necessarily have that
+# directory on PATH. Seen on the first real Windows run: WSL's default user
+# was root, install.sh linked into /root/bin, and root's stock .profile
+# never adds ~/bin. The advice install.sh prints is not enough here -- the
+# script's job is to do everything a script can, so the PATH line is
+# APPENDED to ~/.profile (idempotent, fenced by a comment) and the command
+# re-verified in a fresh login shell.
+& wsl.exe -d $Distro -- bash -lc "command -v sherman >/dev/null 2>&1"
+if ($LASTEXITCODE -ne 0) {
+    Say "sherman is linked but not on the login shell's PATH; adding its"
+    Say "directory to ~/.profile inside $Distro."
+    & wsl.exe -d $Distro -- bash -lc "for d in `$HOME/.local/bin `$HOME/bin /usr/local/bin; do [ -x `$d/sherman ] && { grep -qs 'sherman-install PATH' `$HOME/.profile || printf '\n# sherman-install PATH\nexport PATH=%s:`$PATH\n' `$d >> `$HOME/.profile; exit 0; }; done; exit 1"
+    if ($LASTEXITCODE -eq 0) {
+        & wsl.exe -d $Distro -- bash -lc "command -v sherman >/dev/null 2>&1"
+    }
+}
 if ($LASTEXITCODE -eq 0) {
-    Say "the sherman command exists inside $Distro (verified after install.sh)"
+    Say "the sherman command answers inside $Distro (verified: command -v,"
+    Say "in a fresh login shell)"
 } else {
     Note "install.sh finished (exit $installExit) but no sherman command was"
-    Say  "found inside $Distro. Read its output above -- it says what failed"
-    Say  "and what to do; then re-run this script."
+    Say  "found in ~/.local/bin, ~/bin or /usr/local/bin inside $Distro."
+    Say  "Read its output above -- it says what failed and what to do; then"
+    Say  "re-run this script."
     exit 1
 }
 

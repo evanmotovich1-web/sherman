@@ -42,7 +42,9 @@ script that produced it.)
 The script enables WSL2 if needed (that one step wants an administrator
 shell and possibly a reboot — it says so and stops rather than half-doing
 it), installs Ubuntu, installs git/curl/jq inside it, clones this repo into
-the Linux filesystem, runs `./install.sh` there, and then starts Sherman —
+the Linux filesystem, runs `./install.sh` there — putting the launcher's
+directory on the login shell's PATH itself when the distro's profile lacks
+it, as root's stock `.profile` does — and then starts Sherman —
 whose own first-run setup asks its two questions and runs the engine's
 sign-in. It is idempotent: at
 whatever stage a previous run stopped — reboot, Linux user creation — run
