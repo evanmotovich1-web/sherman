@@ -90,10 +90,13 @@ are both wrong on the Windows mount).
 
 The most common WSL2 failure is DNS: Windows resolves names while the
 distro cannot (`Temporary failure resolving 'archive.ubuntu.com'`).
-`install.ps1` probes for this before touching apt and prints the fix; the
-short version is `wsl --shutdown` and retry, and if it recurs, put
-`dnsTunneling=true` under `[wsl2]` in `%UserProfile%\.wslconfig`, shut down
-WSL again, and re-run. Seen on the first real Windows run of this script.
+`install.ps1` probes for this before touching apt and fixes it itself: it
+restarts WSL's networking (`wsl --shutdown`), and if that is not enough,
+enables `dnsTunneling=true` under `[wsl2]` in `%UserProfile%\.wslconfig`
+(backing up an existing file, and never overriding a `dnsTunneling` value a
+person already set). Only when both fail does it stop and say so — at that
+point the network itself, a VPN, or a firewall is the problem. Seen on the
+first real Windows run of this script.
 
 ## What is different under WSL, stated plainly
 

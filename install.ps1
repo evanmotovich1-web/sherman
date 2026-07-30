@@ -108,27 +108,62 @@ if (Test-Distro) {
 # The classic WSL2 failure, seen on the very first real run of this script:
 # Windows resolves names fine (or this script could not have been
 # downloaded) while the distro cannot, and apt then prints a page of
-# 'Temporary failure resolving' noise. Probed here so the failure gets its
-# diagnosis and its two known fixes instead of that page.
-& wsl.exe -d $Distro -- bash -lc "getent hosts archive.ubuntu.com >/dev/null 2>&1"
-if ($LASTEXITCODE -ne 0) {
-    Note "$Distro cannot resolve archive.ubuntu.com, while Windows itself can."
-    Say  "This is WSL2's known DNS failure, not a Sherman problem. In order:"
-    Say  ""
-    Say  "  1. Run:   wsl --shutdown"
-    Say  "     then re-run this script."
-    Say  "  2. If it happens again, create or edit  %UserProfile%\.wslconfig"
-    Say  "     to contain:"
-    Say  ""
-    Say  "         [wsl2]"
-    Say  "         dnsTunneling=true"
-    Say  ""
-    Say  "     then run  wsl --shutdown  and re-run this script."
+# 'Temporary failure resolving' noise. The script's job is to do everything
+# a script can, so the two known fixes are APPLIED here, not recited:
+# restart WSL's networking, and if that is not enough, turn on DNS
+# tunneling in .wslconfig. The person is told what happened only when both
+# fail — that residue is a genuinely down network, which no installer fixes.
+function Test-DistroDns {
+    & wsl.exe -d $Distro -- bash -lc "getent hosts archive.ubuntu.com >/dev/null 2>&1"
+    return ($LASTEXITCODE -eq 0)
+}
+
+if (-not (Test-DistroDns)) {
+    Say "$Distro cannot resolve archive.ubuntu.com (Windows itself can) --"
+    Say "WSL2's known DNS failure. Restarting WSL to reset its networking."
+    & wsl.exe --shutdown
+    Start-Sleep -Seconds 3
+}
+
+if (-not (Test-DistroDns)) {
+    $wslconfig = Join-Path $env:USERPROFILE '.wslconfig'
+    $existing = ''
+    if (Test-Path $wslconfig) { $existing = Get-Content -Raw $wslconfig }
+
+    if ($existing -match 'dnsTunneling') {
+        # The person (or another tool) already decided this setting. Fighting
+        # it silently is worse than stopping honestly, so it is left alone.
+        Say "dnsTunneling is already set in .wslconfig; leaving it untouched."
+    } else {
+        Say "still failing; enabling DNS tunneling in $wslconfig"
+        if ($existing) {
+            Copy-Item $wslconfig "$wslconfig.sherman-backup" -Force
+            Say "backed up the existing file to .wslconfig.sherman-backup"
+        }
+        if ($existing -match '(?m)^\s*\[wsl2\]') {
+            $updated = $existing -replace '(?m)^(\s*\[wsl2\]\s*)$', "`$1`r`ndnsTunneling=true"
+        } else {
+            $sep = ''
+            if ($existing -and -not $existing.EndsWith("`n")) { $sep = "`r`n" }
+            $updated = $existing + $sep + "[wsl2]`r`ndnsTunneling=true`r`n"
+        }
+        Set-Content -Path $wslconfig -Value $updated
+        & wsl.exe --shutdown
+        Start-Sleep -Seconds 3
+    }
+}
+
+if (Test-DistroDns) {
+    Say "$Distro resolves archive.ubuntu.com (verified: getent, inside the distro)"
+} else {
+    Note "$Distro still cannot resolve archive.ubuntu.com after a WSL restart"
+    Say  "and DNS tunneling. That points at the network itself -- a VPN or"
+    Say  "firewall blocking WSL, or no connectivity. Check the connection"
+    Say  "(and any VPN), then re-run this script; it continues from here."
     Say  ""
     Say  "Nothing was installed."
     exit 1
 }
-Say "$Distro resolves archive.ubuntu.com (verified: getent, inside the distro)"
 
 # ------------------------------------------------- prerequisites in Ubuntu --
 # git, curl and jq -- the same floor docs/WINDOWS.md names. sudo may prompt
