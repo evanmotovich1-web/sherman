@@ -47,9 +47,10 @@ via `npm install -g`; no sudo, nothing outside Sherman's own directories).
 Every "installed" line it prints follows a verification, and a failed
 download says so instead.
 
-**Windows:** Sherman has never been run on Windows. There is no native
-installer; the one route worth trying is WSL2, documented honestly in
-[docs/WINDOWS.md](docs/WINDOWS.md) — whoever tries it first is the first test.
+**Windows:** Sherman has never been run on Windows. Native Windows is not
+supported; the one route worth trying is WSL2, and `install.ps1` automates
+it end-to-end — documented honestly in [docs/WINDOWS.md](docs/WINDOWS.md).
+Whoever tries it first is the first test.
 **Linux:** untested there too — macOS is the only platform Sherman has run on.
 
 ### What stays yours (install.sh cannot do these)

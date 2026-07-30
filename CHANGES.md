@@ -3,6 +3,22 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-07-30 — Added: install.ps1, a Windows bootstrap for the WSL2 route
+
+- `install.ps1` automates docs/WINDOWS.md end to end from PowerShell: enable
+  WSL2 (the one step that may need an admin shell and a reboot — it stops
+  and says so instead of half-doing it), install Ubuntu, install git/curl/jq
+  inside it, clone into the Linux filesystem, and hand off to `./install.sh`
+  in the distro. Idempotent at every stage; every "verified" line follows a
+  real check (`wsl -d Ubuntu -e true`, `command -v` inside the distro), and
+  distro detection never parses `wsl -l`'s UTF-16 output — exit codes only.
+- The platform remains untested and both the doc and the script keep saying
+  so: the WSL write-boundary is stated as UNVERIFIED until someone re-runs
+  the escape test there. New smoke check 23 pins the routing (doc ↔ script),
+  the unverified-boundary admission, and — only where a `pwsh` exists to do
+  it — the script's syntax, with the pass line naming exactly what was
+  checked.
+
 ## 2026-07-29 — Changed: install.sh provisions missing prerequisites itself
 
 - A machine without Node 22+ gets the official build downloaded from

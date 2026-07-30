@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — twenty-two checks, no framework.
+# smoke.sh — twenty-three checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -34,6 +34,9 @@
 #  22. Auto-provisioning, offline: a stub curl serves a fake Node tarball and
 #      the extract → link → verify chain earns its "installed" line, while an
 #      npm that produced no codex is refused one.
+#  23. The Windows bootstrap exists, is routed to from the Windows doc, keeps
+#      the untested-platform honesty, and parses — when a PowerShell is
+#      available to parse it; the pass line names what was actually checked.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -52,7 +55,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
-TOTAL_CHECKS=22
+TOTAL_CHECKS=23
 SMOKE_USER="smoke-tester"
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
@@ -1697,6 +1700,44 @@ else
         pass "an npm that produced no codex is reported honestly"
     else
         fail "no honest NOTE about the missing codex CLI"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 23 --
+echo
+echo "23. the Windows bootstrap is present, routed, honest — and parses where possible"
+
+if [ ! -f install.ps1 ]; then
+    fail "install.ps1 does not exist at the repo root"
+else
+    # The doc must route to the script and the script must route back to the
+    # doc -- a bootstrap nobody is sent to is dead weight, and a script that
+    # never names its own caveats page is a claim without a check.
+    if grep -q 'install\.ps1' docs/WINDOWS.md && grep -q 'WINDOWS\.md' install.ps1; then
+        pass "docs/WINDOWS.md and install.ps1 reference each other"
+    else
+        fail "routing broken: docs/WINDOWS.md and install.ps1 must reference each other"
+    fi
+
+    # The boundary honesty is load-bearing: the script must keep saying the
+    # vault write-boundary is unverified under WSL until someone proves it.
+    if grep -q 'UNVERIFIED' install.ps1; then
+        pass "install.ps1 states the WSL write-boundary is unverified"
+    else
+        fail "install.ps1 no longer admits the WSL write-boundary is unverified"
+    fi
+
+    # Parse the script only where a PowerShell exists to parse it. The pass
+    # line names what was actually checked -- on a machine with no pwsh that
+    # is presence and routing, not syntax, and saying so keeps the line true.
+    if command -v pwsh >/dev/null 2>&1; then
+        if pwsh -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw 'install.ps1'))" >/dev/null 2>&1; then
+            pass "install.ps1 parses (verified: pwsh scriptblock parse)"
+        else
+            fail "install.ps1 does not parse under pwsh"
+        fi
+    else
+        pass "no pwsh on this machine: presence, routing and honesty checked; syntax was not"
     fi
 fi
 

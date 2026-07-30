@@ -3,10 +3,10 @@
 Sherman has never been run on Windows. This document is the honest best
 route, not a supported platform: whoever follows it first is the first test.
 If you do, please report what you find — this page should carry facts, not
-guesses, and today it carries a plan.
+guesses, and today it carries a plan and a script, not a test result.
 
-**Native Windows (PowerShell / cmd) is not supported and no installer for it
-exists.** Two hard reasons, not packaging laziness:
+**Native Windows (PowerShell / cmd) is not supported.** Two hard reasons, not
+packaging laziness:
 
 1. The launcher (`bin/sherman`) and installer are bash.
 2. Sherman's safety model leans on an OS sandbox confining the engine's
@@ -14,7 +14,30 @@ exists.** Two hard reasons, not packaging laziness:
    macOS only. There is no native-Windows equivalent wired, and Sherman does
    not ship boundaries it cannot enforce.
 
-## The route: WSL2 + Ubuntu
+What exists for Windows is a bootstrap, `install.ps1`, that automates the
+WSL2 route below and then hands off to the repo's own `install.sh` inside
+the distro. It is exactly as untested as the route it automates.
+
+## The automated route: install.ps1
+
+In PowerShell:
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/evanmotovich1-web/sherman/main/install.ps1 -OutFile install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+The script enables WSL2 if needed (that one step wants an administrator
+shell and possibly a reboot — it says so and stops rather than half-doing
+it), installs Ubuntu, installs git/curl/jq inside it, clones this repo into
+the Linux filesystem, and runs `./install.sh` there. It is idempotent: at
+whatever stage a previous run stopped — reboot, Linux user creation — run
+it again and it continues from what already exists. Every "verified" line
+it prints follows a real check, and what it cannot verify it names.
+
+The manual steps below are the same route, for reading or for doing by hand.
+
+## The manual route: WSL2 + Ubuntu
 
 Everything below happens once, and everything Sherman-related lives inside
 the Linux filesystem (your WSL home, not `/mnt/c` — permissions and speed
