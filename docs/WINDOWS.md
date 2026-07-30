@@ -96,16 +96,22 @@ are both wrong on the Windows mount).
 The most common WSL2 failure is DNS: Windows resolves names while the
 distro cannot (`Temporary failure resolving 'archive.ubuntu.com'`).
 `install.ps1` probes for this before touching apt and fixes it itself, in
-three escalating stages: restart WSL's networking (`wsl --shutdown`); enable
+four escalating stages: restart WSL's networking (`wsl --shutdown`); enable
 `dnsTunneling=true` under `[wsl2]` in `%UserProfile%\.wslconfig` (backing up
 an existing file, and never overriding a `dnsTunneling` value a person
-already set); and finally — if raw TCP out of the distro works, proving only
-name resolution is broken — pin public resolvers (1.1.1.1, 8.8.8.8) in the
+already set); if raw TCP out of the distro works, proving only name
+resolution is broken, pin public resolvers (1.1.1.1, 8.8.8.8) in the
 distro's `/etc/resolv.conf` with `generateResolvConf=false` so WSL stops
-overwriting them. Only when even raw TCP fails does it stop, and then it
-says which case it found: DNS interception (a security suite or VPN DNS
-filter) or a fully blocked network (VPN, antivirus, Hyper-V firewall).
-Learned from the real Windows runs of this script.
+overwriting them; and — when even those are blocked, meaning the machine
+filters port-53 traffic itself — go around DNS entirely: Windows resolves
+every name the install and the engine sign-in need (Windows demonstrably
+can — it downloaded the script) and the answers are pinned into the
+distro's `/etc/hosts`, marked with removable `sherman-install` comment
+fences. The script also names what it can see of the likely culprit —
+VPN-shaped network adapters that are up, running VPN/security-suite
+services. Only when even raw TCP fails does it stop, because nothing gets
+out of WSL at all and no installer fixes that. Learned from the real
+Windows runs of this script.
 
 ## What is different under WSL, stated plainly
 

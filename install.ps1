@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.6'
+$Build = '2026-07-30.7'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -115,10 +115,12 @@ if (Test-Distro) {
 # Windows resolves names fine (or this script could not have been
 # downloaded) while the distro cannot, and apt then prints a page of
 # 'Temporary failure resolving' noise. The script's job is to do everything
-# a script can, so the two known fixes are APPLIED here, not recited:
-# restart WSL's networking, and if that is not enough, turn on DNS
-# tunneling in .wslconfig. The person is told what happened only when both
-# fail — that residue is a genuinely down network, which no installer fixes.
+# a script can, so the fixes are APPLIED here, not recited, in four
+# escalating stages: restart WSL's networking; turn on DNS tunneling in
+# .wslconfig; pin public resolvers inside the distro; and finally go around
+# DNS entirely by letting Windows resolve the names and pinning the answers
+# in /etc/hosts. The person is told to act only when even that fails — that
+# residue is a genuinely down network, which no installer fixes.
 function Test-DistroDns {
     & wsl.exe -d $Distro -- bash -lc "getent hosts archive.ubuntu.com >/dev/null 2>&1"
     return ($LASTEXITCODE -eq 0)
@@ -138,8 +140,11 @@ if (-not (Test-DistroDns)) {
 
     if ($existing -match 'dnsTunneling') {
         # The person (or another tool) already decided this setting. Fighting
-        # it silently is worse than stopping honestly, so it is left alone.
-        Say "dnsTunneling is already set in .wslconfig; leaving it untouched."
+        # it silently is worse than stopping honestly, so it is left alone --
+        # but the value itself is diagnostic, so it is read out loud.
+        $tunnelVal = 'set'
+        if ($existing -match '(?m)dnsTunneling\s*=\s*([^\s#]+)') { $tunnelVal = "set to $($Matches[1])" }
+        Say "dnsTunneling is already $tunnelVal in .wslconfig; leaving it untouched."
     } else {
         Say "still failing; enabling DNS tunneling in $wslconfig"
         if ($existing) {
@@ -178,19 +183,103 @@ if (-not (Test-DistroDns)) {
     }
 }
 
+# Fourth stage: go around DNS entirely. Raw TCP works but even pinned public
+# resolvers fail, so this machine blocks port-53 traffic itself, not just
+# WSL's resolver plumbing. Windows demonstrably CAN resolve names -- it
+# downloaded this script -- so Windows does the resolving, and the answers
+# are pinned into the distro's /etc/hosts. glibc consults files before dns,
+# so every name this install and Sherman's engine sign-in need then works
+# with no port-53 packet ever sent.
+$HostsPinned = $false
+if (-not (Test-DistroDns) -and $TcpAlive) {
+    Say "pinned resolvers are blocked too -- this machine filters DNS itself."
+    Say "Going around DNS: Windows can resolve names (it downloaded this"
+    Say "script), so Windows resolves every name the install needs and the"
+    Say "answers are pinned into $Distro's /etc/hosts."
+
+    $HostsNeeded = @(
+        'archive.ubuntu.com', 'security.ubuntu.com',            # apt
+        'github.com', 'codeload.github.com', 'api.github.com',  # clone
+        'raw.githubusercontent.com', 'objects.githubusercontent.com',
+        'nodejs.org',                                           # Node runtime
+        'registry.npmjs.org',                                   # Codex CLI
+        'auth.openai.com', 'api.openai.com',                    # engine sign-in
+        'chatgpt.com', 'openai.com'
+    )
+    $pinLines = @()
+    foreach ($h in $HostsNeeded) {
+        try {
+            $ip = ([System.Net.Dns]::GetHostAddresses($h) |
+                Where-Object { $_.AddressFamily -eq 'InterNetwork' } |
+                Select-Object -First 1).IPAddressToString
+            if ($ip) { $pinLines += "$ip $h" }
+        } catch {
+            Say "    (Windows could not resolve $h; skipped)"
+        }
+    }
+    if ($pinLines.Count -gt 0) {
+        $block = @(
+            '# sherman-install begin -- names pinned because DNS is blocked inside',
+            '# WSL on this machine. Delete this block once DNS works; re-running',
+            '# the installer refreshes it.'
+        ) + $pinLines + @('# sherman-install end')
+        # Piped through stdin so no quoting survives two shells; tr strips the
+        # \r that PowerShell's pipe appends, which would corrupt hosts parsing.
+        $block | & wsl.exe -d $Distro -u root -- bash -c "sed -i '/# sherman-install begin/,/# sherman-install end/d' /etc/hosts; tr -d '\r' >> /etc/hosts"
+        if (Test-DistroDns) { $HostsPinned = $true }
+    }
+}
+
+# Whatever filters DNS is worth naming: VPN-shaped adapters that are up, and
+# running services known to own DNS (VPNs, security suites, DNS filters).
+# Suspects, stated as suspects -- the script cannot see inside them.
+function Get-DnsSuspects {
+    $found = @()
+    try {
+        $found += @(Get-NetAdapter -ErrorAction Stop |
+            Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -match 'VPN|TAP-|WireGuard|WARP|Tunnel|Nord|Express|Proton|Surfshark' } |
+            ForEach-Object { "network adapter up: $($_.InterfaceDescription)" })
+    } catch {}
+    try {
+        $found += @(Get-Service -ErrorAction Stop |
+            Where-Object { $_.Status -eq 'Running' -and ($_.Name -match 'WARP|AdGuard|nordvpn|expressvpn|proton|surfshark|zscaler|umbrella' -or $_.DisplayName -match 'McAfee|Norton|Avast|AVG |Kaspersky|Bitdefender|Cloudflare WARP|AdGuard') } |
+            ForEach-Object { "running service: $($_.DisplayName)" })
+    } catch {}
+    return $found
+}
+
 if (Test-DistroDns) {
-    Say "$Distro resolves archive.ubuntu.com (verified: getent, inside the distro)"
+    if ($HostsPinned) {
+        Say "$Distro resolves archive.ubuntu.com via the pinned /etc/hosts"
+        Say "entries (verified: getent, inside the distro). DNS in general is"
+        Say "still blocked inside WSL on this machine -- the likely owner:"
+        $suspects = @(Get-DnsSuspects)
+        if ($suspects.Count -gt 0) {
+            foreach ($s in $suspects) { Say "    $s" }
+        } else {
+            Say "    (nothing recognizable found -- a VPN or security suite is"
+            Say "    the usual cause)"
+        }
+    } else {
+        Say "$Distro resolves archive.ubuntu.com (verified: getent, inside the distro)"
+    }
 } else {
     if ($TcpAlive) {
-        Note "$Distro still cannot resolve names even with pinned resolvers,"
-        Say  "though raw connections work. Something is intercepting DNS"
-        Say  "specifically -- a security suite or a VPN's DNS filter. Turn"
-        Say  "the VPN off, then re-run the paste; it continues from here."
+        Note "$Distro still cannot resolve names -- pinned resolvers are"
+        Say  "blocked and pinning addresses into /etc/hosts did not take."
+        Say  "Something on this machine filters DNS. Turn off any VPN or"
+        Say  "security suite, then re-run the paste; it continues from here."
     } else {
         Note "nothing gets out of $Distro at all -- raw connections fail, not"
         Say  "just DNS. Something outside WSL is blocking its network: a VPN,"
         Say  "an antivirus firewall, or the Hyper-V firewall. Turn off any"
         Say  "VPN, then re-run the paste; it continues from here."
+    }
+    $suspects = @(Get-DnsSuspects)
+    if ($suspects.Count -gt 0) {
+        Say ""
+        Say "Found on this machine (the likely owner of the block):"
+        foreach ($s in $suspects) { Say "    $s" }
     }
     Say  ""
     Say  "Nothing was installed."
@@ -261,6 +350,13 @@ Write-Host "  - Stated plainly: the vault write-boundary is UNVERIFIED under WSL
 Write-Host "    On macOS it is proven by an escape test; nobody has re-run that"
 Write-Host "    test here. docs/WINDOWS.md carries the details. The no-PHI rule"
 Write-Host "    is identical on every platform."
+if ($HostsPinned) {
+    Write-Host "  - DNS inside WSL is still blocked by something on this machine;"
+    Write-Host "    this install went around it by pinning the names it needs in"
+    Write-Host "    /etc/hosts. Sherman works, but anything else inside Ubuntu"
+    Write-Host "    that resolves other names will fail until the DNS filter"
+    Write-Host "    (VPN or security suite) is turned off."
+}
 Write-Host ""
 Write-Host "Starting Sherman -- its own setup asks two questions (provider and"
 Write-Host "your name), then the engine sign-in runs. Next time, open $Distro"
