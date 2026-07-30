@@ -6,7 +6,8 @@
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
 #      under an overridden HOME, writes a valid config.json.
 #   3. The assembled adapter carries the vault path, the user name, the no-PHI
-#      rule, and the session-id memory-attribution rule.
+#      rule, and the session-id memory-attribution rule — and the workspace
+#      carries every repo skill at .agents/skills and .claude/skills.
 #   4. The shell entry point launches and exits clean on --version.
 #   5. Backend selection follows config.json's engine field.
 #   6. The --raw path still execs the engine.
@@ -182,6 +183,18 @@ else
     [ -f "$TMPHOME/.sherman/workspace/CLAUDE.md" ] \
         && fail "stale CLAUDE.md alongside AGENTS.md" \
         || pass "no stale sibling adapter"
+
+    # Skills travel with the workspace -- an engine can only load what is
+    # actually there, so what landed is counted against what the repo defines.
+    repo_skills=$(ls -d skills/*/ 2>/dev/null | wc -l | tr -d ' ')
+    for convention in .agents/skills .claude/skills; do
+        ws_skills=$(ls -d "$TMPHOME/.sherman/workspace/$convention"/*/ 2>/dev/null | wc -l | tr -d ' ')
+        if [ "$repo_skills" -gt 0 ] && [ "$ws_skills" = "$repo_skills" ]; then
+            pass "workspace $convention carries all $repo_skills skills"
+        else
+            fail "workspace $convention has $ws_skills skill dirs, repo has $repo_skills"
+        fi
+    done
 fi
 
 # ------------------------------------------------------------------ check 4 --

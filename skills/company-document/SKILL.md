@@ -2,6 +2,7 @@
 name: company-document
 category: documents
 summary: produce a report, memo, or comms draft from the company's approved format
+description: Produce a report, memo, or communications draft in the company's approved format. Use when asked to write a company document, report, memo, or announcement.
 ---
 
 # Produce a company document

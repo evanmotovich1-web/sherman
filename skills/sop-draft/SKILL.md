@@ -2,6 +2,7 @@
 name: sop-draft
 category: documents
 summary: draft or revise a standard operating procedure in the company's own shape
+description: Draft or revise a standard operating procedure in the company's own shape. Use when someone needs a procedure written down or an existing SOP brought up to date.
 ---
 
 # Draft or revise an SOP
@@ -51,5 +52,9 @@ never a filled-in record. See `phi-boundary`.
 Say plainly what is settled and what is still assumed. An SOP with an
 unverified step is more dangerous than an incomplete one, because the reader
 cannot tell which parts to check.
+
+End the SOP with its review line — `Reviewed: <date> · review by: <date>` —
+following the rule in `sop-review`: a fresh `Reviewed` date only if a person
+confirmed the content this session.
 
 Offer to write it to `vault/wiki/` — see `vault-write`.

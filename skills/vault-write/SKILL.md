@@ -2,6 +2,7 @@
 name: vault-write
 category: vault
 summary: record a durable company fact as one searchable file, without duplicating an existing one
+description: Record a durable company fact as one searchable file in the vault, updating an existing file rather than duplicating it. Use when a decision, procedure, or format is settled.
 ---
 
 # Write a durable fact to the vault

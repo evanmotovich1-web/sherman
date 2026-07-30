@@ -2,6 +2,7 @@
 name: phi-boundary
 category: compliance
 summary: recognize patient-identifying data, refuse it, and redirect to an approved system
+description: Recognize patient-identifying information, refuse to process it, and redirect to an approved system. Use the instant any input might contain PHI - names, MRNs, or results tied to a person.
 ---
 
 # The PHI boundary

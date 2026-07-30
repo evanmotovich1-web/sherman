@@ -3,6 +3,28 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-07-30 — Changed: skills reach the engine, speak the standard, and gain a ninth
+
+- Until now the skills reached the launch screen and nothing else — no
+  ordinary engine turn ever saw them. The launcher now copies `skills/` into
+  the workspace on every launch, at `.agents/skills` (the Agent Skills
+  convention Codex discovers natively) and `.claude/skills` (Claude Code's),
+  and the assembled body tells the engine they are there. Copies, not
+  symlinks: the workspace is disposable, and a link would aim engine writes
+  back at the repo. Smoke check 3 counts what landed against what the repo
+  defines, per convention.
+- Every `SKILL.md` now carries the Agent Skills standard's second mandatory
+  field, `description` — the line an engine reads to decide when a skill
+  applies. The registry treats a skill without one as malformed, because a
+  skill the engine will never reach for is not a working skill.
+  `skills/README.md` documents the contract.
+- New skill `sop-review` (documents): report which vault SOPs are overdue,
+  coming due, or have never been reviewed, from a review line each SOP
+  carries — the one PHI-free document-control habit every serious lab
+  document system sells. It never marks anything reviewed; that stays a
+  human act. `sop-draft` now ends SOPs with the review line under the same
+  rule. Grounding: `docs/research/market-2026-07.md`.
+
 ## 2026-07-30 — Added: install.ps1, a Windows bootstrap for the WSL2 route
 
 - `install.ps1` automates docs/WINDOWS.md end to end from PowerShell: enable

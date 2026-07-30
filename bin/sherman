@@ -408,6 +408,14 @@ line, so any fact can be traced to who learned it and when:
 
 ---
 
+# Company skills
+
+Your company skills travel with this workspace — \`.agents/skills\` for Codex,
+\`.claude/skills\` for Claude Code — one directory per skill, each with a
+\`SKILL.md\`. Before company work (vault lookups, SOPs, documents, anything
+near the PHI boundary), read the matching skill and follow it: the skills are
+how company work gets done the same way twice.
+
 # HARD RULE — restated, because it is the floor
 
 **Never store, request, repeat, or process patient-identifying information.**
@@ -434,6 +442,19 @@ BODY
     ' "$template" > "$out"
 
     rm -f "$body"
+
+    # ----------------------------------------------------------- skills --
+    # The engine discovers skills in its own working directory: Codex reads
+    # .agents/skills (the Agent Skills convention), Claude Code .claude/skills.
+    # Delivered as a COPY, not a symlink — the workspace is disposable
+    # generated output, and a link would aim engine writes back at the repo.
+    # Removed first so a skill deleted from the repo cannot survive a launch.
+    rm -rf "$WORKSPACE/.agents/skills" "$WORKSPACE/.claude/skills"
+    if [ -d "$ROOT/skills" ]; then
+        mkdir -p "$WORKSPACE/.agents" "$WORKSPACE/.claude"
+        cp -R "$ROOT/skills" "$WORKSPACE/.agents/skills"
+        cp -R "$ROOT/skills" "$WORKSPACE/.claude/skills"
+    fi
 }
 
 # --------------------------------------------------------------------- main --

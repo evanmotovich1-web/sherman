@@ -2,6 +2,7 @@
 name: vault-search
 category: vault
 summary: search the vault before asserting any company-specific fact, and cite the file
+description: Search the vault and cite the file before asserting any company-specific fact. Use for every question about procedures, formats, policies, or how this company works.
 ---
 
 # Search the vault before answering

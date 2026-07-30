@@ -2,6 +2,7 @@
 name: self-improvement
 category: agent
 summary: record a durable lesson about how Sherman should work, learned from being corrected
+description: Record a durable lesson about how Sherman should work, learned from being corrected. Use when the user corrects Sherman's behavior, a format it used, or a fact it asserted.
 ---
 
 # Record what you learned about working here

@@ -54,10 +54,13 @@ export function parseFrontMatter(text) {
 /**
  * Every skill in skills/, grouped by category.
  *
- * A skill is valid only when its front matter parses AND its `name` matches
- * its directory. The name check is not pedantry: the directory is what the
- * operator navigates and the front matter is what the screen prints, and when
- * they disagree there is no way to know which one is the lie.
+ * A skill is valid only when its front matter parses, its `name` matches its
+ * directory, and it carries a `description`. The name check is not pedantry:
+ * the directory is what the operator navigates and the front matter is what
+ * the screen prints, and when they disagree there is no way to know which one
+ * is the lie. The description requirement is the Agent Skills standard's other
+ * mandatory field — it is what an engine reads to decide when a skill applies,
+ * so a skill without one is a skill the engine will never reach for.
  *
  * @returns {{ok: true, categories: Array<{name: string, items: string[]}>, count: number, malformed: string[]}
  *          | {ok: false, reason: string}}
@@ -86,7 +89,7 @@ export function loadSkills(root = REPO_ROOT) {
         }
 
         const fields = parseFrontMatter(text);
-        if (!fields || !fields.name || !fields.category || fields.name !== entry.name) {
+        if (!fields || !fields.name || !fields.category || !fields.description || fields.name !== entry.name) {
             malformed.push(entry.name);
             continue;
         }

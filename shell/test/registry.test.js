@@ -31,7 +31,7 @@ function fixture() {
 }
 
 const skillBody = (name, category) =>
-    `---\nname: ${name}\ncategory: ${category}\nsummary: does a thing\n---\n\n# Body\n`;
+    `---\nname: ${name}\ncategory: ${category}\nsummary: does a thing\ndescription: Does a thing. Use when a thing needs doing.\n---\n\n# Body\n`;
 
 // ---------------------------------------------------------- front matter --
 
@@ -89,11 +89,15 @@ test('malformed skills are reported separately, not silently dropped', () => {
         fx.skill('good', skillBody('good', 'vault'));
         fx.skill('no-front-matter', '# just a heading\n');
         fx.skill('missing-category', '---\nname: missing-category\n---\n');
+        // The description is what an engine reads to decide when the skill
+        // applies -- a skill without one will never be invoked, so it must
+        // count as broken, not as working.
+        fx.skill('missing-description', '---\nname: missing-description\ncategory: vault\nsummary: quiet\n---\n');
         mkdirSync(join(fx.root, 'skills', 'no-skill-file'), { recursive: true });
 
         const result = loadSkills(fx.root);
         assert.equal(result.count, 1);
-        assert.deepEqual(result.malformed, ['missing-category', 'no-front-matter', 'no-skill-file']);
+        assert.deepEqual(result.malformed, ['missing-category', 'missing-description', 'no-front-matter', 'no-skill-file']);
     } finally { fx.cleanup(); }
 });
 

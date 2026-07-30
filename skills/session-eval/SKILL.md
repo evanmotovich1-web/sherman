@@ -2,6 +2,7 @@
 name: session-eval
 category: agent
 summary: judge whether the session used the right tools and skills, unprompted, and wrote what it learned
+description: Judge whether this session used the vault and the right skills, and whether durable knowledge was written. Use for /eval, at session end, or on a background checkpoint.
 ---
 
 # Judge the session that just happened

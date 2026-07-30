@@ -67,7 +67,7 @@ patient records, named-patient results, or any other PHI.
 
 | Phase | Outcome | State |
 | --- | --- | --- |
-| 1 — Evan-only local prototype | Launcher, wizard, persona, adapter assembly, banner, starter vault, Sherman Shell, and first company skills prove “type `sherman`; the agent appears and knows the business” on one Mac | Shell v7 landed 2026-07-27; launch/chrome rewrite landed 2026-07-28; the first eight company skills shipped (see `skills/README.md`) |
+| 1 — Evan-only local prototype | Launcher, wizard, persona, adapter assembly, banner, starter vault, Sherman Shell, and first company skills prove “type `sherman`; the agent appears and knows the business” on one Mac | Shell v7 landed 2026-07-27; launch/chrome rewrite landed 2026-07-28; the first company skills shipped (the set lives in `skills/README.md`) |
 | 2 — Second admin device | Full installer/onboarding, admin vault sync, and the Codex path proven on another admin machine | Not started |
 | 3 — Employees and always-on service | Always-on vault host, scoped vault service, per-user credentials, WhatsApp bridge, and employee onboarding | Not started |
 

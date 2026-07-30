@@ -6,20 +6,33 @@ are how company work gets done the same way twice.
 ## Shape
 
 Every `SKILL.md` opens with front matter the shell reads to build the launch
-screen's **Available Skills** list:
+screen's **Available Skills** list — and that the engine reads to decide when
+a skill applies:
 
 ```markdown
 ---
 name: vault-search
 category: vault
 summary: search the vault before asserting any company-specific fact, and cite the file
+description: Search the vault and cite the file before asserting any company-specific fact. Use for every question about procedures, formats, policies, or how this company works.
 ---
 ```
 
 - `name` must match the directory name. The launch screen groups by
   `category` and the loader treats a mismatch as a broken skill rather than
   silently trusting either value.
-- `summary` is one lowercase phrase, no trailing period.
+- `summary` is one lowercase phrase, no trailing period. It is what the
+  launch screen prints.
+- `description` is required — it is the Agent Skills standard's other
+  mandatory field (`name` + `description`, agentskills.io), the one sentence
+  or two an engine reads to decide when to reach for the skill. Say what it
+  does and when to use it, on one line. A skill without one is treated as
+  malformed, because it is a skill the engine will never invoke.
+
+On every launch the launcher copies `skills/` into the engine workspace at
+`.agents/skills` (the convention Codex discovers natively) and
+`.claude/skills` (Claude Code's), so ordinary engine turns can load them.
+The repo stays the single source of truth; the copies are disposable.
 
 The body is instructions to Sherman, written as prose. Say when to use the
 skill, when not to, and what "done" looks like.
@@ -38,6 +51,7 @@ to edit, not a fixed library.
 | `vault-write` | vault | record a durable fact as one searchable file |
 | `phi-boundary` | compliance | recognize PHI, refuse it, redirect |
 | `sop-draft` | documents | write or revise a procedure in the company's shape |
+| `sop-review` | documents | report which SOPs are overdue, coming due, or never reviewed |
 | `company-document` | documents | produce a report or memo from the approved format |
 | `self-improvement` | agent | record a durable lesson from being corrected |
 | `session-eval` | agent | judge whether the session used skills and the vault, unprompted |

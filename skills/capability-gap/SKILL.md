@@ -2,6 +2,7 @@
 name: capability-gap
 category: agent
 summary: read the session and the vault for work that wanted a skill or tool Sherman does not have
+description: Find work this session did badly or not at all for want of a skill or tool Sherman lacks. Use when running /eval, at session end, or when asked what capability was missing.
 ---
 
 # Find the capability that was missing
