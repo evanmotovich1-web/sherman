@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.10'
+$Build = '2026-07-30.11'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -284,6 +284,31 @@ if (Test-DistroDns) {
     Say  ""
     Say  "Nothing was installed."
     exit 1
+}
+
+# ------------------------------------------------- broken .profile repair --
+# Seen on the first real Windows machine: a hand-added, unquoted
+# `export PATH=...` line in ~/.profile carrying `Program Files (x86)` --
+# bash rejects the whole file at that line, so every login shell prints a
+# syntax error and no PATH line later in the file can ever apply.
+# Objectively broken bash gets repaired, not tiptoed around: back the file
+# up, comment out the offending line (WSL re-injects the Windows paths it
+# listed automatically, so nothing is lost), and keep the repair only if
+# bash -n then accepts the file -- otherwise the backup goes straight back.
+& wsl.exe -d $Distro -- bash -c "test ! -f ~/.profile || bash -n ~/.profile 2>/dev/null"
+if ($LASTEXITCODE -ne 0) {
+    Say "~/.profile inside $Distro has a bash syntax error (an unquoted"
+    Say "PATH line with parentheses). Backing it up to"
+    Say "~/.profile.sherman-backup and commenting the broken line out."
+    & wsl.exe -d $Distro -- bash -c "cp ~/.profile ~/.profile.sherman-backup && sed -i '/^export PATH=\/.*(/s|^|# sherman-install disabled (unquoted parentheses broke bash): |' ~/.profile; bash -n ~/.profile 2>/dev/null || cp ~/.profile.sherman-backup ~/.profile"
+    & wsl.exe -d $Distro -- bash -c "bash -n ~/.profile 2>/dev/null"
+    if ($LASTEXITCODE -eq 0) {
+        Say "~/.profile parses again (verified: bash -n, inside the distro)"
+    } else {
+        Note "~/.profile still does not parse; the backup was restored."
+        Say  "Not fatal here -- nothing below depends on it -- but login"
+        Say  "shells in $Distro will keep printing that syntax error."
+    }
 }
 
 # ------------------------------------------------- prerequisites in Ubuntu --

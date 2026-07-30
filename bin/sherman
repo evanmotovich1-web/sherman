@@ -41,6 +41,23 @@ SHERMAN_HOME="${HOME}/.sherman"
 CONFIG="${SHERMAN_HOME}/config.json"
 WORKSPACE="${SHERMAN_HOME}/workspace"
 
+# ------------------------------------------------------- self-owned runtime --
+# install.sh may have provisioned Node -- and npm-global tools like the codex
+# CLI -- into ~/.sherman/runtime, linked into a bin directory that no shell
+# startup file is guaranteed to put on PATH. Seen on the first real WSL
+# machine: a broken ~/.profile kept every PATH line from ever applying, and
+# the shell then claimed Node was missing while sitting next to the Node
+# that installed it. The launcher finds its own runtime rather than trusting
+# the shell that started it.
+for runtime_bin in "$SHERMAN_HOME"/runtime/node-*/bin; do
+    if [ -x "$runtime_bin/node" ]; then
+        case ":$PATH:" in
+            *":$runtime_bin:"*) ;;
+            *) PATH="$runtime_bin:$PATH"; export PATH ;;
+        esac
+    fi
+done
+
 # ------------------------------------------------------------ launch screen --
 launch_screen() {
     if [ -f "$ROOT/logo/banner.ans" ]; then
