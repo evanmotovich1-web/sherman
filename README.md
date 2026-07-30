@@ -47,11 +47,25 @@ via `npm install -g`; no sudo, nothing outside Sherman's own directories).
 Every "installed" line it prints follows a verification, and a failed
 download says so instead.
 
-**Windows:** Sherman has never been run on Windows. Native Windows is not
-supported; the one route worth trying is WSL2, and `install.ps1` automates
-it end-to-end — documented honestly in [docs/WINDOWS.md](docs/WINDOWS.md).
-Whoever tries it first is the first test.
-**Linux:** untested there too — macOS is the only platform Sherman has run on.
+## Install (Windows)
+
+In PowerShell:
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/evanmotovich1-web/sherman/main/install.ps1 -OutFile install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Native Windows is not supported; `install.ps1` automates the one honest
+route — WSL2 + Ubuntu — end to end: it enables WSL2 (stopping with plain
+instructions where an administrator shell or a reboot is needed), installs
+Ubuntu, clones this repo into the Linux filesystem, and runs `./install.sh`
+there. It is idempotent — re-run it after any stage it stopped at. Stated
+plainly: Sherman has never been run on Windows, so whoever tries this first
+is the first test; [docs/WINDOWS.md](docs/WINDOWS.md) carries what is and
+is not verified there.
+
+**Linux:** untested too — macOS is the only platform Sherman has run on.
 
 ### What stays yours (install.sh cannot do these)
 
