@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.4'
+$Build = '2026-07-30.5'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -227,20 +227,21 @@ if ($LASTEXITCODE -eq 0) {
 
 # ------------------------------------------------------------------- report --
 Write-Host ""
-Write-Host "Done. To run Sherman, open $Distro (use Windows Terminal) and type:"
+Write-Host "Done installing. Two facts before Sherman starts:"
 Write-Host ""
-Write-Host "    sherman"
+Write-Host "  - Signing in stays yours: the engine's own browser login runs on"
+Write-Host "    first launch, on your account. No installer can do it for you."
+Write-Host "  - Stated plainly: the vault write-boundary is UNVERIFIED under WSL."
+Write-Host "    On macOS it is proven by an escape test; nobody has re-run that"
+Write-Host "    test here. docs/WINDOWS.md carries the details. The no-PHI rule"
+Write-Host "    is identical on every platform."
 Write-Host ""
-Write-Host "  Or from PowerShell:  wsl -d $Distro -- bash -lc sherman"
+Write-Host "Starting Sherman -- its own setup asks two questions (provider and"
+Write-Host "your name), then the engine sign-in runs. Next time, open $Distro"
+Write-Host "and type: sherman"
 Write-Host ""
-Write-Host "  Still yours to do, because no installer can:"
-Write-Host "    - Sign in to Codex: its own browser login runs on first launch."
-Write-Host "    - Run ~/sherman/smoke.sh inside $Distro and believe what it prints:"
-Write-Host "      the suite has never executed on this platform before you."
-Write-Host ""
-Write-Host "  Stated plainly: the vault write-boundary is UNVERIFIED under WSL."
-Write-Host "  On macOS it is proven by an escape test; nobody has re-run that"
-Write-Host "  test here. docs/WINDOWS.md carries the details. The no-PHI rule"
-Write-Host "  is identical on every platform."
-Write-Host ""
-exit 0
+
+# The handoff itself. The one thing the paste cannot do is BE the person:
+# from here Sherman's first-run wizard owns the conversation.
+& wsl.exe -d $Distro -- bash -lc "sherman"
+exit $LASTEXITCODE

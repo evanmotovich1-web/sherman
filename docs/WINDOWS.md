@@ -29,17 +29,22 @@ the distro. It is exactly as untested as the route it automates.
 
 ## The automated route: install.ps1
 
-In PowerShell:
+One paste, in PowerShell:
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/evanmotovich1-web/sherman/main/install.ps1 -OutFile install.ps1
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+irm "https://raw.githubusercontent.com/evanmotovich1-web/sherman/main/install.ps1?$(Get-Random)" -OutFile "$env:TEMP\sherman-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\sherman-install.ps1"
 ```
+
+(The random number defeats the raw CDN's few-minute cache; the script's
+first line prints a build stamp so a run can always be matched to the
+script that produced it.)
 
 The script enables WSL2 if needed (that one step wants an administrator
 shell and possibly a reboot — it says so and stops rather than half-doing
 it), installs Ubuntu, installs git/curl/jq inside it, clones this repo into
-the Linux filesystem, and runs `./install.sh` there. It is idempotent: at
+the Linux filesystem, runs `./install.sh` there, and then starts Sherman —
+whose own first-run setup asks its two questions and runs the engine's
+sign-in. It is idempotent: at
 whatever stage a previous run stopped — reboot, Linux user creation — run
 it again and it continues from what already exists. Every "verified" line
 it prints follows a real check, and what it cannot verify it names.

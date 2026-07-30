@@ -49,21 +49,24 @@ download says so instead.
 
 ## Install (Windows)
 
-In PowerShell:
+One paste, in PowerShell:
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/evanmotovich1-web/sherman/main/install.ps1 -OutFile install.ps1
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+irm "https://raw.githubusercontent.com/evanmotovich1-web/sherman/main/install.ps1?$(Get-Random)" -OutFile "$env:TEMP\sherman-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\sherman-install.ps1"
 ```
+
+(The random number defeats the raw CDN's cache, so the paste always runs
+the current script — its first line prints a build stamp saying which.)
 
 Native Windows is not supported; `install.ps1` automates the one honest
 route — WSL2 + Ubuntu — end to end: it enables WSL2 (stopping with plain
 instructions where an administrator shell or a reboot is needed), installs
 Ubuntu, clones this repo into the Linux filesystem, and runs `./install.sh`
-there. It is idempotent — re-run it after any stage it stopped at. Stated
-plainly: Sherman has never been run on Windows, so whoever tries this first
-is the first test; [docs/WINDOWS.md](docs/WINDOWS.md) carries what is and
-is not verified there.
+there, then hands you straight to Sherman's own first-run setup. It is
+idempotent — re-run it after any stage it stopped at. Stated plainly:
+Sherman has never been run on Windows, so whoever tries this first is the
+first test; [docs/WINDOWS.md](docs/WINDOWS.md) carries what is and is not
+verified there.
 
 **Linux:** untested too — macOS is the only platform Sherman has run on.
 
