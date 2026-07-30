@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.8'
+$Build = '2026-07-30.9'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -331,31 +331,40 @@ Write-Host ""
 $installExit = $LASTEXITCODE
 
 # install.sh links sherman into the first writable of ~/.local/bin, ~/bin,
-# /usr/local/bin -- but a login shell does not necessarily have that
-# directory on PATH. Seen on the first real Windows run: WSL's default user
-# was root, install.sh linked into /root/bin, and root's stock .profile
-# never adds ~/bin. The advice install.sh prints is not enough here -- the
-# script's job is to do everything a script can, so the PATH line is
-# APPENDED to ~/.profile (idempotent, fenced by a comment) and the command
-# re-verified in a fresh login shell.
-& wsl.exe -d $Distro -- bash -lc "command -v sherman >/dev/null 2>&1"
-if ($LASTEXITCODE -ne 0) {
-    Say "sherman is linked but not on the login shell's PATH; adding its"
-    Say "directory to ~/.profile inside $Distro."
-    & wsl.exe -d $Distro -- bash -lc "for d in `$HOME/.local/bin `$HOME/bin /usr/local/bin; do [ -x `$d/sherman ] && { grep -qs 'sherman-install PATH' `$HOME/.profile || printf '\n# sherman-install PATH\nexport PATH=%s:`$PATH\n' `$d >> `$HOME/.profile; exit 0; }; done; exit 1"
-    if ($LASTEXITCODE -eq 0) {
-        & wsl.exe -d $Distro -- bash -lc "command -v sherman >/dev/null 2>&1"
-    }
-}
+# /usr/local/bin -- but no shell shape is guaranteed to have that directory
+# on PATH. Seen on the real Windows runs: WSL's default user was root,
+# install.sh linked into /root/bin, root's stock .profile never adds ~/bin,
+# and a PATH line appended to .profile still did not reach a fresh
+# `bash -lc`. So nothing below DEPENDS on shell startup files: the launcher
+# is located by path and launched by that absolute path. The PATH lines are
+# still written -- to .profile for login shells and .bashrc for the
+# non-login shells bare `wsl.exe` starts -- as a convenience for the person
+# typing `sherman` later, verified by grep, and not load-bearing.
+$linkDir = ''
+$out = @(& wsl.exe -d $Distro -- bash -c "for d in `$HOME/.local/bin `$HOME/bin /usr/local/bin; do if [ -x `$d/sherman ]; then echo `$d; exit 0; fi; done; exit 1")
 if ($LASTEXITCODE -eq 0) {
-    Say "the sherman command answers inside $Distro (verified: command -v,"
-    Say "in a fresh login shell)"
-} else {
-    Note "install.sh finished (exit $installExit) but no sherman command was"
-    Say  "found in ~/.local/bin, ~/bin or /usr/local/bin inside $Distro."
-    Say  "Read its output above -- it says what failed and what to do; then"
-    Say  "re-run this script."
+    $out = @($out | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    if ($out.Count -gt 0) { $linkDir = $out[-1] }
+}
+if (-not $linkDir) {
+    Note "install.sh finished (exit $installExit) but no sherman launcher"
+    Say  "was found in ~/.local/bin, ~/bin or /usr/local/bin inside $Distro."
+    Say  "What those directories actually hold:"
+    & wsl.exe -d $Distro -- bash -c "ls -l `$HOME/.local/bin `$HOME/bin /usr/local/bin 2>&1"
+    Say  "Read install.sh's output above -- it says what failed -- and paste"
+    Say  "all of this to whoever is helping; then re-run this script."
     exit 1
+}
+Say "sherman launcher present at $linkDir/sherman (verified: test -x, inside the distro)"
+
+& wsl.exe -d $Distro -- bash -c "for f in `$HOME/.profile `$HOME/.bashrc; do grep -qs 'sherman-install PATH' `$f || printf '\n# sherman-install PATH\nexport PATH=${linkDir}:`$PATH\n' >> `$f; done; grep -qs 'sherman-install PATH' `$HOME/.profile && grep -qs 'sherman-install PATH' `$HOME/.bashrc"
+if ($LASTEXITCODE -eq 0) {
+    Say "PATH line present in ~/.profile and ~/.bashrc inside $Distro"
+    Say "(verified: grep) -- so a plain 'sherman' works in future shells"
+} else {
+    Note "could not confirm the PATH line landed in ~/.profile and ~/.bashrc."
+    Say  "Not fatal: Sherman is launched by its full path below. To run it"
+    Say  "later, use: $linkDir/sherman"
 }
 
 # ------------------------------------------------------------------- report --
@@ -381,7 +390,8 @@ Write-Host "your name), then the engine sign-in runs. Next time, open $Distro"
 Write-Host "and type: sherman"
 Write-Host ""
 
-# The handoff itself. The one thing the paste cannot do is BE the person:
-# from here Sherman's first-run wizard owns the conversation.
-& wsl.exe -d $Distro -- bash -lc "sherman"
+# The handoff itself, by absolute path so no shell startup file can break
+# it. The one thing the paste cannot do is BE the person: from here
+# Sherman's first-run wizard owns the conversation.
+& wsl.exe -d $Distro -- bash -lc "$linkDir/sherman"
 exit $LASTEXITCODE
