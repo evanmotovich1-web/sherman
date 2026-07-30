@@ -86,6 +86,15 @@ are both wrong on the Windows mount).
 
    Use Windows Terminal — the banner and the shell are 256-colour ANSI.
 
+## If Ubuntu cannot reach the network
+
+The most common WSL2 failure is DNS: Windows resolves names while the
+distro cannot (`Temporary failure resolving 'archive.ubuntu.com'`).
+`install.ps1` probes for this before touching apt and prints the fix; the
+short version is `wsl --shutdown` and retry, and if it recurs, put
+`dnsTunneling=true` under `[wsl2]` in `%UserProfile%\.wslconfig`, shut down
+WSL again, and re-run. Seen on the first real Windows run of this script.
+
 ## What is different under WSL, stated plainly
 
 - **The vault write-boundary is unproven here.** On macOS the engine is

@@ -104,6 +104,32 @@ if (Test-Distro) {
     }
 }
 
+# ------------------------------------------------------ DNS inside Ubuntu --
+# The classic WSL2 failure, seen on the very first real run of this script:
+# Windows resolves names fine (or this script could not have been
+# downloaded) while the distro cannot, and apt then prints a page of
+# 'Temporary failure resolving' noise. Probed here so the failure gets its
+# diagnosis and its two known fixes instead of that page.
+& wsl.exe -d $Distro -- bash -lc "getent hosts archive.ubuntu.com >/dev/null 2>&1"
+if ($LASTEXITCODE -ne 0) {
+    Note "$Distro cannot resolve archive.ubuntu.com, while Windows itself can."
+    Say  "This is WSL2's known DNS failure, not a Sherman problem. In order:"
+    Say  ""
+    Say  "  1. Run:   wsl --shutdown"
+    Say  "     then re-run this script."
+    Say  "  2. If it happens again, create or edit  %UserProfile%\.wslconfig"
+    Say  "     to contain:"
+    Say  ""
+    Say  "         [wsl2]"
+    Say  "         dnsTunneling=true"
+    Say  ""
+    Say  "     then run  wsl --shutdown  and re-run this script."
+    Say  ""
+    Say  "Nothing was installed."
+    exit 1
+}
+Say "$Distro resolves archive.ubuntu.com (verified: getent, inside the distro)"
+
 # ------------------------------------------------- prerequisites in Ubuntu --
 # git, curl and jq -- the same floor docs/WINDOWS.md names. sudo may prompt
 # for the Linux user's password; that prompt is Ubuntu's own and passes
