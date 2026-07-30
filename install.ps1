@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.5'
+$Build = '2026-07-30.6'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -159,13 +159,39 @@ if (-not (Test-DistroDns)) {
     }
 }
 
+# Third stage, and the decisive one: is the network path itself alive?
+# bash's /dev/tcp needs no tools installed, which matters on a distro that
+# cannot apt-get anything yet. If raw TCP reaches the internet, only name
+# resolution is broken and pinning public resolvers inside the distro fixes
+# it regardless of what Windows-side DNS is doing. If raw TCP fails too,
+# something outside WSL is blocking the network, and no installer fixes that.
+$TcpAlive = $false
+if (-not (Test-DistroDns)) {
+    & wsl.exe -d $Distro -- bash -c "timeout 5 bash -c 'echo > /dev/tcp/1.1.1.1/443' 2>/dev/null"
+    if ($LASTEXITCODE -eq 0) {
+        $TcpAlive = $true
+        Say "raw connections out of $Distro work; only name resolution is"
+        Say "broken. Pinning public DNS resolvers (1.1.1.1, 8.8.8.8) inside"
+        Say "the distro -- /etc/wsl.conf gets generateResolvConf=false so WSL"
+        Say "stops overwriting them."
+        & wsl.exe -d $Distro -u root -- bash -c "grep -q generateResolvConf /etc/wsl.conf 2>/dev/null || printf '\n[network]\ngenerateResolvConf=false\n' >> /etc/wsl.conf; rm -f /etc/resolv.conf; printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf"
+    }
+}
+
 if (Test-DistroDns) {
     Say "$Distro resolves archive.ubuntu.com (verified: getent, inside the distro)"
 } else {
-    Note "$Distro still cannot resolve archive.ubuntu.com after a WSL restart"
-    Say  "and DNS tunneling. That points at the network itself -- a VPN or"
-    Say  "firewall blocking WSL, or no connectivity. Check the connection"
-    Say  "(and any VPN), then re-run this script; it continues from here."
+    if ($TcpAlive) {
+        Note "$Distro still cannot resolve names even with pinned resolvers,"
+        Say  "though raw connections work. Something is intercepting DNS"
+        Say  "specifically -- a security suite or a VPN's DNS filter. Turn"
+        Say  "the VPN off, then re-run the paste; it continues from here."
+    } else {
+        Note "nothing gets out of $Distro at all -- raw connections fail, not"
+        Say  "just DNS. Something outside WSL is blocking its network: a VPN,"
+        Say  "an antivirus firewall, or the Hyper-V firewall. Turn off any"
+        Say  "VPN, then re-run the paste; it continues from here."
+    }
     Say  ""
     Say  "Nothing was installed."
     exit 1
