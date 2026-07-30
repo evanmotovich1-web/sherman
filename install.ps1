@@ -24,6 +24,12 @@ $ErrorActionPreference = 'Stop'
 $Distro  = 'Ubuntu'
 $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 
+# Bumped on every change to this file. Printed at startup so a run can
+# always be matched to the exact script that produced it -- GitHub's raw
+# CDN caches downloads for a few minutes, and a stale copy that LOOKS
+# current is exactly the confident-and-wrong this repo does not allow.
+$Build = '2026-07-30.4'
+
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
 
@@ -36,7 +42,7 @@ function Test-Distro {
 }
 
 Write-Host ""
-Write-Host "Installing Sherman Abrams (Windows, WSL2 route)"
+Write-Host "Installing Sherman Abrams (Windows, WSL2 route) -- install.ps1 build $Build"
 Write-Host ""
 
 # ------------------------------------------------------------- Windows only --
