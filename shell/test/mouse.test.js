@@ -50,8 +50,9 @@ const until = async (predicate, deadline = 2000) => {
 };
 
 test('SGR 1006 reports parse into presses, releases and wheel notches', () => {
-    assert.equal(MOUSE_ON, '\x1b[?1000h\x1b[?1006h');
-    assert.equal(MOUSE_OFF, '\x1b[?1006l\x1b[?1000l');
+    // 2004 (bracketed paste) rides the same arming lifecycle — see paste.js.
+    assert.equal(MOUSE_ON, '\x1b[?1000h\x1b[?1006h\x1b[?2004h');
+    assert.equal(MOUSE_OFF, '\x1b[?2004l\x1b[?1006l\x1b[?1000l');
 
     // A press and its release are two events, distinguished by the final byte.
     assert.deepEqual(parseMouse('\x1b[<0;12;34M'), [

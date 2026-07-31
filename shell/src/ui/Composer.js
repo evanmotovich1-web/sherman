@@ -13,6 +13,7 @@ import { Text, Box, useBoxMetrics, useInput, useWindowSize } from 'ink';
 
 import { color } from './theme.js';
 import { caretForClick, isMouseSequence } from './mouse.js';
+import { foldPasteChunk, touchesPaste } from './paste.js';
 import { CommandMenu } from './CommandMenu.js';
 import { commandFor, suggestionsFor, typedSkillName } from '../commands.js';
 
@@ -90,11 +91,35 @@ export function Composer({ onSubmit, busy, columns, initialValue = '', click = n
         return true;
     };
 
+    // Whether a bracketed paste is open across input chunks. A ref, not
+    // state: it must be read and written inside the same key event, and a
+    // paste's chunks can all arrive within one render.
+    const pastingRef = useRef(false);
+
     useInput(
         (input, key) => {
             // Let the app's handler own Ctrl+C. Returning early matters: without
             // it the 'c' would also be typed into the buffer.
             if (key.ctrl && input === 'c') return;
+
+            // Everything inside a bracketed paste is text, before any key
+            // means anything: the terminal's ESC[200~/201~ wrap (armed in
+            // mouse.js) is what marks it, and a carriage return in here is
+            // pasted content — it inserts a newline and must never submit,
+            // even when a chunk boundary leaves it standing alone as what
+            // any handler below would read as Enter.
+            if (touchesPaste(input, pastingRef.current)) {
+                const folded = foldPasteChunk(input, pastingRef.current);
+                pastingRef.current = folded.pasting;
+                const clean = normalizeInput(folded.text);
+                if (clean) {
+                    editAtCaret((current, at) => ({
+                        text: current.slice(0, at) + clean + current.slice(at),
+                        caret: at + clean.length,
+                    }));
+                }
+                return;
+            }
 
             if (key.escape && suggestions.length > 0) {
                 setMenuDismissed(true);

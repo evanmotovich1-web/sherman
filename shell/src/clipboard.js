@@ -48,7 +48,7 @@ export function osc52Sequence(text) {
  *
  * @returns {{
  *   ok: boolean,
- *   method: 'pbcopy'|'osc52'|null,
+ *   method: string|null,   // the writer that ran ('pbcopy', 'clip.exe', …) or 'osc52'
  *   confirmed: boolean,
  *   reason: string|null,
  * }}
@@ -64,20 +64,33 @@ export function copyText(text, { run = spawnSync, stdout = process.stdout } = {}
         return { ok: false, method: null, confirmed: false, reason: 'nothing to copy' };
     }
 
-    // pbcopy first, wherever it exists: an exit code is worth more than a
-    // sequence nobody answers.
-    let pbcopyReason = null;
-    try {
-        const result = run('pbcopy', [], { input: text });
-        if (result && !result.error && result.status === 0) {
-            return { ok: true, method: 'pbcopy', confirmed: true, reason: null };
+    // The evidence-producing writers, in order, wherever they exist: an exit
+    // code is worth more than a sequence nobody answers. pbcopy is macOS;
+    // clip.exe is Windows and reachable from WSL, which is where the PC runs
+    // Sherman; wl-copy/xclip/xsel cover Linux desktops. Probing a writer that
+    // is not installed costs one ENOENT, and the first confirmed write wins.
+    const writers = [
+        { command: 'pbcopy', args: [] },
+        { command: 'clip.exe', args: [] },
+        { command: 'wl-copy', args: [] },
+        { command: 'xclip', args: ['-selection', 'clipboard'] },
+        { command: 'xsel', args: ['--clipboard', '--input'] },
+    ];
+    const failures = [];
+    for (const writer of writers) {
+        try {
+            const result = run(writer.command, writer.args, { input: text });
+            if (result && !result.error && result.status === 0) {
+                return { ok: true, method: writer.command, confirmed: true, reason: null };
+            }
+            failures.push(result?.error
+                ? `${writer.command} ${result.error.code ?? 'failed'}`
+                : `${writer.command} exited ${result?.status ?? 'abnormally'}`);
+        } catch (error) {
+            failures.push(`${writer.command} ${error?.code ?? 'failed'}`);
         }
-        pbcopyReason = result?.error
-            ? `pbcopy ${result.error.code ?? 'failed'}`
-            : `pbcopy exited ${result?.status ?? 'abnormally'}`;
-    } catch (error) {
-        pbcopyReason = `pbcopy ${error?.code ?? 'failed'}`;
     }
+    const writersReason = failures.join(', ');
 
     // No usable pbcopy. OSC 52 reaches the terminal the human is actually
     // looking at, including across SSH — but only if there is a terminal there
@@ -88,7 +101,7 @@ export function copyText(text, { run = spawnSync, stdout = process.stdout } = {}
             ok: false,
             method: null,
             confirmed: false,
-            reason: `${pbcopyReason}, and stdout is not a terminal`,
+            reason: `${writersReason}, and stdout is not a terminal`,
         };
     }
 
@@ -98,7 +111,7 @@ export function copyText(text, { run = spawnSync, stdout = process.stdout } = {}
             ok: false,
             method: null,
             confirmed: false,
-            reason: `${pbcopyReason}, and the reply is too large for an OSC 52 clipboard write`,
+            reason: `${writersReason}, and the reply is too large for an OSC 52 clipboard write`,
         };
     }
 
@@ -109,7 +122,7 @@ export function copyText(text, { run = spawnSync, stdout = process.stdout } = {}
             ok: false,
             method: null,
             confirmed: false,
-            reason: `${pbcopyReason}, and the terminal write failed (${error?.code ?? 'unknown'})`,
+            reason: `${writersReason}, and the terminal write failed (${error?.code ?? 'unknown'})`,
         };
     }
 

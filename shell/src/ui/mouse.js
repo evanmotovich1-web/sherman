@@ -21,11 +21,15 @@ const ESC = '\x1b';
 // 1000: report button presses and releases, including the wheel, and nothing
 // else. Deliberately NOT 1002 or 1003 — motion reporting would deliver a packet
 // per cell the pointer crosses, and this shell has nothing that follows a
-// pointer. 1006: encode those reports as SGR.
-export const MOUSE_ON = `${ESC}[?1000h${ESC}[?1006h`;
-// Disabled in the reverse order, so a terminal that only implements one of the
-// two is never left with the other still armed.
-export const MOUSE_OFF = `${ESC}[?1006l${ESC}[?1000l`;
+// pointer. 1006: encode those reports as SGR. 2004: bracketed paste, so a
+// multi-line paste arrives wrapped in ESC[200~/201~ instead of as keystrokes
+// whose chunk boundaries can land on a carriage return and submit half a
+// prompt (see paste.js). It rides this module's lifecycle because arming a
+// terminal mode and guaranteeing it off again IS this module.
+export const MOUSE_ON = `${ESC}[?1000h${ESC}[?1006h${ESC}[?2004h`;
+// Disabled in the reverse order, so a terminal that only implements some of
+// the three is never left with another still armed.
+export const MOUSE_OFF = `${ESC}[?2004l${ESC}[?1006l${ESC}[?1000l`;
 
 // The signals Ink's own screen restore covers. A handler is registered for each
 // so a mouse-mode reset happens before the process goes away, and each one
