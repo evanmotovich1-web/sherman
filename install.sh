@@ -287,10 +287,18 @@ else
     if [ -f "$WIKI_DIR/llmwiki" ]; then
         [ -x "$WIKI_PY" ] || python3 -m venv "$WIKI_DIR/.venv" >/dev/null 2>&1
         if [ -x "$WIKI_PY" ]; then
-            "$WIKI_PY" -m pip install --quiet \
+            # A venv can exist without pip (Debian and WSL split it out of
+            # python3-venv's minimal install); ensurepip is the repair for
+            # exactly that, and it is a no-op where pip already works.
+            "$WIKI_PY" -m pip --version >/dev/null 2>&1 \
+                || "$WIKI_PY" -m ensurepip --upgrade >/dev/null 2>&1
+            # On failure, say what pip said — its last line names the actual
+            # problem (a missing module, a network refusal, a compiler), and
+            # a NOTE without it leaves the operator rerunning installs blind.
+            wiki_pip_out=$("$WIKI_PY" -m pip install --quiet \
                 -r "$WIKI_DIR/api/requirements.txt" \
-                -r "$WIKI_DIR/mcp/requirements.txt" >/dev/null 2>&1 \
-                || echo "  NOTE: pip could not install the wiki's dependencies."
+                -r "$WIKI_DIR/mcp/requirements.txt" 2>&1) \
+                || echo "  NOTE: pip could not install the wiki's dependencies: $(printf '%s\n' "$wiki_pip_out" | tail -1)"
             # The web app is optional UI; the MCP works without it. Installed
             # when npm exists, skipped silently when it does not.
             if command -v npm >/dev/null 2>&1 && [ -f "$WIKI_DIR/web/package.json" ]; then

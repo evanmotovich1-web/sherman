@@ -565,6 +565,48 @@ run_update() {
         npm install --prefix "$ROOT/shell"
     fi
 
+    # ------------------------------------------------------------ llm wiki --
+    # `sherman update` is the button people actually press when something is
+    # wrong, so a broken wiki is repaired here rather than diagnosed at them.
+    # Healthy costs one --help probe and prints nothing; a machine that never
+    # provisioned a wiki is skipped; broken is re-provisioned, and "repaired"
+    # is claimed behind the same verification install.sh claims "installed":
+    # the CLI answering --help from its own venv.
+    wiki_dir="$HOME/.sherman/llmwiki"
+    wiki_py="$wiki_dir/.venv/bin/python"
+    [ -x "$wiki_py" ] || wiki_py="$wiki_dir/.venv/Scripts/python.exe"
+    if [ -f "$wiki_dir/llmwiki" ] \
+        && ! { [ -x "$wiki_py" ] && "$wiki_py" "$wiki_dir/llmwiki" --help >/dev/null 2>&1; }; then
+        if ! command -v python3 >/dev/null 2>&1; then
+            echo "NOTE: the LLM Wiki here is broken and python3 is missing, so it was not repaired."
+        else
+            echo "repairing the LLM Wiki (its CLI stopped answering from its venv)"
+            [ -d "$wiki_dir/.git" ] \
+                && git -C "$wiki_dir" pull --ff-only --quiet >/dev/null 2>&1
+            [ -x "$wiki_py" ] || python3 -m venv "$wiki_dir/.venv" >/dev/null 2>&1
+            wiki_py="$wiki_dir/.venv/bin/python"
+            [ -x "$wiki_py" ] || wiki_py="$wiki_dir/.venv/Scripts/python.exe"
+            if [ -x "$wiki_py" ]; then
+                # A venv can exist without pip (Debian/WSL splits it out);
+                # ensurepip is the repair for exactly that.
+                "$wiki_py" -m pip --version >/dev/null 2>&1 \
+                    || "$wiki_py" -m ensurepip --upgrade >/dev/null 2>&1
+                pip_out=$("$wiki_py" -m pip install \
+                    -r "$wiki_dir/api/requirements.txt" \
+                    -r "$wiki_dir/mcp/requirements.txt" 2>&1) \
+                    || echo "NOTE: pip failed: $(printf '%s\n' "$pip_out" | tail -1)"
+                if "$wiki_py" "$wiki_dir/llmwiki" --help >/dev/null 2>&1; then
+                    echo "LLM Wiki repaired (verified: its CLI answers from its own venv)"
+                else
+                    echo "NOTE: the LLM Wiki still does not answer; /wiki stays off." \
+                         "Re-run install.sh for the full provisioning report."
+                fi
+            else
+                echo "NOTE: could not create the wiki's venv (is python3-venv installed?); /wiki stays off."
+            fi
+        fi
+    fi
+
     # smoke calls `sherman update`, and update runs smoke after a real pull.
     # The env guard is what keeps that pair from recursing forever.
     SHERMAN_UPDATE_RUNNING=1 "$ROOT/smoke.sh"
@@ -764,7 +806,18 @@ BODY
     WIKI_PY="$WIKI_DIR/.venv/bin/python"
     [ -x "$WIKI_PY" ] || WIKI_PY="$WIKI_DIR/.venv/Scripts/python.exe"
     rm -f "$WORKSPACE/.mcp.json"
-    if [ -x "$WIKI_PY" ] && [ -f "$WIKI_DIR/llmwiki" ]; then
+    # Wired only when the CLI actually ANSWERS from its venv — the same gate
+    # install.sh claims "installed" behind. Files existing is not a wiki: a
+    # venv whose packages never installed passes every existence check and
+    # then hands the engine an MCP server that dies on startup, which the
+    # operator meets as one causeless "not available" line mid-session. The
+    # probe costs one interpreter start per launch; a broken wiki says so
+    # here, at launch, with the repair command in the same breath.
+    if [ -x "$WIKI_PY" ] && [ -f "$WIKI_DIR/llmwiki" ] \
+        && ! "$WIKI_PY" "$WIKI_DIR/llmwiki" --help >/dev/null 2>&1; then
+        echo "  NOTE: the LLM Wiki is present but its CLI does not answer from its venv;" >&2
+        echo "        /wiki will not work. Run: sherman update  (it repairs the wiki)" >&2
+    elif [ -x "$WIKI_PY" ] && [ -f "$WIKI_DIR/llmwiki" ]; then
         mkdir -p "$WIKI_WS"
         cat > "$WORKSPACE/.mcp.json" <<MCPJSON
 {
