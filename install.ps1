@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.14'
+$Build = '2026-07-30.15'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -446,28 +446,14 @@ Write-Host "name, optional model and Telegram), then the engine sign-in runs."
 Write-Host "Next time, open $Distro and type: sherman"
 Write-Host ""
 
-# Sherman's full launch screen needs rows: 29+ for the tools/skills panel,
-# 40+ for the wide banner. Default consoles are often shorter, and the
-# person should not have to know that -- grow the window here, best-effort.
-# Some Windows Terminal versions ignore console resize APIs; when that
-# happens the shell's own compact card names the fix on screen.
-try {
-    $raw = $Host.UI.RawUI
-    $buf = $raw.BufferSize
-    if ($buf.Width -lt 120) { $buf.Width = 120; $raw.BufferSize = $buf }
-    if ($buf.Height -lt 45) { $buf.Height = 3000; $raw.BufferSize = $buf }
-    $max = $raw.MaxWindowSize
-    $win = $raw.WindowSize
-    $w = [Math]::Min(120, $max.Width)
-    $h = [Math]::Min(45, $max.Height)
-    if ($win.Width -lt $w) { $win.Width = $w }
-    if ($win.Height -lt $h) { $win.Height = $h }
-    $raw.WindowSize = $win
-    Say "grew this window to $($win.Width)x$($win.Height) rows/cols for the full launch screen"
-} catch {
-    Say "could not resize this window -- if Sherman looks compact, maximize"
-    Say "the window (Alt+Enter) or shrink the font (Ctrl+minus)."
-}
+# Deliberately NOT resizing this console. Build .14 grew the buffer and
+# window via the console APIs, and on the first real machine that corrupted
+# the terminal's coordinate reporting: the shell's once-a-second status
+# repaint stopped overwriting itself and cascaded down the screen. The
+# honest move is words, not API tricks -- the shell's compact card also
+# names this fix on screen whenever it applies.
+Say "Tip: maximize this window (Alt+Enter) -- Sherman's full launch screen"
+Say "needs about 29 rows, and shows more the more room it gets."
 
 # The handoff itself, by the launcher's own path so no shell startup file
 # can break it. The one thing the paste cannot do is BE the person: from
