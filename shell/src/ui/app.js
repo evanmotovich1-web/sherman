@@ -37,7 +37,7 @@ import {
     workerRequest,
 } from '../commands.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
-import { appendEvalReport } from '../evalstore.js';
+import { appendEvalReport, ungradedSessions } from '../evalstore.js';
 import { collectWinSources, renderWinHtml, winRequest, writeWinSite } from '../win.js';
 
 // Monotonic ids. React list keys must be stable per item, and array index is
@@ -113,7 +113,7 @@ function formatTool(event, includeDuration) {
 }
 
 /**
- * @param {{session: import('../engine/session.js').EngineSession, sessionId: string, sessionFactory?: (() => import('../engine/session.js').EngineSession), rows?: number, evalEveryMs?: number}} props
+ * @param {{session: import('../engine/session.js').EngineSession, sessionId: string, sessionFactory?: (() => import('../engine/session.js').EngineSession), rows?: number, evalEveryMs?: number, catchUpDelayMs?: number}} props
  */
 /**
  * `clipboard` is injectable for one concrete reason: the real implementation
@@ -130,6 +130,11 @@ export function App({
     // How often the background checkpoint eval considers running. Injectable
     // so tests do not wait ten real minutes; the product value is the default.
     evalEveryMs = 10 * 60_000,
+    // How long after launch the catch-up eval looks for a prior session that
+    // died ungraded. A grace delay, not an interval: the launch moment is the
+    // shell's busiest, and the backlog has already waited since that session
+    // ended. Injectable for the same reason as evalEveryMs.
+    catchUpDelayMs = 15_000,
 }) {
     const { exit } = useApp();
 
@@ -184,10 +189,18 @@ export function App({
     // spending a real engine turn to say so on every exit would be a tax on
     // opening the shell.
     const turnsRef = useRef(0);
-    const evalRanRef = useRef(false);
-    // The turn count the last eval of any kind graded up to. The background
-    // checkpoint only runs when turns have happened since, so an idle session
-    // is never re-graded and a manual /eval resets the clock's debt to zero.
+    // The turn count the last eval of any kind graded up to — the single gate
+    // for every eval path. Exit and checkpoint both run only when turns have
+    // happened since, so an idle session is never re-graded, a manual /eval
+    // resets the clock's debt to zero, and a session that kept working after
+    // a checkpoint is still graded on the way out. (This used to be a
+    // separate "an eval ever ran" flag, and that flag was the bug: one
+    // checkpoint ten minutes in silenced the exit eval forever, leaving every
+    // turn after it unjudged.) A main-thread /eval is itself a counted turn,
+    // so it books turns+1 — booking only turns would leave a permanent debt
+    // of one and exit would re-grade a session that was just graded. Booked
+    // BEFORE the turn runs, so an interrupted eval does not re-run and turn
+    // one exit into two.
     const lastEvalTurnRef = useRef(0);
     // The in-flight background judge, if any: one at a time, and disposed on
     // unmount so quitting the shell never orphans a worker process.
@@ -490,13 +503,15 @@ export function App({
                 }
                 if (command.name === 'exit') {
                     // The same contract as the second ctrl+c: a session with
-                    // turns is graded on the way out, and the eval turn is
-                    // interruptible (ctrl+c) so it can never trap the operator
-                    // in a shell they asked to leave. `evalRanRef` is set
-                    // before the turn starts, so an interrupted eval does not
-                    // re-run and turn one exit into two.
-                    if (turnsRef.current > 0 && !evalRanRef.current && !log.failed) {
-                        evalRanRef.current = true;
+                    // UNJUDGED turns is graded on the way out — turns since
+                    // the last eval, not "no eval ever ran", so working past
+                    // a checkpoint still ends with the tail judged. The eval
+                    // turn is interruptible (ctrl+c) so it can never trap the
+                    // operator in a shell they asked to leave; the /eval
+                    // branch books the debt before the turn starts, so an
+                    // interrupted eval does not re-run and turn one exit
+                    // into two.
+                    if (turnsRef.current > lastEvalTurnRef.current && !log.failed) {
                         commit('notice', 'evaluating this session before exit · ctrl+c to skip');
                         await submitRef.current('/eval');
                     }
@@ -574,8 +589,10 @@ export function App({
                     commit('error', 'The session log stopped being written, so there is nothing complete to grade.');
                     return;
                 }
-                evalRanRef.current = true;
-                lastEvalTurnRef.current = turnsRef.current;
+                // turns+1, not turns: this eval turn is itself about to be
+                // counted at its own turn-end, and grading must not create
+                // the very debt it just paid.
+                lastEvalTurnRef.current = turnsRef.current + 1;
                 isEval = true;
                 commit('notice', 'evaluating this session · read-only · judging conduct, not answers');
             }
@@ -871,6 +888,47 @@ export function App({
     );
     submitRef.current = submit;
 
+    // One background judge, shared by the checkpoint and catch-up evals: an
+    // isolated read-only worker runs the request, the verdict accumulates
+    // across message events (an engine that replies in parts must not have
+    // all but its last part dropped — the single-message assignment this
+    // replaces did exactly that), commits to the transcript, lands in this
+    // session's log, and persists under ~/.sherman/evals/ AGAINST THE SESSION
+    // IT JUDGED — which for a catch-up is not this one. Worker tokens land in
+    // the worker usage total like any worker's.
+    const gradeOnWorker = useCallback(
+        async ({ request, kind, target, notice }) => {
+            const worker = sessionFactory();
+            bgEvalWorkerRef.current = worker;
+            commit('notice', notice);
+            try {
+                let verdict = '';
+                for await (const event of worker.send(request)) {
+                    if (event.kind === 'message') {
+                        verdict = verdict ? `${verdict}\n\n${event.text}` : event.text;
+                    }
+                    if (event.kind === 'error') {
+                        commit('error', `${kind} failed: ${event.message}`);
+                        return;
+                    }
+                }
+                if (verdict) {
+                    commit('worker-message', verdict);
+                    log.append('worker', verdict);
+                    appendEvalReport(target, kind, verdict);
+                }
+            } catch (err) {
+                commit('error', `${kind} failed: ${err?.message ?? String(err)}`);
+            } finally {
+                workerUsageRef.current = addUsage(workerUsageRef.current, worker.usage ?? emptyUsage());
+                setUsage(addUsage(session.usage, workerUsageRef.current));
+                worker.dispose();
+                bgEvalWorkerRef.current = null;
+            }
+        },
+        [commit, log, session, sessionFactory]
+    );
+
     // The background checkpoint eval: every `evalEveryMs`, a session with new
     // turns since the last grading is judged by an isolated read-only worker
     // reading the session LOG — the same evidence the exit eval uses — so the
@@ -882,8 +940,7 @@ export function App({
     // is a fresh engine session (never the main thread — grading must not
     // spend the conversation's own context), one runs at a time, and a tick
     // that lands mid-turn skips rather than interleaving its report with the
-    // turn's output. Its tokens land in the worker usage total, and its
-    // verdict commits to the transcript and the log like any worker's.
+    // turn's output.
     useEffect(() => {
         if (!sessionFactory || !Number.isFinite(evalEveryMs) || evalEveryMs <= 0) return undefined;
 
@@ -896,36 +953,18 @@ export function App({
             const request = evalRequest(log.path);
             if (!request) return;
 
-            // Marked before the turn runs, same as every other eval path: an
-            // interrupted checkpoint must not re-run immediately and double up.
-            evalRanRef.current = true;
+            // Booked before the turn runs, same as every other eval path: an
+            // interrupted checkpoint must not re-run immediately and double
+            // up. Exactly turns (not turns+1): the judge is a worker, so no
+            // main-thread turn follows from the grading itself.
             lastEvalTurnRef.current = turnsRef.current;
 
-            const worker = sessionFactory();
-            bgEvalWorkerRef.current = worker;
-            commit('notice', 'checkpoint eval · background · read-only worker grading the session so far');
-            try {
-                let verdict = '';
-                for await (const event of worker.send(request)) {
-                    if (event.kind === 'message') verdict = event.text;
-                    if (event.kind === 'error') {
-                        commit('error', `checkpoint eval failed: ${event.message}`);
-                        return;
-                    }
-                }
-                if (verdict) {
-                    commit('worker-message', verdict);
-                    log.append('worker', verdict);
-                    appendEvalReport(sessionId, 'checkpoint eval', verdict);
-                }
-            } catch (err) {
-                commit('error', `checkpoint eval failed: ${err?.message ?? String(err)}`);
-            } finally {
-                workerUsageRef.current = addUsage(workerUsageRef.current, worker.usage ?? emptyUsage());
-                setUsage(addUsage(session.usage, workerUsageRef.current));
-                worker.dispose();
-                bgEvalWorkerRef.current = null;
-            }
+            await gradeOnWorker({
+                request,
+                kind: 'checkpoint eval',
+                target: sessionId,
+                notice: 'checkpoint eval · background · read-only worker grading the session so far',
+            });
         };
 
         const timer = setInterval(tick, evalEveryMs);
@@ -934,7 +973,42 @@ export function App({
             bgEvalWorkerRef.current?.dispose();
             bgEvalWorkerRef.current = null;
         };
-    }, [commit, evalEveryMs, log, session, sessionFactory, sessionId]);
+    }, [evalEveryMs, gradeOnWorker, log, sessionFactory, sessionId]);
+
+    // The catch-up eval: the loop's guarantee that EVERY session ends with a
+    // verdict, including the ones that never got to say goodbye. A closed
+    // window, a kill, a crash — the log survives under ~/.sherman/sessions/
+    // but no exit eval ever ran, and a verdict that was never written cannot
+    // show a trend in /win. So each launch, after a grace delay, looks for
+    // the newest prior session that has real Sherman turns, no eval file, and
+    // has been quiet long enough to be over (a parallel LIVE shell must not
+    // have its session graded out from under it — ungradedSessions holds that
+    // line), and grades it on an isolated worker. One per launch, so a
+    // backlog drains a session at a time instead of billing a storm at once;
+    // /win still sees every file either way.
+    useEffect(() => {
+        if (!sessionFactory || !Number.isFinite(catchUpDelayMs) || catchUpDelayMs <= 0) return undefined;
+
+        const timer = setTimeout(async () => {
+            if (bgEvalWorkerRef.current !== null || busyRef.current) return;
+            const [stale] = ungradedSessions({ exclude: sessionId });
+            if (!stale) return;
+            const request = evalRequest(stale.path, { closed: true });
+            if (!request) return;
+            await gradeOnWorker({
+                request,
+                kind: 'catch-up eval',
+                target: stale.id,
+                notice: `catch-up eval · session ${stale.id} ended without a verdict · grading it in the background`,
+            });
+        }, catchUpDelayMs);
+
+        return () => {
+            clearTimeout(timer);
+            bgEvalWorkerRef.current?.dispose();
+            bgEvalWorkerRef.current = null;
+        };
+    }, [catchUpDelayMs, gradeOnWorker, sessionFactory, sessionId]);
 
     // Two-stage Ctrl+C, proven in a pty at plan time. Ink is started with
     // exitOnCtrlC:false so this handler is what decides.
@@ -977,18 +1051,19 @@ export function App({
 
         // The end-of-session evaluation, run on the way out.
         //
-        // Only when the session actually had a turn: launching the shell and
-        // quitting has no conduct to grade, and spending a real engine turn to
-        // say so would be a tax on opening it.
+        // Only when the session has UNJUDGED turns: launching the shell and
+        // quitting has no conduct to grade, a just-graded session owes
+        // nothing — and a session that kept working after a checkpoint still
+        // owes its tail, which is why this gates on turn debt rather than on
+        // whether any eval ever ran.
         //
         // The escape hatch is deliberate and load-bearing. The eval sets busy,
         // so the NEXT ctrl+c takes the interrupt branch above and stops it, and
         // the one after that exits — an eval can never trap the operator in a
-        // shell they asked to leave. `evalRanRef` is set before the turn starts
-        // rather than after it, so an interrupted eval does not re-run on the
-        // way out and turn one exit into two.
-        if (turnsRef.current > 0 && !evalRanRef.current && !log.failed) {
-            evalRanRef.current = true;
+        // shell they asked to leave. The /eval branch books the debt before
+        // the turn starts rather than after it, so an interrupted eval does
+        // not re-run on the way out and turn one exit into two.
+        if (turnsRef.current > lastEvalTurnRef.current && !log.failed) {
             commit('notice', 'evaluating this session before exit · ctrl+c to skip');
             submit('/eval').finally(() => {
                 session.dispose();

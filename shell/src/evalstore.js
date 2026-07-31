@@ -13,7 +13,7 @@
 // verdict still reached the transcript and the session log, which are the
 // primary record.
 
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -42,4 +42,65 @@ export function appendEvalReport(sessionId, kind, text, { home = homedir() } = {
     } catch {
         return false;
     }
+}
+
+/**
+ * Sessions that ended without a verdict, newest first.
+ *
+ * This is the catch-up eval's worklist: the loop's promise is a verdict for
+ * EVERY session, and the sessions that break it are the ones that never got
+ * to say goodbye — a closed window, a kill, a crash. Their logs survive under
+ * ~/.sherman/sessions/; what marks them ungraded is the absence of the eval
+ * file appendEvalReport would have written.
+ *
+ * Three exclusions keep this honest rather than eager:
+ * - `exclude` (the calling session) — it is live and will be graded on exit;
+ * - logs still being written (`staleMs` of quiet required) — a parallel shell
+ *   MUST not have its session graded out from under it mid-conversation;
+ * - logs with no `sherman` turn — a launch-and-quit has no conduct to judge,
+ *   and the exit eval already refuses those (same contract, applied late).
+ *
+ * The role probe is a substring match against the exact line shape
+ * sessionlog.js writes (`JSON.stringify({role, at, text})`, role first); it
+ * reads that file's contract, not a guess about JSON in general.
+ *
+ * Same quiet-failure contract as everything else here: an unreadable
+ * directory or file contributes nothing and never throws.
+ */
+export function ungradedSessions({ home = homedir(), exclude = null, staleMs = 30 * 60_000, now = Date.now() } = {}) {
+    let graded;
+    try {
+        graded = new Set(
+            readdirSync(evalsDir(home))
+                .filter((name) => name.endsWith('.md'))
+                .map((name) => name.slice(0, -'.md'.length))
+        );
+    } catch {
+        graded = new Set();
+    }
+
+    const dir = join(home, '.sherman', 'sessions');
+    let names;
+    try {
+        names = readdirSync(dir).filter((name) => name.endsWith('.jsonl'));
+    } catch {
+        return [];
+    }
+
+    const out = [];
+    // Session ids lead with their timestamp, so the lexicographic sort IS the
+    // chronological one; reversed, the newest unfinished business comes first.
+    for (const name of names.sort().reverse()) {
+        const id = name.slice(0, -'.jsonl'.length);
+        if (id === exclude || graded.has(id)) continue;
+        const path = join(dir, name);
+        try {
+            if (now - statSync(path).mtimeMs < staleMs) continue;
+            if (!readFileSync(path, 'utf8').includes('"role":"sherman"')) continue;
+        } catch {
+            continue;
+        }
+        out.push({ id, path });
+    }
+    return out;
 }

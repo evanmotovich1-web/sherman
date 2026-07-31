@@ -234,15 +234,22 @@ export function carryOverEnvelope(summary, text) {
  * state that dies with the process, and a judge working from its own memory of
  * a conversation is grading a summary it wrote itself. The log is the record.
  *
- * @param {string} logPath absolute path to this session's JSONL log
- * @param {{gaps?: boolean}} options `gaps` adds the capability-gap pass
+ * @param {string} logPath absolute path to the session's JSONL log
+ * @param {{gaps?: boolean, closed?: boolean}} options `gaps` adds the
+ *   capability-gap pass; `closed` frames the judgment as a catch-up over a
+ *   PAST session whose shell died without an exit eval — the judge is not
+ *   inside that session and must not speak as though it were. Everything else
+ *   (the evidence, the skills, the read-only contract) is identical, because
+ *   the log file is the whole truth either way.
  */
-export function evalRequest(logPath, { gaps = true } = {}) {
+export function evalRequest(logPath, { gaps = true, closed = false } = {}) {
     if (!logPath) return null;
     return {
         text: [
-            'END-OF-SESSION EVALUATION TURN',
-            'This session is ending. Grade your own conduct in it.',
+            closed ? 'POST-SESSION EVALUATION TURN' : 'END-OF-SESSION EVALUATION TURN',
+            closed
+                ? 'A previous session ended without being graded — its shell closed without an exit. Its log is the complete record; grade the conduct Sherman showed in it.'
+                : 'This session is ending. Grade your own conduct in it.',
             '',
             `The session log is at ${logPath} — one JSON object per line,`,
             '{role, at, text}, with role of user, sherman, or worker. Read it first.',

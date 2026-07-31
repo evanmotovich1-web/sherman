@@ -60,6 +60,19 @@ test('no log path is no request, not a request about nothing', () => {
     assert.equal(evalRequest(null), null);
 });
 
+test('the closed framing judges a past session, with the same contract', () => {
+    const request = evalRequest('/tmp/dead.jsonl', { closed: true });
+    // The judge is not inside the session it grades and must not be told it is.
+    assert.match(request.text, /POST-SESSION EVALUATION TURN/);
+    assert.match(request.text, /ended without being graded/);
+    assert.doesNotMatch(request.text, /This session is ending/);
+    // Everything else is the same turn: evidence, skills, read-only, PHI.
+    assert.match(request.text, /session-eval skill/);
+    assert.match(request.text, /READ-ONLY/);
+    assert.match(request.text, /patient-identifying/);
+    assert.equal(request.mode, 'read-only');
+});
+
 // -------------------------------------------------------------------- exit --
 
 function harness() {
@@ -278,6 +291,52 @@ test('the checkpoint eval grades new turns on a worker, once, in the background'
     }
 });
 
+// The gate is turn DEBT, not "an eval ever ran": a checkpoint ten minutes in
+// must not silence the exit eval for the turns worked after it.
+test('working past a checkpoint still gets the exit eval for the tail', async () => {
+    const h = checkpointHarness();
+    const oldHome = process.env.HOME;
+    process.env.HOME = h.home;
+
+    const instance = render(
+        React.createElement(App, {
+            session: h.session, sessionId: '20260731_060000_ckpt03',
+            sessionFactory: h.sessionFactory, evalEveryMs: 120,
+        }),
+        { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    try {
+        h.stdin.write('real work');
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        h.stdin.write('\r');
+        await until(() => h.requests.length === 1);
+        await until(() => h.workerRequests.length === 1);
+
+        // New turns after the checkpoint: the tail the old flag left unjudged.
+        h.stdin.write('more work');
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        h.stdin.write('\r');
+        await until(() => h.requests.length === 2);
+        await new Promise((resolve) => setTimeout(resolve, 60));
+
+        h.stdin.write('\x03');
+        await until(() => h.disposed() > 0);
+        // The invariant is that the tail gets judged, whoever judges it: the
+        // exit eval normally, or a second checkpoint if one beat ctrl+c to
+        // it. What must never happen — and did, under the old "an eval ever
+        // ran" flag — is the session ending with the post-checkpoint turns
+        // unjudged by anyone.
+        const tailJudged =
+            h.requests.some((r) => r?.source === 'eval') || h.workerRequests.length >= 2;
+        assert.ok(tailJudged, 'the session ended with turns no eval ever graded');
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(h.home, { recursive: true, force: true });
+    }
+});
+
 test('an untouched session is never checkpoint-graded', async () => {
     const h = checkpointHarness();
     const oldHome = process.env.HOME;
@@ -294,6 +353,90 @@ test('an untouched session is never checkpoint-graded', async () => {
     try {
         await new Promise((resolve) => setTimeout(resolve, 300));
         assert.equal(h.workerRequests.length, 0, 'a session with no turns was graded');
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(h.home, { recursive: true, force: true });
+    }
+});
+
+// ---------------------------------------------------------- catch-up loop --
+//
+// The loop's promise is a verdict for EVERY session, and the sessions that
+// break it are the ones that never got to say goodbye: a closed window, a
+// kill. Their logs survive; the catch-up eval grades the newest one on an
+// isolated worker after launch — skipping live logs (recent mtime), skipping
+// launch-and-quit logs (no sherman turn), and filing the verdict under the
+// session it judged, not the session that ran the judge.
+test('a launch catches up the newest dead ungraded session, and only that one', async () => {
+    const { evalsDir } = await import('../src/evalstore.js');
+    const { mkdirSync, writeFileSync, utimesSync, readFileSync, existsSync } = await import('node:fs');
+
+    const h = harness();
+    const workerRequests = [];
+    // A worker that replies in two parts: the persisted verdict must carry
+    // both, not just the last one.
+    h.sessionFactory = () => ({
+        info: { ...h.session.info, model: 'worker-model' },
+        usage: zeroUsage(),
+        async *send(request) {
+            workerRequests.push(request);
+            yield { kind: 'turn-start' };
+            yield { kind: 'message', text: 'CATCH-UP VERDICT part one.' };
+            yield { kind: 'message', text: 'And part two.' };
+            yield { kind: 'turn-end', usage: zeroUsage() };
+        },
+        interrupt() {},
+        dispose() {},
+    });
+
+    const oldHome = process.env.HOME;
+    process.env.HOME = h.home;
+    const sessions = join(h.home, '.sherman', 'sessions');
+    mkdirSync(sessions, { recursive: true });
+    const line = (role) => JSON.stringify({ role, at: '2026-07-30T10:00:00.000Z', text: 'x' }) + '\n';
+    const old = (name, content) => {
+        const file = join(sessions, name);
+        writeFileSync(file, content);
+        // Backdated an hour: old enough to be over, not a live parallel shell.
+        const past = (Date.now() - 60 * 60_000) / 1000;
+        utimesSync(file, past, past);
+    };
+    old('20260730_010000_dead01.jsonl', line('user') + line('sherman'));
+    old('20260730_020000_dead02.jsonl', line('user') + line('sherman'));
+    old('20260730_030000_quit03.jsonl', line('user'));
+    // A live parallel shell: same shape, but its mtime is now.
+    writeFileSync(join(sessions, '20260731_070000_live04.jsonl'), line('user') + line('sherman'));
+
+    const instance = render(
+        React.createElement(App, {
+            session: h.session, sessionId: '20260731_080000_catch05',
+            sessionFactory: h.sessionFactory, evalEveryMs: 0, catchUpDelayMs: 40,
+        }),
+        { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    try {
+        await until(() => workerRequests.length === 1);
+        // The newest DEAD session with sherman turns — not the live shell,
+        // not the launch-and-quit, not the older backlog.
+        assert.match(workerRequests[0].text, /20260730_020000_dead02\.jsonl/);
+        assert.match(workerRequests[0].text, /POST-SESSION EVALUATION TURN/);
+        assert.equal(workerRequests[0].mode, 'read-only');
+
+        // The verdict files under the session it JUDGED, with both parts.
+        await until(() => existsSync(join(evalsDir(h.home), '20260730_020000_dead02.md')));
+        const written = readFileSync(join(evalsDir(h.home), '20260730_020000_dead02.md'), 'utf8');
+        assert.match(written, /## catch-up eval/);
+        assert.match(written, /part one\./);
+        assert.match(written, /And part two\./);
+
+        // One per launch: the older dead session waits for the next shell.
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        assert.equal(workerRequests.length, 1, 'catch-up graded more than one session in a launch');
+        assert.equal(existsSync(join(evalsDir(h.home), '20260730_010000_dead01.md')), false);
+        assert.equal(existsSync(join(evalsDir(h.home), '20260731_070000_live04.md')), false);
+        assert.equal(existsSync(join(evalsDir(h.home), '20260730_030000_quit03.md')), false);
     } finally {
         instance.unmount();
         process.env.HOME = oldHome;
