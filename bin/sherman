@@ -559,10 +559,16 @@ run_update() {
         exit 1
     fi
 
-    # npm only when the pull actually changed the shell's manifest; anything
-    # else would re-resolve dependencies on every no-op update.
-    if ! git -C "$ROOT" diff --quiet "$old_head" HEAD -- shell/package.json; then
-        npm install --prefix "$ROOT/shell"
+    # npm only when the pull actually changed the shell's dependency contract;
+    # package-lock.json matters as much as package.json. Anything else would
+    # re-resolve dependencies on every no-op update.
+    if ! git -C "$ROOT" diff --quiet "$old_head" HEAD -- \
+        shell/package.json shell/package-lock.json; then
+        if ! npm install --prefix "$ROOT/shell"; then
+            echo "Update downloaded, but the shell dependencies could not be installed." >&2
+            echo "Run $ROOT/install.sh, then run sherman update again." >&2
+            exit 1
+        fi
     fi
 
     # ------------------------------------------------------------ llm wiki --
@@ -609,7 +615,12 @@ run_update() {
 
     # smoke calls `sherman update`, and update runs smoke after a real pull.
     # The env guard is what keeps that pair from recursing forever.
-    SHERMAN_UPDATE_RUNNING=1 "$ROOT/smoke.sh"
+    if ! SHERMAN_UPDATE_RUNNING=1 "$ROOT/smoke.sh"; then
+        echo >&2
+        echo "Update downloaded, but this machine did not pass verification." >&2
+        echo "The failing check and its diagnostics are above; Sherman will not call this update healthy." >&2
+        exit 1
+    fi
 
     echo "Updated: v$old_version -> v$(shell_version)"
     exit 0

@@ -27,8 +27,10 @@ silently inventing a house style.
 
 - **Purpose** — what this procedure is for, in one or two sentences.
 - **Scope** — when it applies, and explicitly when it does not.
-- **Owner** — the role accountable for it. If the vault does not say, ask
-  rather than assigning one.
+- **Owner** — the role accountable for it. If the vault does not say, infer a
+  role only when the procedure or request supports it and mark that inference;
+  otherwise write `Owner: To be assigned` and continue rather than stopping to
+  ask.
 - **Steps** — ordered, each one an action someone can actually perform.
 - **Verification** — how the person doing it knows it worked.
 - **Exceptions** — what to do when a step cannot be completed, and who to
@@ -57,4 +59,8 @@ End the SOP with its review line — `Reviewed: <date> · review by: <date>` —
 following the rule in `sop-review`: a fresh `Reviewed` date only if a person
 confirmed the content this session.
 
-Offer to write it to `vault/wiki/` — see `vault-write`.
+When the request establishes a durable, sufficiently grounded company SOP,
+write or revise it in `vault/wiki/` now — see `vault-write`. If the request is
+for draft text only or a material fact remains unknown, return the complete
+draft with a visible placeholder. Do not end with an offer to do routine work
+the request already authorized.

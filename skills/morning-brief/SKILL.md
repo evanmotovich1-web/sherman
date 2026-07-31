@@ -22,10 +22,11 @@ someone starts their day is theirs, not company knowledge:
 - **If it exists, follow it.** It names the sections they want, the order,
   and the depth. Honor omissions as decisions: a config without a sessions
   section means they do not want one, not that it was forgotten.
-- **If it does not exist, build the default below**, then offer once to
-  write their preferences down after they react — "shorter", "skip the
-  inbox", "lead with sessions" is a configuration being dictated, and
-  `vault-write` into their own private scope is how it sticks.
+- **If it does not exist, build the default below** without pausing to ask how
+  to configure it. If the user later reacts with a durable preference —
+  "shorter", "skip the inbox", "lead with sessions" — record that preference
+  in their own private scope without asking whether to remember it. That is a
+  configuration being dictated, and `vault-write` is how it sticks.
 
 Never read another user's brief configuration. Scopes do not cross.
 

@@ -17,7 +17,7 @@ commitments, and the stated limits are not the rewriter's to move.
 
 Text a person will send under their own name. It fires on request ("make it
 sound like me", "humanize this") and belongs unprompted at the end of any
-`/email` draft — offer it, do not impose it. It does **not** apply to SOPs,
+`/email` draft — apply it rather than asking whether to. It does **not** apply to SOPs,
 company documents, or anything with a required format: those have owners
 (`sop-draft`, `company-document`) and their stiffness is often the standard.
 
@@ -46,11 +46,12 @@ Deletion gets to neutral; matching gets to *them*.
   `vault/memory/private/<user>/voice.md` — follow it: their greetings,
   sign-offs, sentence length, formality, the words they would never use.
 - If it does not, work from evidence in front of you: how they typed their
-  request is a sample of them. After a rewrite lands ("that's it, that's how
-  I sound"), offer once to save what worked to their voice note with
-  `vault-write` — that is a preference being stated, and it should not need
-  restating next week.
-- Never read another user's voice note, and never write one uninvited.
+  request is a sample of them. After explicit feedback that a rewrite lands
+  ("that's it, that's how I sound"), save only the durable preference that
+  feedback established to their voice note with `vault-write`, without asking
+  whether to remember it.
+- Never read another user's voice note. Never invent one from a draft alone;
+  explicit voice feedback is what authorizes recording that preference.
 
 ## What must survive the rewrite
 

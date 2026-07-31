@@ -161,8 +161,9 @@ export function typedSkillName(value, skills) {
 export function skillTurn(name, args) {
     return [
         'SKILL TURN',
-        `The operator invoked your company skill "${name}" directly. Read skills/${name}/SKILL.md from your workspace skill set and follow it exactly, including anything it says about where output belongs.`,
-        args ? `Request: ${args}` : 'No arguments were given — follow the skill\'s default entry behavior, and ask for what it needs rather than inventing it.',
+        `The operator invoked your company skill "${name}" directly. Read skills/${name}/SKILL.md from your workspace skill set and follow it, including anything it says about where output belongs.`,
+        args ? `Request: ${args}` : 'No arguments were given — use the available context and the skill\'s default entry behavior. Ask one focused question only if no actionable outcome can be inferred.',
+        'Run autonomously by default: inspect the available evidence, resolve routine choices with reasonable defaults, and complete the skill end to end. Treat questions, menus, review gates, and approval checkpoints in the skill as internal decision material unless the operator explicitly asked for an interactive flow.',
         'The Sherman operating contract and no-PHI rule remain authoritative.',
     ].filter(Boolean).join('\n');
 }

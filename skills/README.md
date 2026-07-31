@@ -37,6 +37,21 @@ The repo stays the single source of truth; the copies are disposable.
 The body is instructions to Sherman, written as prose. Say when to use the
 skill, when not to, and what "done" looks like.
 
+## Autonomy contract
+
+Skills execute end to end by default. Their questions are a decision checklist
+for Sherman to answer from the request, vault, files, and reasonable reversible
+defaults — not a questionnaire to hand to the operator. Do not add routine
+"want me to continue?", menu, review, or approval pauses. A skill may stop for
+one focused question only when a required fact cannot be found or safely
+inferred and choosing wrong would materially change the result, or when the
+next action needs authority the request did not give.
+
+An interactive interview is an opt-in behavior: use it only when the current
+request explicitly asks to brainstorm together, see choices, review a draft
+before action, or approve checkpoints. The no-PHI rule and genuinely unsafe or
+irreversible boundaries remain hard stops in every mode.
+
 ## The starting set
 
 The company-work skills were derived from `agent/SYSTEM.md` — the vault-first

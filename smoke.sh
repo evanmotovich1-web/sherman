@@ -6,15 +6,16 @@
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
 #      under an overridden HOME, writes a valid config.json.
 #   3. The assembled adapter carries the vault path, the user name, the no-PHI
-#      rule, and the session-id memory-attribution rule — and the workspace
-#      carries every repo skill at .agents/skills and .claude/skills.
+#      and autonomy rules, and the session-id memory-attribution rule — and the
+#      workspace carries every repo skill at both engine conventions.
 #   4. The shell entry point launches and exits clean on --version.
 #   5. Backend selection follows config.json's engine field.
 #   6. The --raw path still execs the engine.
 #   7. The launch screen crosses its card/panel boundary at 80 columns, no overflow.
 #   8. The launch screen crosses its card/panel boundary at 200 columns, no overflow.
 #   9. The launch screen's colours are emitted as real ANSI sequences.
-#  10. `sherman update` exits honestly in this repo's state.
+#  10. `sherman update` reports success only after verification passes and
+#      propagates a failed smoke run with its diagnostics, exercised offline.
 #  11. A scripted turn through a fake backend renders the prompt marker,
 #      signed reply, factual trace, composer placeholder, and persistent status.
 #  12. A real codex reasoning payload renders as an explicit purple summary line.
@@ -56,6 +57,7 @@ cd "$ROOT"
 PASSES=0
 SKIPPED=0
 FAILURES=0
+FAILURE_DETAILS=""
 TOTAL_CHECKS=23
 SMOKE_USER="smoke-tester"
 
@@ -67,7 +69,16 @@ export SHERMAN_NO_FETCH=1
 
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
 skip() { echo "  SKIP  $*"; SKIPPED=$((SKIPPED + 1)); }
-fail() { echo "  FAIL  $*"; FAILURES=$((FAILURES + 1)); }
+fail() {
+    echo "  FAIL  $*"
+    if [ -n "$FAILURE_DETAILS" ]; then
+        FAILURE_DETAILS="$FAILURE_DETAILS
+  - $*"
+    else
+        FAILURE_DETAILS="  - $*"
+    fi
+    FAILURES=$((FAILURES + 1))
+}
 
 TMPHOME=""
 STUBDIR=""
@@ -147,7 +158,7 @@ fi
 
 # ------------------------------------------------------------------ check 3 --
 echo
-echo "3. assembled adapter carries vault, user and the PHI rule"
+echo "3. assembled adapter carries vault, user, PHI and autonomy rules"
 
 ADAPTER="$TMPHOME/.sherman/workspace/AGENTS.md"
 
@@ -168,9 +179,13 @@ else
         && pass "contains the user name" \
         || fail "user name missing from adapter"
 
-    grep -qF "patient" "$ADAPTER" \
-        && pass "contains the no-PHI rule" \
-        || fail "no-PHI rule missing from adapter"
+    if ! grep -qF "patient" "$ADAPTER"; then
+        fail "no-PHI rule missing from adapter"
+    elif ! grep -qF "Default to execution, not interviewing." "$ADAPTER"; then
+        fail "autonomy rule missing from adapter"
+    else
+        pass "contains the no-PHI and autonomy rules"
+    fi
 
     # The attribution rule and its session id. The id must be the launcher's
     # (format YYYYMMDD_HHMMSS_ + 6 hex), not a placeholder.
@@ -500,10 +515,12 @@ else
 fi
 
 # ----------------------------------------------------------------- check 10 --
-# `sherman update` must exit 0 and say so plainly in this repo's real state
-# (a git checkout with no remote). When a remote exists this check starts
-# exercising the real ff-only pull; the env guard below is what keeps that
-# future run from recursing (update runs smoke, smoke calls update).
+# Drive the real launcher against an isolated fake checkout and git executable.
+# The old check ran `git pull` against this repo's real remote, contradicting
+# the suite's offline contract and hanging when the network was slow. This
+# fixture proves both sides that matter: a passing verification earns success;
+# a failing verification propagates non-zero, keeps the smoke diagnostic, and
+# is never called "Updated".
 
 echo
 echo "10. sherman update exits honestly"
@@ -511,15 +528,56 @@ echo "10. sherman update exits honestly"
 if [ -n "${SHERMAN_UPDATE_RUNNING:-}" ]; then
     pass "skipped -- running under sherman update"
 else
-    update_out=$(./bin/sherman update 2>&1)
-    update_status=$?
+    update_root="$TMPHOME/update-fixture"
+    update_home="$TMPHOME/update-home"
+    update_stubs="$TMPHOME/update-stubs"
+    mkdir -p "$update_root/bin" "$update_root/shell" "$update_home" "$update_stubs"
+    cp bin/sherman "$update_root/bin/sherman"
+    chmod +x "$update_root/bin/sherman"
+    printf '{ "version": "smoke-update" }\n' > "$update_root/shell/package.json"
 
-    if [ "$update_status" -ne 0 ]; then
-        fail "sherman update exited $update_status: $(printf '%s' "$update_out" | head -2)"
-    elif printf '%s' "$update_out" | grep -q "no update source configured\|Updated:\|not a git checkout"; then
-        pass "exit 0 with an honest status ($(printf '%s' "$update_out" | head -1))"
+    cat > "$update_stubs/git" <<'FAKE_GIT'
+#!/bin/sh
+case " $* " in
+    *" rev-parse --git-dir "*) echo .git ;;
+    *" remote "*) echo origin ;;
+    *" rev-parse HEAD "*) echo 0123456789abcdef ;;
+    *" pull --ff-only "*) exit 0 ;;
+    *" diff --quiet "*) exit 0 ;;
+    *) echo "unexpected fake git call: $*" >&2; exit 2 ;;
+esac
+FAKE_GIT
+    chmod +x "$update_stubs/git"
+
+    cat > "$update_root/smoke.sh" <<'PASSING_SMOKE'
+#!/bin/sh
+echo "simulated verification passed"
+exit 0
+PASSING_SMOKE
+    chmod +x "$update_root/smoke.sh"
+    update_ok_out=$(env HOME="$update_home" PATH="$update_stubs:$PATH" \
+        "$update_root/bin/sherman" update 2>&1)
+    update_ok_status=$?
+
+    cat > "$update_root/smoke.sh" <<'FAILING_SMOKE'
+#!/bin/sh
+echo "simulated verification failed"
+exit 7
+FAILING_SMOKE
+    chmod +x "$update_root/smoke.sh"
+    update_bad_out=$(env HOME="$update_home" PATH="$update_stubs:$PATH" \
+        "$update_root/bin/sherman" update 2>&1)
+    update_bad_status=$?
+
+    if [ "$update_ok_status" -eq 0 ] \
+        && printf '%s' "$update_ok_out" | grep -q 'Updated:' \
+        && [ "$update_bad_status" -ne 0 ] \
+        && printf '%s' "$update_bad_out" | grep -q 'simulated verification failed' \
+        && printf '%s' "$update_bad_out" | grep -q 'did not pass verification' \
+        && ! printf '%s' "$update_bad_out" | grep -q 'Updated:'; then
+        pass "passing verification earns Updated; failed verification exits non-zero with its diagnostic"
     else
-        fail "exit 0 but unrecognised output: $(printf '%s' "$update_out" | head -2)"
+        fail "update status propagation broke (pass=$update_ok_status, fail=$update_bad_status): $(printf '%s' "$update_bad_out" | tail -3)"
     fi
 fi
 
@@ -1129,7 +1187,24 @@ else
     if [ "$test_status" -eq 0 ]; then
         pass "node:test suite passes"
     else
-        fail "node:test suite failed: $(printf '%s' "$test_err" | tail -10)"
+        # The old tail-only report hid the failed test names and printed just
+        # the aggregate (for example, "139 passed, 5 failed"). Surface each
+        # TAP failure block so a second machine's report is actionable without
+        # asking its operator to reconstruct a vanished log.
+        test_failures=$(printf '%s\n' "$test_err" | awk '
+            /^not ok [0-9]+ - / { showing = 1 }
+            showing { print }
+            showing && /^  \.\.\.$/ { showing = 0 }
+        ')
+        if [ -n "$test_failures" ]; then
+            printf '%s\n' "$test_failures" >&2
+        else
+            printf '%s\n' "$test_err" | tail -25 >&2
+        fi
+        test_summary=$(printf '%s\n' "$test_err" \
+            | grep '^# \(tests\|pass\|fail\|cancelled\|skipped\|todo\) ' \
+            | tr '\n' '; ')
+        fail "node:test suite failed: ${test_summary:-no TAP summary was produced}"
     fi
 fi
 
@@ -1784,6 +1859,11 @@ fi
 # -------------------------------------------------------------------- result --
 echo
 echo "$PASSES passed, $SKIPPED skipped, $FAILURES failed."
+if [ "$FAILURES" -gt 0 ]; then
+    echo
+    echo "Failure recap:"
+    printf '%s\n' "$FAILURE_DETAILS"
+fi
 if [ "$FAILURES" -eq 0 ] && [ "$SKIPPED" -eq 0 ]; then
     echo "$TOTAL_CHECKS checks, all green."
     echo

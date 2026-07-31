@@ -3,6 +3,27 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-07-31 — Changed: skills act first, and failed updates keep their evidence
+
+- Sherman now works autonomously by default: inspect the vault and available
+  files, infer routine choices, use reversible defaults, and finish the task
+  instead of turning a skill into a questionnaire. Interactive interviews,
+  menus, and approval checkpoints are opt-in through the current request; one
+  focused question remains for a genuinely unknowable, material blocker. The
+  shared operating contract governs every turn, `/skill` envelopes reinforce
+  it, and SEED explicitly converts its imported wait points into an internal
+  decision checklist. The automatic session eval now grades avoidable questions
+  and pauses, while durable corrections are recorded without asking whether to
+  remember them. The no-PHI boundary is unchanged.
+- `sherman update` now treats dependency-install or smoke failure as a failed
+  verification, never a healthy update; it also reinstalls dependencies when
+  either package manifest changes. Smoke repeats every failure in a final
+  recap, and its Node-test check prints the actual failing TAP blocks instead
+  of discarding them and showing only a count. A PC result such as "39 passed,
+  5 failed" now ends with the five diagnostics needed to repair that platform.
+  The update check itself now uses an offline fake checkout for both pass and
+  fail paths instead of contacting the real remote during every smoke run.
+
 ## 2026-07-30 — Changed: old configs get the new questions; the installer grows the window
 
 - A config written before the model and Telegram questions existed now gets

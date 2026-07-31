@@ -76,15 +76,20 @@ test('typedSkillName recognizes a typed slash-skill and nothing else', () => {
 
 // -------------------------------------------------------------- the turn --
 
-test('a skill turn names the skill, its file, and the request', () => {
+test('a skill turn names the skill and runs it autonomously by default', () => {
     const text = skillTurn('seed', 'a lab courier tracker');
     assert.match(text, /skills\/seed\/SKILL\.md/);
     assert.match(text, /a lab courier tracker/);
+    assert.match(text, /autonomously by default/);
+    assert.match(text, /complete the skill end to end/);
+    assert.match(text, /unless the operator explicitly asked for an interactive flow/);
     assert.match(text, /no-PHI/);
 
     const bare = skillTurn('seed', '');
     assert.match(bare, /skills\/seed\/SKILL\.md/);
     assert.doesNotMatch(bare, /Request:/);
+    assert.match(bare, /Ask one focused question only if no actionable outcome can be inferred/);
+    assert.doesNotMatch(bare, /ask for what it needs/);
 });
 
 // ----------------------------------------------------------- palette ink --

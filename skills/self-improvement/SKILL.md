@@ -28,6 +28,10 @@ Use it when the session produced a durable lesson about Sherman's own conduct:
 - a refusal that turned out to be wrong, or one that turned out to be right for
   a reason worth writing down
 
+Do not ask whether to remember a correction. The correction is the decision;
+search for an existing lesson, apply it now, and record it when it passes the
+durability test below.
+
 Do not use it for:
 
 - what you were asked to do — that is a task, not a lesson

@@ -44,5 +44,6 @@ State what is filled in, what is a placeholder, and what you assumed. If the
 format itself was a proposal rather than the company standard, say that at the
 top — not in a footnote.
 
-If the draft established a durable format decision, offer to record it — see
-`vault-write`.
+If the work explicitly established a durable format decision, record it now —
+see `vault-write`. Do not ask a second time whether to remember a decision the
+person already made.
