@@ -34,6 +34,8 @@ import {
     parseSubmission,
     planRequest,
     shouldAutoCompact,
+    wikiAvailable,
+    wikiCaptureRequest,
     workerRequest,
 } from '../commands.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
@@ -137,6 +139,10 @@ export function App({
     // shell's busiest, and the backlog has already waited since that session
     // ended. Injectable for the same reason as evalEveryMs.
     catchUpDelayMs = 15_000,
+    // Whether the LLM Wiki capture is available. null means "measure it"
+    // (wikiAvailable reads the install off disk); tests inject true/false so
+    // they exercise both worlds without provisioning a wiki.
+    wiki = null,
 }) {
     const { exit } = useApp();
 
@@ -207,6 +213,14 @@ export function App({
     // The in-flight background judge, if any: one at a time, and disposed on
     // unmount so quitting the shell never orphans a worker process.
     const bgEvalWorkerRef = useRef(null);
+    // Whether the LLM Wiki is installed, measured once at mount like the
+    // registry — an install appearing mid-session is next launch's news. The
+    // ran flag mirrors the eval booking: set before a capture turn starts, so
+    // an interrupted capture does not re-run on the way out, and a manual
+    // /wiki satisfies the exit capture the way a manual /eval satisfies the
+    // exit eval.
+    const [wikiOn] = useState(() => (wiki === null || wiki === undefined ? wikiAvailable() : Boolean(wiki)));
+    const wikiRanRef = useRef(false);
 
     const [busy, setBusy] = useState(false);
     const [activities, setActivities] = useState([]);
@@ -517,6 +531,16 @@ export function App({
                         commit('notice', 'evaluating this session before exit · ctrl+c to skip');
                         await submitRef.current('/eval');
                     }
+                    // The wiki capture rides the same exit, AFTER the
+                    // judgment and as its own turn: the eval stays read-only
+                    // (a judge that writes is grading a brain it is editing),
+                    // and the capture writes only through the wiki's MCP.
+                    // Each stage is separately interruptible, so ctrl+c
+                    // still cannot trap the operator — it just skips stages
+                    // one at a time.
+                    if (wikiOn && turnsRef.current > 0 && !wikiRanRef.current && !log.failed) {
+                        await submitRef.current('/wiki');
+                    }
                     session.dispose();
                     exit();
                     return;
@@ -597,6 +621,23 @@ export function App({
                 lastEvalTurnRef.current = turnsRef.current + 1;
                 isEval = true;
                 commit('notice', 'evaluating this session · read-only · judging conduct, not answers');
+            }
+
+            if (parsed.kind === 'command' && parsed.name === 'wiki') {
+                if (!wikiOn) {
+                    commit('error', 'The LLM Wiki is not installed on this machine — re-run install.sh to provision it.');
+                    return;
+                }
+                request = wikiCaptureRequest(log.path, goal);
+                if (!request) {
+                    commit('error', 'No session log to capture from.');
+                    return;
+                }
+                // Booked before the turn runs, mirroring the eval: an
+                // interrupted capture must not turn one exit into two, and a
+                // deliberate manual capture satisfies the exit's.
+                wikiRanRef.current = true;
+                commit('notice', "wiki capture · folding this session's learnings into your LLM Wiki · ctrl+c to skip");
             }
 
             if (parsed.kind === 'command' && parsed.name === 'win') {
@@ -886,7 +927,7 @@ export function App({
                 await compactSession('');
             }
         },
-        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, session, sessionFactory, sessionId, setBusyBoth, log]
+        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn]
     );
     submitRef.current = submit;
 
@@ -1065,9 +1106,26 @@ export function App({
         // shell they asked to leave. The /eval branch books the debt before
         // the turn starts rather than after it, so an interrupted eval does
         // not re-run on the way out and turn one exit into two.
+        // The wiki capture owed on the way out, if any — mirrors the exit
+        // command: after the eval, as its own interruptible turn. The /wiki
+        // branch books wikiRanRef before its turn starts, so an interrupted
+        // capture is skipped by the next ctrl+c rather than re-run by it.
+        const wikiOwed = () =>
+            wikiOn && turnsRef.current > 0 && !wikiRanRef.current && !log.failed;
+
         if (turnsRef.current > lastEvalTurnRef.current && !log.failed) {
             commit('notice', 'evaluating this session before exit · ctrl+c to skip');
-            submit('/eval').finally(() => {
+            submit('/eval')
+                .then(() => (wikiOwed() ? submit('/wiki') : null))
+                .finally(() => {
+                    session.dispose();
+                    exit();
+                });
+            return;
+        }
+
+        if (wikiOwed()) {
+            submit('/wiki').finally(() => {
                 session.dispose();
                 exit();
             });

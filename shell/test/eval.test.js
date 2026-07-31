@@ -360,6 +360,112 @@ test('an untouched session is never checkpoint-graded', async () => {
     }
 });
 
+// ------------------------------------------------------------ wiki capture --
+//
+// The end of a session preserves as well as judges: after the exit eval, a
+// second, separate turn folds the session's learnings into the LLM Wiki over
+// MCP. Separate on purpose — the eval stays read-only — and gated on the
+// wiki actually being installed: a machine without one exits exactly as
+// before, and /wiki says so rather than pretending.
+
+test('the wiki capture turn reads the log, writes only via MCP, and refuses PHI', async () => {
+    const { wikiCaptureRequest, wikiAvailable } = await import('../src/commands.js');
+    const request = wikiCaptureRequest('/home/x/.sherman/sessions/abc.jsonl');
+    assert.equal(request.source, 'wiki');
+    assert.equal(request.mode, 'normal');
+    assert.match(request.text, /abc\.jsonl/);
+    assert.match(request.text, /llmwiki MCP tools/);
+    assert.match(request.text, /research-wiki skill/);
+    assert.match(request.text, /vault-write/);
+    assert.match(request.text, /patient-identifying/);
+    assert.match(request.text, /do not simulate a capture/);
+    assert.equal(wikiCaptureRequest(''), null);
+
+    // Availability is the installed CLI plus its venv, not hope.
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    const home = mkdtempSync(join(tmpdir(), 'sherman-wiki-avail-'));
+    try {
+        assert.equal(wikiAvailable({ home }), false);
+        mkdirSync(join(home, '.sherman', 'llmwiki', '.venv', 'bin'), { recursive: true });
+        writeFileSync(join(home, '.sherman', 'llmwiki', 'llmwiki'), '#!/usr/bin/env python3\n');
+        assert.equal(wikiAvailable({ home }), false, 'a CLI without a venv python is not installed');
+        writeFileSync(join(home, '.sherman', 'llmwiki', '.venv', 'bin', 'python'), '');
+        assert.equal(wikiAvailable({ home }), true);
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('exit runs the eval, then the wiki capture, then leaves — wiki off changes nothing', async () => {
+    const h = harness();
+    const oldHome = process.env.HOME;
+    process.env.HOME = h.home;
+    const instance = render(
+        React.createElement(App, {
+            session: h.session, sessionId: '20260731_090000_wiki01', wiki: true,
+        }),
+        { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        h.stdin.write('a question');
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        h.stdin.write('\r');
+        await until(() => h.requests.length === 1);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+
+        h.stdin.write('\x03');
+        await until(() => h.disposed() > 0);
+        // The engine requests are the contract; the exit sequence outruns the
+        // off-TTY painter, so screen text past the eval notice is not
+        // asserted here.
+        const sources = h.requests.map((r) => r?.source);
+        assert.deepEqual(sources.slice(1), ['eval', 'wiki'], 'exit must judge first, then preserve');
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(h.home, { recursive: true, force: true });
+    }
+});
+
+test('a machine without the wiki exits exactly as before, and /wiki says so', async () => {
+    const h = harness();
+    const oldHome = process.env.HOME;
+    process.env.HOME = h.home;
+    const instance = render(
+        React.createElement(App, {
+            session: h.session, sessionId: '20260731_100000_wiki02', wiki: false,
+        }),
+        { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        h.stdin.write('a question');
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        h.stdin.write('\r');
+        await until(() => h.requests.length === 1);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+
+        h.stdin.write('/wiki');
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        h.stdin.write('\r');
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        assert.equal(h.requests.length, 1, '/wiki sent an engine request with no wiki installed');
+
+        h.stdin.write('\x03');
+        await until(() => h.disposed() > 0);
+        const sources = h.requests.map((r) => r?.source);
+        assert.equal(sources.filter((s) => s === 'wiki').length, 0, 'exit ran a capture with no wiki installed');
+        assert.equal(sources.filter((s) => s === 'eval').length, 1, 'the exit eval must still run');
+        // Frames flush at exit off a TTY, so the refusal is asserted here.
+        assert.match(h.captured(), /not installed on this machine/);
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(h.home, { recursive: true, force: true });
+    }
+});
+
 // ---------------------------------------------------------- catch-up loop --
 //
 // The loop's promise is a verdict for EVERY session, and the sessions that

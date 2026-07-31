@@ -33,7 +33,7 @@ test('registry drives suggestions and help', () => {
     assert.deepEqual(suggestionsFor('/p').map((c) => c.name), ['plan']);
     assert.deepEqual(
         suggestionsFor('/').map((c) => c.name),
-        ['goal', 'plan', 'subagent', 'compact', 'eval', 'email', 'win', 'copy', 'clear', 'help', 'exit']
+        ['goal', 'plan', 'subagent', 'compact', 'eval', 'email', 'win', 'wiki', 'copy', 'clear', 'help', 'exit']
     );
     // /compact, /copy, and /clear share a prefix, so none may swallow another.
     assert.deepEqual(suggestionsFor('/c').map((c) => c.name), ['compact', 'copy', 'clear']);

@@ -88,7 +88,8 @@
       "name": "insight",
       "summary": "how you and Sherman work, judged over time",
       "tools": [
-        { "name": "win", "verify": "command" }
+        { "name": "win", "verify": "command" },
+        { "name": "wiki", "verify": "command" }
       ]
     }
   ]

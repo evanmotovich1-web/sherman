@@ -254,6 +254,63 @@ if [ -f "$ROOT/shell/package.json" ]; then
     fi
 fi
 
+# ------------------------------------------------------------------ llm wiki --
+# The personal research wiki (github.com/lucasastorian/llmwiki): every Sherman
+# install gets one, so /wiki can fold each session's learnings into it over
+# MCP. Provisioned OUTSIDE the repo at ~/.sherman/llmwiki with its workspace
+# at ~/.sherman/research — it is per-machine tooling, not Sherman source.
+#
+# Every step degrades to an honest NOTE instead of failing the install: the
+# wiki is an enhancement, and a machine without python3 still deserves a
+# working Sherman. "Installed" is claimed only after the CLI answers --help
+# from its own venv — pip exiting 0 is an attempt's report, not a verification.
+echo "  installing the LLM Wiki (personal research wiki, used by /wiki)"
+WIKI_DIR="$HOME/.sherman/llmwiki"
+WIKI_WS="$HOME/.sherman/research"
+if ! command -v git >/dev/null 2>&1; then
+    echo "  NOTE: git not found, so the LLM Wiki was not installed."
+elif ! command -v python3 >/dev/null 2>&1; then
+    echo "  NOTE: python3 not found, so the LLM Wiki was not installed."
+    echo "        Install Python 3.11+ and re-run ./install.sh"
+else
+    mkdir -p "$HOME/.sherman"
+    if [ -d "$WIKI_DIR/.git" ]; then
+        # ff-only: a user's local edits to their wiki tooling are theirs.
+        (cd "$WIKI_DIR" && git pull --ff-only --quiet >/dev/null 2>&1) \
+            || echo "  NOTE: could not update the existing LLM Wiki checkout; keeping it as is."
+    else
+        git clone --quiet https://github.com/lucasastorian/llmwiki.git "$WIKI_DIR" >/dev/null 2>&1 \
+            || echo "  NOTE: could not clone the LLM Wiki repository (offline?)."
+    fi
+
+    WIKI_PY="$WIKI_DIR/.venv/bin/python"
+    if [ -f "$WIKI_DIR/llmwiki" ]; then
+        [ -x "$WIKI_PY" ] || python3 -m venv "$WIKI_DIR/.venv" >/dev/null 2>&1
+        if [ -x "$WIKI_PY" ]; then
+            "$WIKI_PY" -m pip install --quiet \
+                -r "$WIKI_DIR/api/requirements.txt" \
+                -r "$WIKI_DIR/mcp/requirements.txt" >/dev/null 2>&1 \
+                || echo "  NOTE: pip could not install the wiki's dependencies."
+            # The web app is optional UI; the MCP works without it. Installed
+            # when npm exists, skipped silently when it does not.
+            if command -v npm >/dev/null 2>&1 && [ -f "$WIKI_DIR/web/package.json" ]; then
+                (cd "$WIKI_DIR/web" && npm install --silent >/dev/null 2>&1) || true
+            fi
+            if "$WIKI_PY" "$WIKI_DIR/llmwiki" --help >/dev/null 2>&1; then
+                mkdir -p "$WIKI_WS"
+                "$WIKI_PY" "$WIKI_DIR/llmwiki" init "$WIKI_WS" >/dev/null 2>&1 || true
+                echo "  LLM Wiki installed (verified: its CLI answers from its own venv)"
+                echo "  wiki workspace: $WIKI_WS"
+            else
+                echo "  NOTE: the LLM Wiki CLI did not answer from its venv; /wiki will say it is not installed."
+            fi
+        else
+            echo "  NOTE: could not create the wiki's Python venv; /wiki will say it is not installed."
+        fi
+    fi
+fi
+echo
+
 # --------------------------------------------------------------- link sherman --
 # -f replaces an existing link so reinstall is clean.
 # -n stops ln nesting a new link *inside* an existing symlinked directory.

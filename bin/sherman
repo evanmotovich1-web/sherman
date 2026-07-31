@@ -749,6 +749,49 @@ BODY
         cp -R "$ROOT/skills" "$WORKSPACE/.agents/skills"
         cp -R "$ROOT/skills" "$WORKSPACE/.claude/skills"
     fi
+
+    # ----------------------------------------------------------- llm wiki --
+    # The personal research wiki (lucasastorian/llmwiki), provisioned by
+    # install.sh at ~/.sherman/llmwiki with its workspace at
+    # ~/.sherman/research. Registered fresh from what is actually on disk:
+    # no install, no entry, and /wiki says so instead of pretending. Claude
+    # Code reads .mcp.json in its working directory; Codex reads
+    # [mcp_servers.*] in its own config, which gets the entry appended once
+    # (backed up first, claim only after read-back — the write_codex_model
+    # contract).
+    WIKI_DIR="$SHERMAN_HOME/llmwiki"
+    WIKI_WS="$SHERMAN_HOME/research"
+    WIKI_PY="$WIKI_DIR/.venv/bin/python"
+    [ -x "$WIKI_PY" ] || WIKI_PY="$WIKI_DIR/.venv/Scripts/python.exe"
+    rm -f "$WORKSPACE/.mcp.json"
+    if [ -x "$WIKI_PY" ] && [ -f "$WIKI_DIR/llmwiki" ]; then
+        mkdir -p "$WIKI_WS"
+        cat > "$WORKSPACE/.mcp.json" <<MCPJSON
+{
+  "mcpServers": {
+    "llmwiki": {
+      "command": "$WIKI_PY",
+      "args": ["$WIKI_DIR/llmwiki", "mcp", "$WIKI_WS"]
+    }
+  }
+}
+MCPJSON
+        wiki_cfg=$(codex_config_path)
+        if [ -f "$wiki_cfg" ] && grep -q '^\[mcp_servers\.llmwiki\]' "$wiki_cfg" 2>/dev/null; then
+            : # already registered; the entry is the user's to edit now
+        else
+            mkdir -p "$(dirname "$wiki_cfg")"
+            [ -f "$wiki_cfg" ] && cp "$wiki_cfg" "$wiki_cfg.sherman-backup"
+            {
+                echo ''
+                echo '[mcp_servers.llmwiki]'
+                printf 'command = "%s"\n' "$WIKI_PY"
+                printf 'args = ["%s", "mcp", "%s"]\n' "$WIKI_DIR/llmwiki" "$WIKI_WS"
+            } >> "$wiki_cfg"
+            grep -q '^\[mcp_servers\.llmwiki\]' "$wiki_cfg" 2>/dev/null \
+                || echo "  NOTE: could not register the LLM Wiki MCP in $wiki_cfg" >&2
+        fi
+    fi
 }
 
 # --------------------------------------------------------------------- main --

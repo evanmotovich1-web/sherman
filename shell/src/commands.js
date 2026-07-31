@@ -1,6 +1,10 @@
 // First-party Sherman Shell commands. Commands are local UI capabilities, not
 // executable code loaded from the vault and not pretend engine tools.
 
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+
 export const COMMANDS = Object.freeze([
     {
         name: 'goal',
@@ -43,6 +47,12 @@ export const COMMANDS = Object.freeze([
         usage: '/win',
         summary: 'judge every recorded session and open a report page about how you work',
         detail: 'Reads every session log in ~/.sherman/sessions/, every saved eval verdict in ~/.sherman/evals/, and anything you drop in ~/.sherman/win-sources/ (exports from other tools — a ChatGPT data export, notes). One isolated read-only worker judges what is going right and wrong — vault use, skills reached for unprompted, delegation, honest limits — then the shell writes a local HTML report under ~/.sherman/win/ and opens it in your browser. The page is a local file; nothing leaves the machine.',
+    },
+    {
+        name: 'wiki',
+        usage: '/wiki',
+        summary: "capture this session's durable learnings into your LLM Wiki",
+        detail: 'Runs one turn that reads this session\'s log and folds what is worth keeping — research findings, decisions and their reasons, techniques — into your personal LLM Wiki through its MCP server (installed at ~/.sherman/llmwiki, workspace at ~/.sherman/research). Company facts still belong in the vault; the wiki is your research memory. Runs automatically when a session with turns ends, after the eval. If the wiki is not installed the command says so and does nothing.',
     },
     {
         name: 'copy',
@@ -275,6 +285,65 @@ export function evalRequest(logPath, { gaps = true, closed = false } = {}) {
         ].filter(Boolean).join('\n'),
         mode: 'read-only',
         source: 'eval',
+    };
+}
+
+/**
+ * Whether the LLM Wiki is installed on this machine.
+ *
+ * The probe is the CLI entry point install.sh provisions plus the venv
+ * interpreter the MCP entry runs under — presence of both is what "installed"
+ * means, and either alone is a broken install the shell must not build a
+ * capture turn on. Checked once at mount (see app.js): an install appearing
+ * mid-session is picked up at the next launch, the same contract as skills.
+ */
+export function wikiAvailable({ home = homedir() } = {}) {
+    const dir = join(home, '.sherman', 'llmwiki');
+    return (
+        existsSync(join(dir, 'llmwiki'))
+        && (existsSync(join(dir, '.venv', 'bin', 'python'))
+            || existsSync(join(dir, '.venv', 'Scripts', 'python.exe')))
+    );
+}
+
+/**
+ * The wiki-capture turn: the session's durable learnings, folded into the
+ * personal LLM Wiki over MCP.
+ *
+ * Deliberately a SEPARATE turn from the eval, not a clause in it. The eval is
+ * read-only because a judge that writes is grading a brain it is editing —
+ * that contract stays intact, and the capture runs after it in the exit
+ * sequence. This turn is the mirror image: it records and does not judge,
+ * and its one write surface is the wiki's own MCP tools.
+ */
+export function wikiCaptureRequest(logPath, goal) {
+    if (!logPath) return null;
+    return {
+        text: [
+            'WIKI CAPTURE TURN',
+            'This session is ending. Preserve what it learned.',
+            '',
+            `The session log is at ${logPath} — one JSON object per line,`,
+            '{role, at, text}, with role of user, sherman, or worker. Read it,',
+            'then fold the session\'s durable learnings into the personal LLM',
+            'Wiki using the llmwiki MCP tools (search first, then write):',
+            'research findings, decisions and the reasons behind them,',
+            'techniques that worked, dead ends worth not repeating. Follow the',
+            'research-wiki skill.',
+            '',
+            'What does NOT belong in the wiki: company procedures and facts',
+            '(those go to the vault via vault-write, deliberately, in their own',
+            'turn), credentials or secrets, and patient-identifying data —',
+            'never, in any form; describe shapes, withhold specifics.',
+            '',
+            'If the llmwiki MCP tools are not reachable in this session, say so',
+            'in one line and stop — do not simulate a capture. If the session',
+            'established nothing durable, say that in one line instead of',
+            'inventing an entry: an empty capture is a fine result.',
+            goal ? `Standing session goal: ${goal}` : null,
+        ].filter(Boolean).join('\n'),
+        mode: 'normal',
+        source: 'wiki',
     };
 }
 
