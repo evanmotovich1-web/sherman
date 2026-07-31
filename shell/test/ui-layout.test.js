@@ -161,10 +161,13 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     );
     assert.ok(rowsAt60 <= 58, 'a stretched launch panel must not crowd out status and composer');
 
-    // Three tiers on a wide terminal, each boundary crossed exactly once:
-    // the compact card below 22 rows, the mid panel (Vault section title and
-    // dense category lines, but no per-category label rows) from 22 to 28,
-    // the full panel (per-category rows like "session: goal, …") at 29.
+    // Three tiers on a retro-wide terminal, each boundary crossed exactly
+    // once: the compact card below 22 rows, the mid panel (Vault section
+    // title and dense category lines, but no per-category label rows) from
+    // 22 to 30, the full panel (per-category rows like "session: goal, …")
+    // at 31 — not 29, because at retro width the full panel's fifteen-row
+    // left column cannot coexist with the eight-row headline until 31, and
+    // the headline must never vanish and reappear across a two-row band.
     const wideAt = (rows) => plain(renderToString(
         React.createElement(LaunchScreen, {
             info, stats, sessionId: '20260728_010000_boundary', columns: 120, rows,
@@ -173,8 +176,8 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     ));
     const wideCard = wideAt(21);
     const wideMid = wideAt(22);
-    const wideMidTop = wideAt(28);
-    const wideFull = wideAt(29);
+    const wideMidTop = wideAt(30);
+    const wideFull = wideAt(31);
     assert.doesNotMatch(wideCard, /\bVault\b/);
     assert.match(wideCard, /larger window shows the full screen/);
     for (const mid of [wideMid, wideMidTop]) {
@@ -184,6 +187,40 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     }
     assert.match(wideFull, /\bVault\b/);
     assert.match(wideFull, /session: /);
+
+    // The headline is height-aware now: the retro lockup (its ╔ echo glyphs
+    // are unique to it) arrives at 24 rows — where the frame first affords
+    // its two extra rows — and holds through the mid band and the full panel.
+    // The first real Windows machine sits at ~26 rows and 120+ columns, and
+    // "not even the sherman logo at the top" was the complaint.
+    assert.doesNotMatch(wideAt(23), /╔/);
+    for (const rows of [24, 26, 30, 31]) {
+        assert.match(wideAt(rows), /╔/, `retro headline missing at 120x${rows}`);
+    }
+    // Below retro width the full panel still begins at 29.
+    const hundredFull = plain(renderToString(
+        React.createElement(LaunchScreen, {
+            info, stats, sessionId: '20260728_010000_boundary', columns: 100, rows: 29,
+        }),
+        { columns: 100 }
+    ));
+    assert.match(hundredFull, /session: /);
+
+    // The update notice rides the version border: present in every tier when
+    // the checkout is behind its upstream, absent otherwise, and always zero
+    // rows. SHERMAN_UPDATE_BEHIND is the test seam — the real value is a git
+    // measurement whose truth depends on the checkout running this suite.
+    try {
+        process.env.SHERMAN_UPDATE_BEHIND = '3';
+        for (const rows of [21, 26, 31]) {
+            assert.match(wideAt(rows), /⚠ update available · sherman update/,
+                `update notice missing at 120x${rows}`);
+        }
+        process.env.SHERMAN_UPDATE_BEHIND = '0';
+        assert.doesNotMatch(wideAt(26), /update available/);
+    } finally {
+        delete process.env.SHERMAN_UPDATE_BEHIND;
+    }
 
     // The card's own capability lines belong to terminals too narrow for two
     // columns: stacked, with height to spare, the card lists the categories —

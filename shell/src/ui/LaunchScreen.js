@@ -29,7 +29,14 @@ import { fileURLToPath } from 'node:url';
 
 import { color } from './theme.js';
 import { fitCategory, loadRegistry } from '../registry.js';
-import { SMALL_ROWS, Wordmark, wordmarkRows } from './Wordmark.js';
+import {
+    RETRO_MIN_COLUMNS,
+    RETRO_ROWS,
+    SMALL_ROWS,
+    STACK_MIN_COLUMNS,
+    STACK_ROWS,
+    Wordmark,
+} from './Wordmark.js';
 import { Mark, MarkStrip, markSize } from './Mark.js';
 import { safeTerminalText } from './sanitize.js';
 
@@ -190,12 +197,12 @@ function cachedRegistry() {
  * grow the panel — a terminal tall enough to trigger this but narrow enough to
  * stack must never end up with a panel SHORTER than its own content.
  */
-function tallPanelRows(width, height, naturalInnerRows) {
+function tallPanelRows(wmRows, height, naturalInnerRows) {
     if (height < TALL_MIN_ROWS) return null;
     // The height the whole frame may occupy so exactly LAUNCH_TAIL_ROWS blank
     // rows remain between it and the status rule.
     const frame = height - CHROME_ROWS - LAUNCH_TAIL_ROWS;
-    const body = frame - wordmarkRows(width) - LAUNCH_FIXED_ROWS;
+    const body = frame - wmRows - LAUNCH_FIXED_ROWS;
     return body > naturalInnerRows ? body : null;
 }
 
@@ -266,6 +273,7 @@ function readBuildInfo() {
     let version = null;
     let sha = null;
     let dirty = 0;
+    let behind = 0;
 
     try {
         version =
@@ -296,9 +304,43 @@ function readBuildInfo() {
         dirty = 0;
     }
 
-    cachedBuild = { version, sha, dirty };
+    // Commits upstream carries that HEAD does not — counted against the
+    // remote-tracking ref already on disk, so this is a local read, never a
+    // network call in a render path. The launcher freshens those refs with a
+    // background fetch at launch; offline they simply hold the last fetched
+    // truth. No upstream (a tarball install, a detached head) throws, and the
+    // notice is then omitted rather than guessed.
+    try {
+        behind = Number(
+            execFileSync('git', ['-C', REPO_ROOT, 'rev-list', '--count', 'HEAD..@{upstream}'], {
+                stdio: ['ignore', 'pipe', 'ignore'],
+            })
+                .toString()
+                .trim()
+        );
+        if (!Number.isFinite(behind) || behind < 0) behind = 0;
+    } catch {
+        behind = 0;
+    }
+
+    cachedBuild = { version, sha, dirty, behind };
     return cachedBuild;
 }
+
+/**
+ * The update-notice source, with a test seam: SHERMAN_UPDATE_BEHIND overrides
+ * the measured count (read fresh on every call, unlike the cached git reads)
+ * so layout tests can exercise both states of a notice whose real value
+ * depends on the state of the checkout running them.
+ */
+function updateBehind() {
+    if (process.env.SHERMAN_UPDATE_BEHIND != null) {
+        const forced = Number(process.env.SHERMAN_UPDATE_BEHIND);
+        return Number.isFinite(forced) && forced > 0 ? forced : 0;
+    }
+    return readBuildInfo().behind;
+}
+
 
 /**
  * The panel's top border with the build stamped into it:
@@ -309,6 +351,7 @@ function readBuildInfo() {
  */
 function VersionBorder({ width }) {
     const { version, sha, dirty } = readBuildInfo();
+    const behind = updateBehind();
 
     let label = 'Sherman Abrams';
     if (version) label += ` v${version}`;
@@ -316,13 +359,19 @@ function VersionBorder({ width }) {
     if (sha && dirty > 0) label += ` · +${dirty}`;
 
     const text = ` ${label} `;
+    // The update notice rides in the border the way the reference stamps its
+    // upstream/local divergence there: zero rows in every layout tier, and
+    // the one row that exists at every size. Present only when the local
+    // refs actually carry newer commits — a measurement, never a guess — and
+    // it names the command that clears it.
+    const notice = behind > 0 ? `⚠ update available · sherman update ` : '';
     // Centered in the border, the reference's placement. The fill splits
     // around the label; the halves differ by at most one dash on odd widths,
     // and the corners always survive because the fills are clamped, not the
     // corners. Bold accent rather than muted for the same reason the reference
     // sets its title line in its one bright colour: this row is the panel's
     // name, not a footnote on it.
-    const fill = Math.max(0, width - 2 - [...text].length);
+    const fill = Math.max(0, width - 2 - [...text].length - [...notice].length - (notice ? 2 : 0));
     const leftFill = Math.floor(fill / 2);
     const rightFill = fill - leftFill;
 
@@ -331,6 +380,12 @@ function VersionBorder({ width }) {
         { wrap: 'truncate' },
         React.createElement(Text, { color: color.frame }, '╭' + '─'.repeat(leftFill)),
         React.createElement(Text, { color: color.accent, bold: true }, text),
+        notice
+            ? React.createElement(Text, { color: color.frame }, '─ ')
+            : null,
+        notice
+            ? React.createElement(Text, { color: color.tertiary, bold: true }, notice)
+            : null,
         React.createElement(Text, { color: color.frame }, '─'.repeat(rightFill) + '╮')
     );
 }
@@ -796,7 +851,6 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
     const measured = useWindowSize();
     const width = typeof columns === 'number' ? columns : measured.columns;
     const height = typeof rows === 'number' ? rows : measured.rows;
-    const compactWordmark = height < 40;
 
     // Full bleed: the panel spans the terminal, like Hermes. Never a fixed
     // constant — the border is composed to the measured width, so a narrow
@@ -806,6 +860,7 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
     // two-column layout, stack identity above knowledge and let both shrink.
     const inner = Math.max(1, panel - 2 - PANEL_PAD_X * 2);
     const stack = inner < LEFT_COLUMN + 20;
+    const retroWide = width >= RETRO_MIN_COLUMNS;
     // The welcome sentence and its margin cost two rows after either panel.
     // The stacked cutoff moved 41 -> 44 when the identity block joined the
     // left column: a stacked frame is the wordmark, the mark, the identity AND
@@ -813,25 +868,53 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
     // overflows the two rows the chrome is owed. Below 44 the compact card —
     // which already carries model, user, vault and session in four rows — is
     // the honest fit.
-    const compactPanel = height < (stack ? 44 : 29);
+    //
+    // On a terminal wide enough for the retro headline the full panel starts
+    // at 31, not 29: its left column (the stacked mark plus identity) is a
+    // fixed fifteen rows, and 29-30 can hold it only next to the small
+    // wordmark — which would make the headline VANISH between 28 and 31 and
+    // reappear, reading as a glitch. The mid panel carries the lockup through
+    // that band instead; once the headline appears it never surrenders.
+    const fullMin = retroWide ? 31 : 29;
+    const compactPanel = height < (stack ? 44 : fullMin);
     // Between the compact card and the full panel, and only where two columns
     // fit: the abridged Mac frame. A stacked (narrow) terminal skips it — the
     // mid design IS its two columns, and stacking them re-creates the very
     // pile the compact card exists to avoid.
     const midPanel = compactPanel && !stack && height >= MID_MIN_ROWS;
 
+    // The tallest wordmark this frame can carry, height and width together.
+    // The short frames (card and mid) spend wmRows + 14 rows around the
+    // body; the full panel's floor is its fifteen-row left column plus the
+    // fixed rows. A narrow (stacked) terminal keeps the small form — the
+    // taller forms do not fit its width anyway.
+    let wordmarkForm = 'small';
+    if (!stack) {
+        if (compactPanel) {
+            if (retroWide && height - 16 >= RETRO_ROWS) wordmarkForm = 'retro';
+        } else {
+            const maxWm = height - 2 - LAUNCH_FIXED_ROWS - LEFT_ROWS;
+            if (retroWide && maxWm >= RETRO_ROWS) wordmarkForm = 'retro';
+            else if (width >= STACK_MIN_COLUMNS && maxWm >= STACK_ROWS) wordmarkForm = 'stack';
+        }
+    }
+    const wmRows =
+        wordmarkForm === 'retro' ? RETRO_ROWS
+        : wordmarkForm === 'stack' ? STACK_ROWS
+        : SMALL_ROWS;
+
     // Stacked, the mark sits above the knowledge column and the two heights
     // add; side by side, the taller of the two sets the natural height.
     const caps = listBudget({
         height,
-        wordmark: wordmarkRows(width),
+        wordmark: wmRows,
         stack,
         stats,
         registry: reg,
     });
     const known = knowledgeRows(stats, reg, caps);
     const naturalInner = stack ? LEFT_ROWS + 1 + known : Math.max(LEFT_ROWS, known);
-    const bodyRows = compactPanel ? null : tallPanelRows(width, height, naturalInner);
+    const bodyRows = compactPanel ? null : tallPanelRows(wmRows, height, naturalInner);
 
     // The budget is settled before the mark is sized, so the larger rendition
     // can only ever fill room the panel had already claimed.
@@ -843,7 +926,7 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
     return React.createElement(
         Box,
         { flexDirection: 'column', marginBottom: 1 },
-        React.createElement(Wordmark, { columns: width, compact: compactWordmark }),
+        React.createElement(Wordmark, { columns: width, form: wordmarkForm }),
         midPanel
             ? React.createElement(
                   Box,
@@ -867,13 +950,9 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
                       stats,
                       sessionId,
                       registry: reg,
-                      // The wordmark actually drawn is the compact one below
-                      // 40 rows regardless of width, so the budget must count
-                      // THAT form, not the one wordmarkRows would pick.
-                      spare:
-                          height
-                          - (compactWordmark ? SMALL_ROWS : wordmarkRows(width))
-                          - COMPACT_BASE_ROWS,
+                      // Counted against the wordmark actually drawn, which
+                      // the form selection above has already sized to fit.
+                      spare: height - wmRows - COMPACT_BASE_ROWS,
                   })
               )
             : React.createElement(

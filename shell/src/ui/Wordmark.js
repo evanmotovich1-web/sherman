@@ -153,9 +153,13 @@ export function smallWordmarkRows() {
 
 // Each threshold is its form's width plus a little air. A threshold at
 // exactly the rendered width would put the mark flush against both edges of
-// the terminal, which looks like an accident.
-const RETRO_MIN_COLUMNS = RETRO_COLUMNS + 3;
-const STACK_MIN_COLUMNS = STACK_COLUMNS + 3;
+// the terminal, which looks like an accident. Exported since the launch
+// screen began choosing the form itself: it weighs height as well as width
+// (the lockup is only two rows taller than the small form, so a short-wide
+// terminal can often afford it), and the width floors must be the same
+// numbers here and there.
+export const RETRO_MIN_COLUMNS = RETRO_COLUMNS + 3;
+export const STACK_MIN_COLUMNS = STACK_COLUMNS + 3;
 
 /**
  * A half-height edge traced over whichever columns had ink on `src`.
@@ -315,12 +319,19 @@ function Small() {
  * means the wordmark and the panel below it can never disagree about how wide
  * the terminal is.
  *
- * @param {{columns?: number, compact?: boolean}} props
+ * `form` overrides the width ladder entirely: the launch screen picks the
+ * tallest form its height budget carries and names it here, so the wordmark
+ * drawn and the rows the frame budgeted for it can never disagree.
+ *
+ * @param {{columns?: number, compact?: boolean, form?: 'retro'|'stack'|'small'|null}} props
  */
-export function Wordmark({ columns, compact = false }) {
+export function Wordmark({ columns, compact = false, form = null }) {
     const measured = useWindowSize().columns;
     const width = typeof columns === 'number' ? columns : measured;
 
+    if (form === 'retro') return React.createElement(Retro);
+    if (form === 'stack') return React.createElement(Stack);
+    if (form === 'small') return React.createElement(Small);
     if (compact) return React.createElement(Small);
     if (width >= RETRO_MIN_COLUMNS) return React.createElement(Retro);
     if (width >= STACK_MIN_COLUMNS) return React.createElement(Stack);

@@ -946,6 +946,17 @@ esac
 
 require_engine "$ENGINE"
 
+# Freshen the remote-tracking refs in the background, so the launch panel's
+# update notice can be a real measurement (HEAD..@{upstream} from local refs)
+# instead of a network call in the render path. Backgrounded and silenced:
+# a launch must never wait on the network or print fetch noise, and offline
+# the refs simply stay as they were -- the panel then reports the truth as
+# of the last successful fetch, which may be one launch behind but is never
+# invented. SHERMAN_NO_FETCH opts out entirely (tests, air-gapped machines).
+if [ -z "${SHERMAN_NO_FETCH:-}" ] && [ -d "$ROOT/.git" ]; then
+    (git -C "$ROOT" fetch --quiet >/dev/null 2>&1 &)
+fi
+
 # One id per launch, minted HERE so the same id reaches all three places it was
 # promised: the adapter's attribution rule (assembled below), both handoffs
 # (via the environment), and the shell's launch panel and session log. Per-launch

@@ -59,6 +59,12 @@ FAILURES=0
 TOTAL_CHECKS=23
 SMOKE_USER="smoke-tester"
 
+# The launcher freshens remote refs in the background at launch. A check
+# suite that spawned a dozen network fetches against the real origin would
+# be slow, flaky offline, and pointless -- every check here is about local
+# behavior.
+export SHERMAN_NO_FETCH=1
+
 pass() { echo "  PASS  $*"; PASSES=$((PASSES + 1)); }
 skip() { echo "  SKIP  $*"; SKIPPED=$((SKIPPED + 1)); }
 fail() { echo "  FAIL  $*"; FAILURES=$((FAILURES + 1)); }

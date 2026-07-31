@@ -85,9 +85,15 @@ function contextSegment(used, window, busy, estimated = false) {
 
     const ratio = used / window;
     const percent = Math.max(0, Math.round(ratio * 100));
+    // At least one lit cell once anything is used: below a tenth of the
+    // window, floor alone leaves the bar entirely dark next to a nonzero
+    // figure — "15.6k · [░░░░░░░░░░] 6%" — which reads as a meter that does
+    // not work, not as a session that is young. Seen on the first real
+    // Windows machine. One lit cell overstates by at most half a cell, the
+    // same rounding license the percentage itself already takes.
     const filled = ratio >= 1
         ? METER_CELLS
-        : Math.max(0, Math.floor(ratio * METER_CELLS));
+        : Math.max(used > 0 ? 1 : 0, Math.floor(ratio * METER_CELLS));
     // An estimate never borrows the alarm colour. Red says "you are over the
     // window", which is a measured claim this figure has not earned.
     const contextTint = ratio > 1 && !estimated ? color.error : color.accent;
