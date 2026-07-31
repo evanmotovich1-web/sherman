@@ -12,6 +12,7 @@
 #   sherman --raw     exec the engine directly, its own chrome, for debugging
 #   sherman update    fast-forward this checkout from its remote
 #   sherman sync      pull + publish the shared vault (wiki, shared memory, inbox)
+#   sherman model     read or set the codex model, verified by read-back
 #   sherman telegram  the Telegram bridge, same adapter and engine layer as the shell
 #
 # Target shell: macOS system bash 3.2. No ${var,,}, no associative arrays,
@@ -305,18 +306,74 @@ run_wizard() {
     echo
 }
 
-# Model question (codex only). Codex owns the model choice: the shell reads
-# it back from codex's own config and never forces -m, so the one honest
-# place to record a preference is that config. An existing top-level model
-# line is shown and kept unless a new name is typed; the file is backed up
-# before any edit, and the claim after follows a read-back. Reads $engine.
+# Codex owns the model choice: the shell reads it back from codex's own
+# config and never forces -m, so the one honest place to record a
+# preference is that config. Top-level key only; the file is backed up
+# before any edit and every claim follows a read-back.
+codex_config_path() { printf '%s' "${CODEX_HOME:-$HOME/.codex}/config.toml"; }
+
+read_codex_model() {
+    cfg=$(codex_config_path)
+    [ -f "$cfg" ] || return 0
+    sed -n '/^\[/q; s/^[[:space:]]*model[[:space:]]*=[[:space:]]*"\{0,1\}\([^"#]*\)"\{0,1\}[[:space:]]*$/\1/p' "$cfg" | head -1
+}
+
+# Refuses input that cannot be a model name. Learned on the first real
+# Windows machine, where a stray keystroke became model = "k" in codex's
+# config and would have failed every turn: a single character or anything
+# without a digit is a typo, not a model, and writing it is worse than
+# asking again.
+write_codex_model() {
+    new_model="$1"
+    cfg=$(codex_config_path)
+    case "$new_model" in
+        ''|*[!A-Za-z0-9._-]*)
+            echo "  '$new_model' does not look like a model name; nothing was changed."
+            return 1 ;;
+    esac
+    case "$new_model" in
+        *[0-9]*) ;;
+        *)
+            echo "  '$new_model' does not look like a model name (no digit); nothing was changed."
+            return 1 ;;
+    esac
+    if [ "${#new_model}" -lt 2 ]; then
+        echo "  '$new_model' does not look like a model name; nothing was changed."
+        return 1
+    fi
+    current_model=$(read_codex_model)
+    mkdir -p "$(dirname "$cfg")"
+    if [ -f "$cfg" ]; then
+        cp "$cfg" "$cfg.sherman-backup"
+        if [ -n "$current_model" ]; then
+            # Replace the top-level line only; section keys are that
+            # section's business, exactly as the shell reads it.
+            awk -v m="$new_model" '
+                /^\[/ { insec = 1 }
+                !insec && /^[[:space:]]*model[[:space:]]*=/ && !done {
+                    print "model = \"" m "\""; done = 1; next
+                }
+                { print }' "$cfg" > "$cfg.sherman-tmp" \
+                && mv "$cfg.sherman-tmp" "$cfg"
+        else
+            { printf 'model = "%s"\n' "$new_model"; cat "$cfg.sherman-backup"; } > "$cfg"
+        fi
+    else
+        printf 'model = "%s"\n' "$new_model" > "$cfg"
+    fi
+    written=$(read_codex_model)
+    if [ "$written" = "$new_model" ]; then
+        echo "  model $new_model set (verified: read back from codex's own config)"
+        return 0
+    fi
+    echo "  could not verify the model landed in $cfg -- codex's default stays in effect."
+    return 1
+}
+
+# Model question (codex only). Reads $engine.
 ask_model() {
     if [ "$engine" = "codex" ]; then
-        codex_cfg="${CODEX_HOME:-$HOME/.codex}/config.toml"
-        current_model=""
-        if [ -f "$codex_cfg" ]; then
-            current_model=$(sed -n '/^\[/q; s/^[[:space:]]*model[[:space:]]*=[[:space:]]*"\{0,1\}\([^"#]*\)"\{0,1\}[[:space:]]*$/\1/p' "$codex_cfg" | head -1)
-        fi
+        current_model=$(read_codex_model)
         echo
         if [ -n "$current_model" ]; then
             printf 'Codex model [current: %s] — Enter keeps it, or type another > ' "$current_model"
@@ -326,31 +383,7 @@ ask_model() {
         read -r model_reply || model_reply=""
         model_reply=$(printf '%s' "$model_reply" | tr -d '"' | tr -d ' ')
         if [ -n "$model_reply" ]; then
-            mkdir -p "$(dirname "$codex_cfg")"
-            if [ -f "$codex_cfg" ]; then
-                cp "$codex_cfg" "$codex_cfg.sherman-backup"
-                if [ -n "$current_model" ]; then
-                    # Replace the top-level line only; section keys are that
-                    # section's business, exactly as the shell reads it.
-                    awk -v m="$model_reply" '
-                        /^\[/ { insec = 1 }
-                        !insec && /^[[:space:]]*model[[:space:]]*=/ && !done {
-                            print "model = \"" m "\""; done = 1; next
-                        }
-                        { print }' "$codex_cfg" > "$codex_cfg.sherman-tmp" \
-                        && mv "$codex_cfg.sherman-tmp" "$codex_cfg"
-                else
-                    { printf 'model = "%s"\n' "$model_reply"; cat "$codex_cfg.sherman-backup"; } > "$codex_cfg"
-                fi
-            else
-                printf 'model = "%s"\n' "$model_reply" > "$codex_cfg"
-            fi
-            written=$(sed -n '/^\[/q; s/^[[:space:]]*model[[:space:]]*=[[:space:]]*"\{0,1\}\([^"#]*\)"\{0,1\}[[:space:]]*$/\1/p' "$codex_cfg" | head -1)
-            if [ "$written" = "$model_reply" ]; then
-                echo "  model $model_reply set (verified: read back from codex's own config)"
-            else
-                echo "  could not verify the model landed in $codex_cfg -- codex's default stays in effect."
-            fi
+            write_codex_model "$model_reply" || true
         fi
     fi
 }
@@ -683,6 +716,24 @@ fi
 # `sync` likewise: vault sharing needs git and a remote, not an engine.
 if [ "${1:-}" = "sync" ]; then
     run_sync
+fi
+
+# `model` reads or sets the codex model -- the same backed-up, read-back
+# verified write setup performs, callable any time a wrong value needs
+# fixing without re-running setup.
+if [ "${1:-}" = "model" ]; then
+    shift
+    if [ -z "${1:-}" ]; then
+        current=$(read_codex_model)
+        if [ -n "$current" ]; then
+            echo "model: $current (from $(codex_config_path))"
+        else
+            echo "model: codex default (no top-level model in $(codex_config_path))"
+        fi
+        echo "change it with: sherman model <name>   (e.g. sherman model gpt-5.6-sol)"
+        exit 0
+    fi
+    if write_codex_model "$1"; then exit 0; else exit 1; fi
 fi
 
 # `telegram` runs the messaging bridge over the same assembled adapter the
