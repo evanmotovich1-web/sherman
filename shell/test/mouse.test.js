@@ -18,6 +18,12 @@ import React from 'react';
 import { render } from 'ink';
 import chalk from 'chalk';
 
+// These tests wait on repaints after events that may not re-render by
+// themselves; the idle clock is their backstop. Production hops it to 10s
+// (small-viewport waterfall, issue #18) — restore a fast tick here so the
+// waits stay about mouse behavior, not clock schedules.
+process.env.SHERMAN_IDLE_TICK_MS = '100';
+
 import { App } from '../src/ui/app.js';
 import {
     MOUSE_OFF,

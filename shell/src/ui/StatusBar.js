@@ -155,8 +155,13 @@ export function StatusBar({
     // Terminal via ConPTY), Ink cannot repaint in place and every tick
     // appends a copy of the frame -- a once-a-second idle clock turned that
     // into a waterfall. An idle clock that hops 10s at a time costs nothing;
-    // during a turn the busy hook above still animates at full rate.
-    useAnimation({ interval: 10000, isActive: !busy });
+    // during a turn the busy hook above still animates at full rate. The env
+    // override exists for tests that need a fast repaint backstop, not for
+    // operators.
+    const idleTickMs = Number(process.env.SHERMAN_IDLE_TICK_MS) > 0
+        ? Number(process.env.SHERMAN_IDLE_TICK_MS)
+        : 10000;
+    useAnimation({ interval: idleTickMs, isActive: !busy });
 
     if (viewportWidth < MIN_STATUS_COLUMNS) return null;
 
