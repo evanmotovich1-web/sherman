@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.15'
+$Build = '2026-07-30.16'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -421,6 +421,26 @@ if ($pathDir) {
         Say  "~/.bashrc. Not fatal: Sherman is launched by its own path"
         Say  "below. To run it later, use: $linkTilde"
     }
+}
+
+# ------------------------------------------------ sherman from PowerShell --
+# Typing `sherman` in a Windows shell must work too -- the person should
+# not have to know which side of WSL they are on. WindowsApps is on every
+# user's PATH by default and is user-writable, so a small .cmd shim there
+# makes `sherman` (and `sherman update`, `sherman telegram`, ...) work from
+# any PowerShell or cmd window, no PATH edit, no new shell needed.
+$shimDir = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps'
+$shim = Join-Path $shimDir 'sherman.cmd'
+try {
+    if (-not (Test-Path $shimDir)) { New-Item -ItemType Directory -Path $shimDir -Force | Out-Null }
+    Set-Content -Path $shim -Value "@echo off`r`nwsl.exe -d $Distro -- bash -lc `"$linkTilde %*`"`r`n" -Encoding ascii
+    if (Test-Path $shim) {
+        Say "the sherman command now works in PowerShell too (verified:"
+        Say "$shim exists)"
+    }
+} catch {
+    Say "could not add a PowerShell 'sherman' command; inside $Distro it"
+    Say "works regardless."
 }
 
 # ------------------------------------------------------------------- report --
