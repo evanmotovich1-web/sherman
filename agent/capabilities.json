@@ -76,6 +76,20 @@
       "tools": [
         { "name": "web_search", "verify": "engine" }
       ]
+    },
+    {
+      "name": "mail",
+      "summary": "draft email into your browser, ready to send",
+      "tools": [
+        { "name": "email", "verify": "command" }
+      ]
+    },
+    {
+      "name": "insight",
+      "summary": "how you and Sherman work, judged over time",
+      "tools": [
+        { "name": "win", "verify": "command" }
+      ]
     }
   ]
 }

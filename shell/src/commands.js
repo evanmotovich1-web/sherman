@@ -30,7 +30,19 @@ export const COMMANDS = Object.freeze([
         name: 'eval',
         usage: '/eval [gaps|conduct]',
         summary: 'grade this session against the skills, and propose missing ones',
-        detail: 'Runs one read-only turn that reads this session\'s log and reports where skills and the vault were used or missed, whether durable knowledge was written, and what capability was missing. It judges and proposes; it never writes. Runs automatically when a session with turns in it ends, and as a background checkpoint every 10 minutes while a session with new turns is live.',
+        detail: 'Runs one read-only turn that reads this session\'s log and reports where skills, workers, and the vault were used or missed, whether durable knowledge was written, and what capability was missing. It judges and proposes; it never writes to the vault. The shell saves each verdict to ~/.sherman/evals/ so trends survive the session. Runs automatically when a session with turns in it ends, and as a background checkpoint every 10 minutes while a session with new turns is live.',
+    },
+    {
+        name: 'email',
+        usage: '/email <who to write and what to say>',
+        summary: 'draft an email and open it in your browser, ready to send',
+        detail: 'Runs one read-only turn that drafts the email from your request and company knowledge, then opens a Gmail compose window in your browser with recipient, subject, and body already filled in. Sherman never sends mail — you review the draft and press Send. The no-PHI rule applies to drafts like everything else.',
+    },
+    {
+        name: 'win',
+        usage: '/win',
+        summary: 'judge every recorded session and open a report page about how you work',
+        detail: 'Reads every session log in ~/.sherman/sessions/, every saved eval verdict in ~/.sherman/evals/, and anything you drop in ~/.sherman/win-sources/ (exports from other tools — a ChatGPT data export, notes). One isolated read-only worker judges what is going right and wrong — vault use, skills reached for unprompted, delegation, honest limits — then the shell writes a local HTML report under ~/.sherman/win/ and opens it in your browser. The page is a local file; nothing leaves the machine.',
     },
     {
         name: 'copy',
@@ -238,7 +250,7 @@ export function evalRequest(logPath, { gaps = true } = {}) {
             'skills/. You do not have the conversation in context, and you must not',
             'reconstruct it from memory.',
             '',
-            'Follow the session-eval skill. Report on all five of its checks, citing',
+            'Follow the session-eval skill. Report on all six of its checks, citing',
             'the specific turn behind every judgment, and say "not applicable" where',
             'the session contained no work of that kind rather than claiming a pass.',
             gaps
@@ -257,6 +269,59 @@ export function evalRequest(logPath, { gaps = true } = {}) {
         mode: 'read-only',
         source: 'eval',
     };
+}
+
+/**
+ * The email drafting turn. Read-only: composing words is not a reason to hold
+ * write access, and the draft is the only thing this turn may produce. The
+ * shell — not the engine — opens the browser afterward, because the browser
+ * lives on the host, outside the sandbox, exactly like the clipboard.
+ */
+export function emailRequest(instruction, goal) {
+    if (!instruction) return null;
+    return {
+        text: [
+            'EMAIL DRAFTING TURN',
+            `Request: ${instruction}`,
+            goal ? `Standing session goal: ${goal}` : null,
+            '',
+            'Draft the email this request asks for, using company knowledge from the vault where it helps.',
+            'Return ONLY a JSON object — no code fence, no prose before or after it:',
+            '{"to": "<recipient address, or empty string if the request names none>", "subject": "<subject line>", "body": "<the full email body, plain text>"}',
+            'Write the body ready to send: greeting, content, sign-off. Never invent a recipient address — an empty "to" is better than a guessed one.',
+            'Never put patient-identifying information in an email draft. The Sherman operating contract and no-PHI rule remain authoritative.',
+        ].filter(Boolean).join('\n'),
+        mode: 'read-only',
+        source: 'email',
+    };
+}
+
+/**
+ * The draft, out of the engine's reply. Tolerant of a model that wrapped the
+ * JSON in a fence or a sentence despite instructions — the first {...} span
+ * that parses wins — and strict about the result: a draft with no body is not
+ * a draft, and `null` here is what keeps the shell from opening a compose
+ * window on garbage.
+ */
+export function parseEmailDraft(text) {
+    if (typeof text !== 'string') return null;
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+    let parsed;
+    try {
+        parsed = JSON.parse(text.slice(start, end + 1));
+    } catch {
+        return null;
+    }
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const field = (value) => (typeof value === 'string' ? value.trim() : '');
+    const draft = {
+        to: field(parsed.to),
+        subject: field(parsed.subject),
+        body: field(parsed.body),
+    };
+    return draft.body ? draft : null;
 }
 
 export function workerRequest(task, goal) {

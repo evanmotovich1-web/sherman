@@ -26,14 +26,19 @@ import {
     carryOverEnvelope,
     commandFor,
     compactRequest,
+    emailRequest,
     evalRequest,
     goalEnvelope,
     helpText,
+    parseEmailDraft,
     parseSubmission,
     planRequest,
     shouldAutoCompact,
     workerRequest,
 } from '../commands.js';
+import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
+import { appendEvalReport } from '../evalstore.js';
+import { collectWinSources, renderWinHtml, winRequest, writeWinSite } from '../win.js';
 
 // Monotonic ids. React list keys must be stable per item, and array index is
 // not one — items keep their identity while the array in front of them grows.
@@ -522,6 +527,20 @@ export function App({
             let request = parsed.kind === 'prompt' ? goalEnvelope(parsed.text, goal) : null;
             let messageKind = 'message';
             let isWorker = false;
+            // An email turn's reply is machine-shaped (the draft as JSON), so
+            // it accumulates here instead of committing raw to the transcript;
+            // what commits is the readable draft, after the turn.
+            let isEmail = false;
+            let emailReply = '';
+            // Eval verdicts commit to the transcript like any reply AND
+            // accumulate here, so the verdict outlives the session in
+            // ~/.sherman/evals/ where /win and the operator can find trends.
+            let isEval = false;
+            let evalReply = '';
+            // /win's verdict becomes a page: accumulated, rendered, opened.
+            let isWin = false;
+            let winSources = null;
+            let winReply = '';
 
             if (parsed.kind === 'command' && parsed.name === 'plan') {
                 request = planRequest(parsed.args, goal);
@@ -530,6 +549,16 @@ export function App({
                     return;
                 }
                 commit('notice', 'planning turn · read-only sandbox');
+            }
+
+            if (parsed.kind === 'command' && parsed.name === 'email') {
+                request = emailRequest(parsed.args, goal);
+                if (!request) {
+                    commit('error', 'Usage: /email <who to write and what to say>.');
+                    return;
+                }
+                isEmail = true;
+                commit('notice', 'drafting turn · read-only · the compose window opens when the draft is ready');
             }
 
             if (parsed.kind === 'command' && parsed.name === 'eval') {
@@ -547,7 +576,32 @@ export function App({
                 }
                 evalRanRef.current = true;
                 lastEvalTurnRef.current = turnsRef.current;
+                isEval = true;
                 commit('notice', 'evaluating this session · read-only · judging conduct, not answers');
+            }
+
+            if (parsed.kind === 'command' && parsed.name === 'win') {
+                if (!sessionFactory) {
+                    commit('error', 'This shell cannot create an isolated worker session.');
+                    return;
+                }
+                const sources = collectWinSources();
+                if (sources.sessions.length === 0 && sources.evals.length === 0) {
+                    commit('error', 'Nothing to judge yet: no session logs under ~/.sherman/sessions/. Work a session or two first.');
+                    return;
+                }
+                engine = sessionFactory();
+                request = winRequest(sources, goal);
+                messageKind = 'worker-message';
+                isWorker = true;
+                isWin = true;
+                winSources = sources;
+                commit('notice', [
+                    `judging ${sources.sessions.length} session log${sources.sessions.length === 1 ? '' : 's'}`,
+                    `${sources.evals.length} eval verdict${sources.evals.length === 1 ? '' : 's'}`,
+                    sources.extras.length ? `${sources.extras.length} export${sources.extras.length === 1 ? '' : 's'}` : null,
+                    'isolated · read-only · the page opens when the verdict lands',
+                ].filter(Boolean).join(' · '));
             }
 
             if (parsed.kind === 'command' && parsed.name === 'subagent') {
@@ -605,6 +659,21 @@ export function App({
                             break;
 
                         case 'message':
+                            if (isEmail) {
+                                // Logged (it is what the engine said) but not
+                                // committed: the operator reads the draft the
+                                // shell prints after the turn, not its JSON.
+                                emailReply = emailReply ? `${emailReply}\n\n${event.text}` : event.text;
+                                log.append('sherman', event.text);
+                                addStreamed(event.text);
+                                break;
+                            }
+                            if (isEval) {
+                                evalReply = evalReply ? `${evalReply}\n\n${event.text}` : event.text;
+                            }
+                            if (isWin) {
+                                winReply = winReply ? `${winReply}\n\n${event.text}` : event.text;
+                            }
                             commit(messageKind, event.text);
                             log.append(isWorker ? 'worker' : 'sherman', event.text);
                             if (!isWorker) addStreamed(event.text);
@@ -751,12 +820,54 @@ export function App({
                 setLastTurnMs(Date.now() - turnStartRef.current);
             }
 
+            if (isEval && evalReply) {
+                appendEvalReport(sessionId, 'session eval', evalReply);
+            }
+
+            if (isWin) {
+                if (!winReply.trim()) {
+                    commit('error', 'The review produced no verdict, so no page was written.');
+                } else {
+                    const file = writeWinSite(renderWinHtml(winReply, {
+                        sessions: winSources.sessions.length,
+                        evals: winSources.evals.length,
+                        extras: winSources.extras.length,
+                    }));
+                    if (!file) {
+                        commit('error', 'Could not write the report page under ~/.sherman/win/ — the verdict above is the report.');
+                    } else {
+                        const opened = openPath(file);
+                        commit('notice', opened.ok
+                            ? `report written to ${file} · opening in your browser`
+                            : `report written to ${file} · could not open a browser here (${opened.reason})`);
+                    }
+                }
+            }
+
+            if (isEmail) {
+                const draft = parseEmailDraft(emailReply);
+                if (!draft) {
+                    // The reply, whatever it was, still belongs to the record —
+                    // and no compose window opens on a reply that did not parse.
+                    if (emailReply.trim()) commit('message', emailReply);
+                    commit('error', 'The draft did not come back in an openable shape, so no compose window was opened.');
+                } else {
+                    commit('message', [
+                        `To: ${draft.to || '(add the recipient in the compose window)'}`,
+                        `Subject: ${draft.subject || '(none)'}`,
+                        '',
+                        draft.body,
+                    ].join('\n'));
+                    commit('notice', openNotice(openUrl(composeUrl(draft))));
+                }
+            }
+
             if (autoCompactPercent !== null) {
                 commit('notice', `context ${autoCompactPercent}% · compacting automatically`);
                 await compactSession('');
             }
         },
-        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, session, sessionFactory, setBusyBoth, log]
+        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, session, sessionFactory, sessionId, setBusyBoth, log]
     );
     submitRef.current = submit;
 
@@ -805,6 +916,7 @@ export function App({
                 if (verdict) {
                     commit('worker-message', verdict);
                     log.append('worker', verdict);
+                    appendEvalReport(sessionId, 'checkpoint eval', verdict);
                 }
             } catch (err) {
                 commit('error', `checkpoint eval failed: ${err?.message ?? String(err)}`);
@@ -822,7 +934,7 @@ export function App({
             bgEvalWorkerRef.current?.dispose();
             bgEvalWorkerRef.current = null;
         };
-    }, [commit, evalEveryMs, log, session, sessionFactory]);
+    }, [commit, evalEveryMs, log, session, sessionFactory, sessionId]);
 
     // Two-stage Ctrl+C, proven in a pty at plan time. Ink is started with
     // exitOnCtrlC:false so this handler is what decides.

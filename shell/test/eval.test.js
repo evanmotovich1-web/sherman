@@ -300,3 +300,27 @@ test('an untouched session is never checkpoint-graded', async () => {
         rmSync(h.home, { recursive: true, force: true });
     }
 });
+
+// Verdicts must outlive the session: one Markdown file per session under
+// ~/.sherman/evals/, appended per verdict, silent on failure like the log.
+test('eval reports persist per session and fail silently without a home', async () => {
+    const { appendEvalReport, evalsDir } = await import('../src/evalstore.js');
+    const { readFileSync } = await import('node:fs');
+
+    const home = mkdtempSync(join(tmpdir(), 'sherman-evalstore-'));
+    try {
+        assert.equal(appendEvalReport('20260731_100000_ab12', 'exit eval', 'Verdict one.', { home }), true);
+        assert.equal(appendEvalReport('20260731_100000_ab12', 'checkpoint eval', 'Verdict two.', { home }), true);
+        const written = readFileSync(join(evalsDir(home), '20260731_100000_ab12.md'), 'utf8');
+        assert.match(written, /## exit eval/);
+        assert.match(written, /Verdict one\./);
+        assert.match(written, /## checkpoint eval/);
+        assert.match(written, /Verdict two\./);
+
+        // Nothing to say, nothing written, no crash.
+        assert.equal(appendEvalReport('', 'exit eval', 'x', { home }), false);
+        assert.equal(appendEvalReport('id', 'exit eval', '   ', { home }), false);
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});

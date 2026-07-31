@@ -49,12 +49,20 @@ failure this whole system exists to prevent.
 not repeated, and not persisted? This is pass/fail and it outranks everything
 else in the report.
 
+**6. Work delegated when it warranted it.** Side-quests that would have buried
+the main thread — a broad file sweep, background research, a second opinion —
+belong in an isolated read-only worker (`/subagent`; worker turns appear in the
+log with role `worker`). Judge both directions, unprompted like everything
+else: the side-quest the main thread ground through itself when a worker
+should have carried it, and the worker spawned for work the main thread
+should have kept.
+
 ## How to report
 
 Ground every judgment in a specific turn. A grade with no citation is an
 opinion, and the operator cannot act on it.
 
-For each of the five, state one of:
+For each of the six, state one of:
 
 - **held** — with the turn that shows it
 - **missed** — with the turn where the opportunity was, and the specific thing

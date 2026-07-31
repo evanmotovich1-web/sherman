@@ -703,3 +703,184 @@ test('/exit runs the end-of-session eval before leaving a used session', async (
         rmSync(home, { recursive: true, force: true });
     }
 });
+
+// /email end to end against a fake engine: the drafting request is read-only,
+// the raw JSON reply never reaches the transcript, the readable draft does,
+// and with browsers disabled the notice says plainly that nothing opened.
+test('/email drafts through the engine and reports the open honestly', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-shell-email-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+    process.env.SHERMAN_NO_BROWSER = '1';
+
+    const requests = [];
+    const session = {
+        info: {
+            engine: 'fake', model: 'email-model', user: 'test-user',
+            vaultPath: '/tmp/sherman-command-test/vault', threadId: null,
+            contextWindow: 100000,
+        },
+        usage: zeroUsage(),
+        async *send(request) {
+            requests.push(request);
+            yield { kind: 'turn-start' };
+            yield {
+                kind: 'message',
+                text: '{"to": "lab@example.com", "subject": "Analyzers back up", "body": "Both analyzers passed QC this morning."}',
+            };
+            yield { kind: 'turn-end', usage: zeroUsage() };
+        },
+        interrupt() {},
+        dispose() {},
+    };
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+
+    const stdout = new PassThrough();
+    stdout.columns = 100;
+    stdout.rows = 40;
+    let captured = '';
+    stdout.on('data', (chunk) => { captured += chunk.toString(); });
+
+    const instance = render(
+        React.createElement(App, {
+            session, sessionId: '20260731_090000_email1',
+        }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    type(stdin, '/email tell the lab the analyzers are back up', 40);
+
+    try {
+        // Off a TTY Ink defers frames until unmount, so the wait watches disk:
+        // the session log carries the engine reply the moment the turn lands.
+        const { readFileSync: readLog } = await import('node:fs');
+        const logPath = join(home, '.sherman', 'sessions', '20260731_090000_email1.jsonl');
+        await until(() => {
+            try {
+                return readLog(logPath, 'utf8').includes('Analyzers back up');
+            } catch {
+                return false;
+            }
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        instance.unmount();
+
+        assert.equal(requests[0].mode, 'read-only');
+        assert.equal(requests[0].source, 'email');
+        assert.match(requests[0].text, /analyzers are back up/);
+
+        const output = plain(captured);
+        assert.match(output, /To: lab@example\.com/);
+        assert.match(output, /Both analyzers passed QC this morning\./);
+        // The raw JSON reply must not have been committed as a message.
+        assert.doesNotMatch(output, /"subject":/);
+        // Browsers are disabled in this test, and the notice says so instead
+        // of claiming a window opened.
+        assert.match(output, /Could not open a browser here/);
+        assert.match(output, /SHERMAN_NO_BROWSER/);
+    } finally {
+        // Second unmount is a no-op; in finally so a timed-out wait can never
+        // leave the Ink instance mounted and the test runner alive forever.
+        instance.unmount();
+        delete process.env.SHERMAN_NO_BROWSER;
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+// /win end to end: the worker gets the evidence paths, the verdict becomes a
+// page under ~/.sherman/win/, and with browsers disabled the notice still
+// names the file instead of claiming a window.
+test('/win judges the recorded sessions into a local page', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-shell-win-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+    process.env.SHERMAN_NO_BROWSER = '1';
+
+    const { mkdirSync, writeFileSync, readdirSync, readFileSync } = await import('node:fs');
+    mkdirSync(join(home, '.sherman', 'sessions'), { recursive: true });
+    writeFileSync(
+        join(home, '.sherman', 'sessions', '20260730_a.jsonl'),
+        JSON.stringify({ role: 'user', at: '2026-07-30T00:00:00Z', text: 'hello' }) + '\n'
+    );
+
+    const workerRequests = [];
+    const worker = {
+        info: {
+            engine: 'fake', model: 'win-model', user: 'test-user',
+            vaultPath: '/tmp/sherman-command-test/vault', threadId: null,
+            contextWindow: 100000,
+        },
+        usage: zeroUsage(),
+        async *send(request) {
+            workerRequests.push(request);
+            yield { kind: 'turn-start' };
+            yield { kind: 'message', text: '# What is going right\n- vault cited in 20260730_a' };
+            yield { kind: 'turn-end', usage: zeroUsage() };
+        },
+        interrupt() {},
+        dispose() {},
+    };
+    const main = fakeSession([], 'main');
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+    const stdout = new PassThrough();
+    stdout.columns = 100;
+    stdout.rows = 40;
+    let captured = '';
+    stdout.on('data', (chunk) => { captured += chunk.toString(); });
+
+    const instance = render(
+        React.createElement(App, {
+            session: main, sessionId: '20260731_100000_win1',
+            sessionFactory: () => worker,
+        }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    type(stdin, '/win', 40);
+
+    const winDir = join(home, '.sherman', 'win');
+    try {
+        // Same off-TTY rule as /email: wait on the page landing on disk.
+        await until(() => {
+            try {
+                return readdirSync(winDir).some((n) => n.endsWith('.html'));
+            } catch {
+                return false;
+            }
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        instance.unmount();
+
+        assert.equal(workerRequests[0].mode, 'isolated-read-only');
+        assert.equal(workerRequests[0].source, 'win');
+        assert.match(workerRequests[0].text, /20260730_a\.jsonl/);
+
+        const output = plain(captured);
+        // Two logs: the fixture AND the live session's own log — the shell
+        // records the /win turn itself before the worker is spawned.
+        assert.match(output, /judging 2 session logs/);
+        assert.match(output, /could not open a browser here/);
+
+        const pages = readdirSync(winDir).filter((n) => n.endsWith('.html'));
+        assert.equal(pages.length, 1);
+        const page = readFileSync(join(winDir, pages[0]), 'utf8');
+        assert.match(page, /<h1>What is going right<\/h1>/);
+        assert.match(page, /2 session logs/);
+    } finally {
+        instance.unmount();
+        delete process.env.SHERMAN_NO_BROWSER;
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
