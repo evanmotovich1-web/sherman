@@ -18,13 +18,33 @@
 // where its runner says so — the first real run is the first test, the same
 // honest footing install.ps1 started on.
 
+import { randomBytes } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { loadConfig } from '../shell/src/config.js';
 import { selectBackend } from '../shell/src/engine/index.js';
 
 const config = loadConfig();
 
 const token = process.env.TELEGRAM_BOT_TOKEN || config.telegramToken || '';
-const allowedChat = String(process.env.SHERMAN_TELEGRAM_CHAT || config.telegramChat || '');
+let allowedChat = String(process.env.SHERMAN_TELEGRAM_CHAT || config.telegramChat || '');
+
+// Pairing happens by proving you can see this terminal: the bridge shows a
+// code here, the person texts it to the bot, and the first chat that sends
+// it becomes the ONE chat the bridge answers -- written to the config so it
+// survives restarts. No command to run, no id to copy.
+const pairingCode = allowedChat ? '' : randomBytes(3).toString('hex').toUpperCase();
+
+function persistPairedChat(chatId) {
+    const parsed = JSON.parse(readFileSync(config.configPath, 'utf8'));
+    parsed.telegram_chat = String(chatId);
+    writeFileSync(config.configPath, JSON.stringify(parsed) + '\n');
+    // Verified by reading back, same as every claim in this repo.
+    const check = JSON.parse(readFileSync(config.configPath, 'utf8'));
+    if (String(check.telegram_chat) !== String(chatId)) {
+        throw new Error('pairing did not persist to the config');
+    }
+    allowedChat = String(chatId);
+}
 
 if (!token) {
     console.error('No Telegram bot token.');
@@ -57,8 +77,8 @@ async function reply(chatId, text) {
 }
 
 const PAIRING =
-    'This Sherman answers only its owner. To pair this chat, run on the ' +
-    'machine that hosts Sherman:\n\n    sherman telegram --allow ';
+    'This Sherman answers only its owner. To pair this chat, send the ' +
+    'pairing code shown in the terminal where sherman telegram is running.';
 
 const HELLO =
     'Sherman Abrams — company agent for Sherman Abrams Labs.\n\n' +
@@ -82,9 +102,16 @@ async function handle(message) {
     const text = (message.text ?? '').trim();
     if (!chatId || !text) return;
 
+    if (!allowedChat && pairingCode && text.toUpperCase() === pairingCode) {
+        persistPairedChat(chatId);
+        console.log(`chat ${chatId} paired (verified: read back from config)`);
+        await reply(chatId, 'Paired. This phone now reaches Sherman.\n\n' + HELLO);
+        return;
+    }
+
     if (!allowedChat || String(chatId) !== allowedChat) {
         console.log(`unpaired chat ${chatId} knocked; told it how pairing works`);
-        await reply(chatId, PAIRING + chatId);
+        await reply(chatId, PAIRING);
         return;
     }
 
@@ -113,7 +140,12 @@ async function main() {
     const me = await tg('getMe');
     console.log(`bridge up: @${me.username} · engine ${config.engine}`);
     if (!allowedChat) {
-        console.log('no chat paired yet — message the bot once and it will show the id to allow.');
+        console.log('');
+        console.log(`  To pair your phone: open https://t.me/${me.username} in Telegram`);
+        console.log(`  and send it this pairing code:  ${pairingCode}`);
+        console.log('');
+        console.log('  The first chat that sends the code becomes the one chat this');
+        console.log('  bridge answers. Everyone else is turned away.');
     } else {
         console.log(`answering chat ${allowedChat} only`);
     }

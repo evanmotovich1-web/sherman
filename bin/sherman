@@ -357,19 +357,35 @@ ask_model() {
 
 # Telegram question (optional). The connect flow is offered because the
 # bridge exists (bridge/telegram.js) -- DESIGN.md's rule, honored in that
-# order. Enter skips; nothing is ever required here. WhatsApp is named as
-# not built because silence would read as "does not exist" -- but it is
-# named honestly, not menued. Sets $tg_token.
+# order. Enter skips; nothing is ever required here. Guided step-by-step
+# because "paste a token" assumes the person already knows BotFather:
+# spelled-out taps, a suggested name, and one string to copy. Telegram has
+# no email+password login and only BotFather mints bots, so a token IS the
+# minimal honest secret -- Sherman never asks for anyone's Telegram account
+# login. WhatsApp is named as not built because silence would read as
+# "does not exist". Reads $user for the suggested bot name; sets $tg_token.
 ask_telegram() {
     tg_token=""
+    bot_slug=$(printf '%s' "${user:-sherman}" | tr '-' '_')
     echo
-    echo "Connect Telegram (optional): message @BotFather in Telegram, send"
-    echo "/newbot, and paste the bot token here. Enter skips -- you can"
-    echo "connect later with: sherman telegram --token <token>"
+    echo "Use Sherman from your phone via Telegram (optional -- Enter skips):"
+    echo
+    echo "  1. Open Telegram and go to:  https://t.me/BotFather"
+    echo "  2. Send:      /newbot"
+    echo "  3. Name it:   ${user:-your name}'s Sherman"
+    echo "  4. Username:  ${bot_slug}_sherman_bot     (Telegram requires the 'bot' ending)"
+    echo "  5. BotFather replies with a token -- copy it and paste it here."
+    echo
+    echo "That token is the only secret involved. Sherman never asks for your"
+    echo "Telegram account login -- no email, no password, no phone number."
     echo "(WhatsApp is not built yet; Telegram is the phone channel today.)"
     printf 'Telegram bot token > '
     read -r tg_token || tg_token=""
     tg_token=$(printf '%s' "$tg_token" | tr -d ' "')
+    if [ -n "$tg_token" ]; then
+        echo "  After setup, run: sherman telegram -- it shows a pairing code;"
+        echo "  text that code to your bot and the chat pairs itself."
+    fi
 }
 
 # One-time catch-up for a machine set up before newer questions existed:
@@ -380,6 +396,7 @@ run_setup_upgrade() {
     echo
     echo "Sherman has new setup options this machine has not answered yet."
     engine="$ENGINE"
+    user="$USER_SLUG"
     ask_model
     ask_telegram
     if [ -n "$tg_token" ]; then
@@ -670,7 +687,8 @@ fi
 
 # `telegram` runs the messaging bridge over the same assembled adapter the
 # shell uses -- same persona, same no-PHI contract, same engine session
-# layer. --token and --allow write the two config fields pairing needs; the
+# layer. --token saves the bot token; pairing normally happens by texting
+# the code the bridge shows (--allow remains the manual override). The
 # bare form falls through the normal launch path (wizard if unconfigured,
 # engine check, adapter assembly) and then execs the bridge instead of the
 # shell. DESIGN.md's rule is honored, not dodged: the connect flow exists

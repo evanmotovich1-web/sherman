@@ -104,7 +104,7 @@ sherman           the Sherman Shell — Sherman's own interface
 sherman --raw     the engine directly, its own chrome, for debugging
 sherman update    fast-forward this checkout when an update source exists
 sherman sync      pull + publish the shared vault, so every machine shares one brain
-sherman telegram  run the Telegram bridge (--token saves the bot token, --allow pairs the one chat it answers)
+sherman telegram  run the Telegram bridge; it shows a pairing code, and the chat that texts it back is the one it answers
 ```
 
 ## One vault, every machine
