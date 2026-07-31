@@ -188,6 +188,21 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     assert.match(wideFull, /\bVault\b/);
     assert.match(wideFull, /session: /);
 
+    // The mid panel's mark stands up as soon as the rows are there: from 26
+    // (with the headline) the box carries the Mac's downward mark — nine art
+    // rows inside the border, like the full panel's — where 24 still lays it
+    // on its side at four. Asked for plainly on the first real Windows
+    // machine: "the box needs to be taller — why is the logo not downward
+    // like the mac".
+    const artRows = (rows) => rawRows(renderToString(
+        React.createElement(LaunchScreen, {
+            info, stats, sessionId: '20260728_010000_boundary', columns: 120, rows,
+        }),
+        { columns: 120 }
+    )).filter((line) => line.startsWith('│') && /[▀▄█]/.test(line)).length;
+    assert.equal(artRows(24), 4, 'below the tall budget the mark lies on its side');
+    assert.equal(artRows(26), 9, 'at 26 rows the mark stands downward, Mac-style');
+
     // The headline is height-aware now: the retro lockup (its ╔ echo glyphs
     // are unique to it) arrives at 24 rows — where the frame first affords
     // its two extra rows — and holds through the mid band and the full panel.

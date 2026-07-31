@@ -644,21 +644,30 @@ function Knowledge({ stats, registry, caps, info, sessionId, width, stretch = fa
 export const MID_MIN_ROWS = 22;
 
 /**
- * The mid-height frame: the full panel's design, abridged to eight body rows.
+ * The mid-height frame: the full panel's design, abridged.
  *
  * This exists because the first real Windows machine launches in a ~26-row
  * terminal, which the full panel cannot fit (its left column alone — the
  * stacked mark plus identity — is fifteen rows), and the compact card,
  * however honest, does not look like Sherman on the Mac. Same two-column
- * arrangement, same bordered panel with the build in its top border, same
- * mark — laid horizontally (dot, inner ring, outer ring) at four rows
- * instead of eleven — same identity block, and the registry sections
- * compressed to one dense line each: every category name, then the honest
- * total. A registry that failed to load prints its reason, exactly like the
- * full panel's sections; the vault line keeps all four counts.
+ * arrangement, same bordered panel with the build in its top border, and the
+ * registry sections compressed to one dense line each: every category name,
+ * then the honest total. A registry that failed to load prints its reason,
+ * exactly like the full panel's sections; the vault line keeps all four
+ * counts.
+ *
+ * Two renditions, chosen by the height budget. `tall` is the Mac's own
+ * arrangement — the mark stacked DOWNWARD, dot over inner ring over outer
+ * ring, eleven rows — paid for by moving the identity block into the right
+ * column and dropping the blank row above the panel; it is what a ~26-row
+ * Windows Terminal actually gets. Below that budget the mark lies on its
+ * side (four rows) with the identity beneath it, as before. Asked for
+ * plainly: "the box needs to be taller like the mac — why is the logo like
+ * that and not downward".
  */
-function MidPanel({ panel, inner, info, stats, sessionId, registry }) {
+function MidPanel({ panel, inner, info, stats, sessionId, registry, tall = false }) {
     const leftWidth = Math.min(LEFT_COLUMN, inner);
+    const rightWidth = Math.max(1, inner - leftWidth - 1);
 
     const section = (key, title, result) =>
         React.createElement(
@@ -706,23 +715,58 @@ function MidPanel({ panel, inner, info, stats, sessionId, registry }) {
                     flexDirection: 'column',
                     alignItems: 'center',
                 },
-                React.createElement(MarkStrip),
-                React.createElement(
-                    Box,
-                    { marginTop: 1 },
-                    React.createElement(MarkIdentity, { info, sessionId, width: leftWidth })
-                )
+                // Downward like the Mac when the rows are there; on its side
+                // when they are not. The identity travels with the choice:
+                // under the strip it fits the left column, but the stacked
+                // mark IS the whole column, so identity moves right.
+                tall ? React.createElement(Mark, { scale: 1 }) : React.createElement(MarkStrip),
+                tall
+                    ? null
+                    : React.createElement(
+                          Box,
+                          { marginTop: 1 },
+                          React.createElement(MarkIdentity, { info, sessionId, width: leftWidth })
+                      )
             ),
             React.createElement(
                 Box,
                 // The gutter: a 37-cell identity line otherwise butts against
                 // the right column's titles ("…Labs Vault" reads as one line).
                 { flexGrow: 1, flexDirection: 'column', marginLeft: 1 },
+                tall
+                    ? React.createElement(
+                          Box,
+                          { flexDirection: 'column', marginBottom: 1 },
+                          React.createElement(
+                              Text,
+                              { wrap: 'truncate' },
+                              React.createElement(
+                                  Text,
+                                  { color: color.valueModel, bold: true },
+                                  safeTerminalText(info.model)
+                              ),
+                              React.createElement(Text, { color: color.muted }, ` · ${COMPANY}`)
+                          ),
+                          React.createElement(
+                              Text,
+                              { color: color.muted, wrap: 'truncate' },
+                              truncatePath(info.vaultPath, rightWidth)
+                          ),
+                          React.createElement(
+                              Text,
+                              { color: color.muted, wrap: 'truncate' },
+                              `Session: ${sessionId ?? '—'}`
+                          )
+                      )
+                    : null,
                 section('tools', 'Available Tools', registry.tools),
                 section('skills', 'Available Skills', registry.skills),
                 React.createElement(
                     Box,
-                    { marginTop: 1, flexDirection: 'column' },
+                    // Tall spends its one separator row on the identity gap
+                    // above; a second blank here would push the body past the
+                    // eleven rows the mark sets and the budget allows.
+                    { marginTop: tall ? 0 : 1, flexDirection: 'column' },
                     React.createElement(Text, { color: color.accent, bold: true, wrap: 'truncate' }, 'Vault'),
                     React.createElement(Text, { color: color.muted, wrap: 'truncate' }, `  ${vaultLine}`)
                 ),
@@ -884,6 +928,8 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
     const midPanel = compactPanel && !stack && height >= MID_MIN_ROWS;
 
     // The tallest wordmark this frame can carry, height and width together.
+    // (The tall mid rendition is decided after the wordmark, below: the
+    // headline outranks the stacked mark when the rows cover only one.)
     // The short frames (card and mid) spend wmRows + 14 rows around the
     // body; the full panel's floor is its fifteen-row left column plus the
     // fixed rows. A narrow (stacked) terminal keeps the small form — the
@@ -902,6 +948,13 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
         wordmarkForm === 'retro' ? RETRO_ROWS
         : wordmarkForm === 'stack' ? STACK_ROWS
         : SMALL_ROWS;
+
+    // Whether the mid panel can afford the Mac arrangement — the mark stacked
+    // downward, eleven body rows. The tall rendition gives up the blank row
+    // between wordmark and panel, so its frame is wmRows + 5 fixed rows
+    // around the body; with the retro headline that lands exactly on a
+    // 26-row Windows Terminal.
+    const tallMid = midPanel && height - 2 - wmRows - 5 >= markSize(1).rows;
 
     // Stacked, the mark sits above the knowledge column and the two heights
     // add; side by side, the taller of the two sets the natural height.
@@ -930,7 +983,8 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
         midPanel
             ? React.createElement(
                   Box,
-                  { marginTop: 1, width: panel, flexDirection: 'column' },
+                  // The tall rendition spends this blank row on the mark.
+                  { marginTop: tallMid ? 0 : 1, width: panel, flexDirection: 'column' },
                   React.createElement(MidPanel, {
                       panel,
                       inner,
@@ -938,6 +992,7 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
                       stats,
                       sessionId,
                       registry: reg,
+                      tall: tallMid,
                   })
               )
             : compactPanel
