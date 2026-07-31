@@ -34,6 +34,7 @@ import {
     parseSubmission,
     planRequest,
     shouldAutoCompact,
+    skillTurn,
     wikiAvailable,
     wikiCaptureRequest,
     workerRequest,
@@ -174,6 +175,11 @@ export function App({
     // Read once, for the same reason as the vault stats: the registry is a
     // property of the installation, not of the frame.
     const [registry] = useState(() => loadRegistry());
+    // The rows the slash palette shows below the first-party commands, and the
+    // names a /skill submission resolves against. An unreadable registry means
+    // no skill rows — the palette must not advertise what the loader could not
+    // verify exists.
+    const slashSkills = registry.skills.ok ? registry.skills.list : [];
     const [items, setItems] = useState(() => [
         {
             id: nextId(),
@@ -486,7 +492,7 @@ export function App({
     const submitRef = useRef(null);
     const submit = useCallback(
         async (text) => {
-            const parsed = parseSubmission(text);
+            let parsed = parseSubmission(text);
             // Submitting is a statement that you are done reading history: the
             // answer is going to arrive at the tail, so snap there rather than
             // leaving the operator parked above their own new turn.
@@ -494,6 +500,19 @@ export function App({
             offsetRef.current = 0;
             commit('user', text);
             log.append('user', text);
+
+            // A slash that names a SKILL is an invocation, not a typo. It
+            // becomes a normal prompt turn — the goal envelope and sandbox
+            // apply exactly as if the operator had typed prose — whose text
+            // points the engine at the skill's own SKILL.md. First-party
+            // commands are checked first so a skill can never shadow one.
+            if (parsed.kind === 'command' && !commandFor(parsed.name)) {
+                const skill = slashSkills.find((entry) => entry.name === parsed.name);
+                if (skill) {
+                    commit('notice', `skill turn · following skills/${skill.name}/SKILL.md`);
+                    parsed = { kind: 'prompt', text: skillTurn(skill.name, parsed.args) };
+                }
+            }
 
             if (parsed.kind === 'command') {
                 const command = commandFor(parsed.name);
@@ -927,7 +946,7 @@ export function App({
                 await compactSession('');
             }
         },
-        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn]
+        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills]
     );
     submitRef.current = submit;
 
@@ -1206,6 +1225,7 @@ export function App({
             onSubmit: submit,
             busy,
             click,
+            skills: slashSkills,
         })
     );
 }

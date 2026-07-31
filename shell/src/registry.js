@@ -62,7 +62,13 @@ export function parseFrontMatter(text) {
  * mandatory field — it is what an engine reads to decide when a skill applies,
  * so a skill without one is a skill the engine will never reach for.
  *
- * @returns {{ok: true, categories: Array<{name: string, items: string[]}>, count: number, malformed: string[]}
+ * Besides the launch screen's category view, this returns `list` — the flat
+ * {name, category, summary} rows the slash palette renders. The summary falls
+ * back to the description because a real skill must never sit next to a blank
+ * explanation, and description is the field the loader already requires.
+ *
+ * @returns {{ok: true, categories: Array<{name: string, items: string[]}>, count: number,
+ *            malformed: string[], list: Array<{name: string, category: string, summary: string}>}
  *          | {ok: false, reason: string}}
  */
 export function loadSkills(root = REPO_ROOT) {
@@ -77,6 +83,7 @@ export function loadSkills(root = REPO_ROOT) {
 
     const byCategory = new Map();
     const malformed = [];
+    const list = [];
     let count = 0;
 
     for (const entry of entries.filter((e) => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -96,6 +103,11 @@ export function loadSkills(root = REPO_ROOT) {
 
         if (!byCategory.has(fields.category)) byCategory.set(fields.category, []);
         byCategory.get(fields.category).push(fields.name);
+        list.push({
+            name: fields.name,
+            category: fields.category,
+            summary: fields.summary || fields.description,
+        });
         count += 1;
     }
 
@@ -103,7 +115,7 @@ export function loadSkills(root = REPO_ROOT) {
         .map(([name, items]) => ({ name, items }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
-    return { ok: true, categories, count, malformed: malformed.sort() };
+    return { ok: true, categories, count, malformed: malformed.sort(), list };
 }
 
 /**

@@ -14,7 +14,7 @@ import { Text, Box, useBoxMetrics, useInput, useWindowSize } from 'ink';
 import { color } from './theme.js';
 import { caretForClick, isMouseSequence } from './mouse.js';
 import { CommandMenu } from './CommandMenu.js';
-import { commandFor, suggestionsFor } from '../commands.js';
+import { commandFor, suggestionsFor, typedSkillName } from '../commands.js';
 
 // Preserve pasted line breaks so a multi-line prompt remains visibly multi-line
 // inside the field. Strip every other C0 control plus DEL; those escape/control
@@ -36,7 +36,7 @@ function normalizeInput(input) {
  * row it occupies moves with the command palette, the busy state, and the
  * terminal height, and a caller guessing at that would be guessing.
  */
-export function Composer({ onSubmit, busy, columns, initialValue = '', click = null }) {
+export function Composer({ onSubmit, busy, columns, initialValue = '', click = null, skills = [] }) {
     const [value, setValue] = useState(initialValue);
     // Where the next character goes. Kept at the end of the text at all times
     // except when a click has moved it, so a keyboard-only session behaves
@@ -46,7 +46,12 @@ export function Composer({ onSubmit, busy, columns, initialValue = '', click = n
     const [menuDismissed, setMenuDismissed] = useState(false);
     const size = useWindowSize();
     const width = Math.max(1, typeof columns === 'number' ? columns : size.columns);
-    const suggestions = menuDismissed ? [] : suggestionsFor(value);
+    const suggestions = menuDismissed ? [] : suggestionsFor(value, skills);
+    // A typed value that names a loaded skill inks the whole entry purple —
+    // the composer-side echo of the palette's skill rows, so the operator sees
+    // which contract Enter is about to invoke before pressing it.
+    const skillTyped = typedSkillName(value, skills);
+    const valueInk = skillTyped ? color.secondary : undefined;
 
 
     useEffect(() => {
@@ -115,7 +120,15 @@ export function Composer({ onSubmit, busy, columns, initialValue = '', click = n
                 const commandName = text.startsWith('/')
                     ? text.slice(1).split(/\s/, 1)[0].toLowerCase()
                     : '';
-                if (suggestions.length > 0 && !commandFor(commandName) && completeSelected()) {
+                // A fully-typed name — command or skill — submits; only a
+                // fragment completes. Without the skill check, Enter on a
+                // typed "/seed" would re-complete it into itself forever.
+                if (
+                    suggestions.length > 0
+                    && !commandFor(commandName)
+                    && !typedSkillName(`/${commandName}`, skills)
+                    && completeSelected()
+                ) {
                     return;
                 }
                 if (text.length > 0) {
@@ -235,8 +248,12 @@ export function Composer({ onSubmit, busy, columns, initialValue = '', click = n
         : width >= 28 ? 'Ask about operations…' : '';
     // Reserve one row for status and three for the bordered composer (top
     // border, one prompt row, bottom border). The palette owns only the
-    // remainder, so suggestions can never evict the composer.
-    const menuRows = Math.max(0, size.rows - 4);
+    // remainder, so suggestions can never evict the composer — and no more
+    // than the height the twelve first-party commands always took, so the
+    // skill list scrolls inside the same box instead of burying the
+    // transcript under a palette as tall as the screen. Fifteen rows is that
+    // exact height: header, twelve entries, two border rows.
+    const menuRows = Math.max(0, Math.min(size.rows - 4, 15));
 
     return React.createElement(
         Box,
@@ -304,10 +321,10 @@ export function Composer({ onSubmit, busy, columns, initialValue = '', click = n
                               // the text, the block moves onto the character it
                               // is in front of and the tail follows it.
                               : caret >= value.length
-                                  ? React.createElement(Text, null, value)
+                                  ? React.createElement(Text, { color: valueInk }, value)
                                   : React.createElement(
                                         Text,
-                                        null,
+                                        { color: valueInk },
                                         value.slice(0, caret),
                                         React.createElement(
                                             Text,

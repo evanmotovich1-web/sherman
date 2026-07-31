@@ -884,3 +884,66 @@ test('/win judges the recorded sessions into a local page', async () => {
         rmSync(home, { recursive: true, force: true });
     }
 });
+
+// A slash that names a SKILL is an invocation, not a typo. The request must
+// ride the normal prompt path (string, goal envelope rules apply), name the
+// skill's own SKILL.md, and carry the operator's arguments verbatim — and a
+// bare typed skill name must SUBMIT on Enter, not get re-completed into
+// itself forever. A slash that names neither a command nor a skill still
+// fails honestly.
+test('App dispatches slash-skill invocations and still rejects unknown commands', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-shell-skill-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const mainRequests = [];
+    const main = fakeSession(mainRequests, 'main');
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+
+    const stdout = new PassThrough();
+    stdout.columns = 120;
+    stdout.rows = 40;
+    let captured = '';
+    stdout.on('data', (chunk) => { captured += chunk.toString(); });
+
+    const instance = render(
+        React.createElement(App, {
+            session: main,
+            sessionId: '20260731_150000_abc123',
+        }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+
+    // Bare skill name: Enter submits the skill rather than re-completing it.
+    type(stdin, '/seed', 40);
+    // Skill with arguments: they travel verbatim.
+    type(stdin, '/vault-search where is the fax SOP', 250);
+    // Neither command nor skill: the shell says so and sends nothing.
+    type(stdin, '/nosuchskill do things', 500);
+
+    try {
+        await until(() => mainRequests.length === 2);
+        // The third submission produces no request, so its only signal is the
+        // transcript — and a non-TTY stdout gets its frame at unmount. Give
+        // the 500ms keystroke time to land, unmount, then read the record.
+        await new Promise((resolve) => setTimeout(resolve, 450));
+        instance.unmount();
+
+        assert.equal(typeof mainRequests[0], 'string');
+        assert.match(mainRequests[0], /skills\/seed\/SKILL\.md/);
+        assert.equal(typeof mainRequests[1], 'string');
+        assert.match(mainRequests[1], /skills\/vault-search\/SKILL\.md/);
+        assert.match(mainRequests[1], /where is the fax SOP/);
+        assert.equal(mainRequests.length, 2);
+        assert.match(plain(captured), /Unknown command \/nosuchskill/);
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});

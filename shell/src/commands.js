@@ -104,7 +104,7 @@ export function commandFor(name) {
     return BY_NAME.get(name) ?? null;
 }
 
-export function suggestionsFor(value) {
+export function suggestionsFor(value, skills = []) {
     const text = value.trimStart();
     if (!text.startsWith('/') || text.startsWith('//') || /\s/.test(text)) return [];
     const prefix = text.slice(1).toLowerCase();
@@ -114,7 +114,56 @@ export function suggestionsFor(value) {
     // hidden by an arithmetic accident rather than a decision. The palette's own
     // layout already bounds itself against the viewport (see CommandMenu), so
     // the list does not need a second, blinder limit here.
-    return COMMANDS.filter((command) => command.name.startsWith(prefix));
+    //
+    // Skills ride the same palette AFTER the commands — the first-party
+    // registry is small and fixed, the skill list grows with the product — and
+    // each carries `kind: 'skill'` so the menu can ink them as the different
+    // contract they are. The caller passes the skill rows in (from the launch
+    // registry) rather than this module reading the repo itself, which keeps
+    // this file pure and the existing single-argument behavior untouched.
+    return [
+        ...COMMANDS.filter((command) => command.name.startsWith(prefix)),
+        ...skills
+            .filter((skill) => skill.name.startsWith(prefix))
+            .map((skill) => ({
+                name: skill.name,
+                usage: `/${skill.name}`,
+                summary: skill.summary,
+                kind: 'skill',
+            })),
+    ];
+}
+
+/**
+ * The skill the composer's current value names, or null.
+ *
+ * A value names a skill when it is a slash invocation (`/name` or
+ * `/name args…`, not the `//` literal escape) whose first token matches a
+ * loaded skill exactly. Prefixes do not count — half a name is a search, not
+ * an invocation — and first-party commands are not checked here because they
+ * are not skills. This is what the composer keys the purple ink on.
+ */
+export function typedSkillName(value, skills) {
+    const text = String(value ?? '').trimStart();
+    if (!text.startsWith('/') || text.startsWith('//')) return null;
+    const name = text.slice(1).split(/\s/, 1)[0].toLowerCase();
+    if (!name) return null;
+    return skills.some((skill) => skill.name === name) ? name : null;
+}
+
+/**
+ * The engine turn for a slash-invoked skill. A plain prompt string on
+ * purpose: skills are allowed to do what their SKILL.md says (including
+ * writing where it directs), so the turn rides the normal path with the
+ * normal sandbox, and the goal envelope wraps it exactly like typed prose.
+ */
+export function skillTurn(name, args) {
+    return [
+        'SKILL TURN',
+        `The operator invoked your company skill "${name}" directly. Read skills/${name}/SKILL.md from your workspace skill set and follow it exactly, including anything it says about where output belongs.`,
+        args ? `Request: ${args}` : 'No arguments were given — follow the skill\'s default entry behavior, and ask for what it needs rather than inventing it.',
+        'The Sherman operating contract and no-PHI rule remain authoritative.',
+    ].filter(Boolean).join('\n');
 }
 
 export function helpText(name = '') {

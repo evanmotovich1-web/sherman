@@ -10,12 +10,18 @@ export function CommandMenu({ commands, selected = 0, width = 80, maxRows = Infi
 
     const selectedIndex = Math.max(0, Math.min(selected, commands.length - 1));
     const commandLabel = (command) => width < 33 ? `/${command.name}` : command.usage;
+    // Skills are the other contract on this palette, and the ink says which is
+    // which: skill rows take the brand's purple (secondary) where first-party
+    // command rows keep blue (tertiary) — selected included, so completing a
+    // skill highlights in purple rather than dressing it as a command.
+    const rowInk = (entry) => (entry.kind === 'skill' ? color.secondary : color.tertiary);
+    const selectedInk = (entry) => (entry.kind === 'skill' ? color.secondary : color.accent);
 
     if (maxRows < 4) {
         const command = commands[selectedIndex];
         return React.createElement(
             Text,
-            { color: color.accent, bold: true, inverse: true, wrap: 'truncate' },
+            { color: selectedInk(command), bold: true, inverse: true, wrap: 'truncate' },
             ` ${commandLabel(command)} `
         );
     }
@@ -41,7 +47,11 @@ export function CommandMenu({ commands, selected = 0, width = 80, maxRows = Infi
         React.createElement(
             Text,
             { color: color.secondary, bold: true, wrap: 'truncate' },
-            '/ commands'
+            // The header states what the window cannot show: when entries are
+            // clipped, their true count and the keys that reach them — a
+            // silently windowed list would read as the whole registry.
+            (commands.some((entry) => entry.kind === 'skill') ? '/ commands · skills' : '/ commands')
+                + (visible.length < commands.length ? ` · ↑↓ scrolls ${commands.length} entries` : '')
         ),
         ...visible.map((command, visibleIndex) => {
             const index = start + visibleIndex;
@@ -52,7 +62,7 @@ export function CommandMenu({ commands, selected = 0, width = 80, maxRows = Infi
                 React.createElement(
                     Text,
                     {
-                        color: index === selected ? color.accent : color.tertiary,
+                        color: index === selected ? selectedInk(command) : rowInk(command),
                         bold: index === selected,
                         inverse: index === selected,
                     },
