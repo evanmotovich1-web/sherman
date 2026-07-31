@@ -40,10 +40,14 @@ carried in this document and in the decisions table below.
   provider is listed with its reason and refuses selection, because a
   selectable option that errors after selection is the one dishonest shape
   the menu is not allowed to have.
-- Messaging channels (WhatsApp, Telegram) are deliberately absent from setup.
-  Nothing offers a connect flow until the Phase 3 bridge exists; when it
-  does, it reuses the same registry pattern — an entry added and flipped to
-  available — rather than growing a second wizard.
+- Messaging channels appear in setup only once their bridge exists. Telegram
+  crossed that line (`bridge/telegram.js` — locally run, one paired chat,
+  default-deny, driving the same engine-session layer and assembled adapter
+  as the shell), so setup offers its token and `sherman telegram` runs it.
+  WhatsApp has no bridge — Meta's Business API has no honest overnight path —
+  so setup does not mention it; a future bridge follows the same pattern
+  rather than growing a second wizard. The Phase 3 always-on hosted bridge
+  remains future work; today's bridge runs only while the machine runs it.
 
 ## Memory and access model
 

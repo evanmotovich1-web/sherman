@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.12'
+$Build = '2026-07-30.13'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -441,9 +441,9 @@ if ($HostsPinned) {
     Write-Host "    (VPN or security suite) is turned off."
 }
 Write-Host ""
-Write-Host "Starting Sherman -- its own setup asks two questions (provider and"
-Write-Host "your name), then the engine sign-in runs. Next time, open $Distro"
-Write-Host "and type: sherman"
+Write-Host "Starting Sherman -- its own setup asks its questions (provider,"
+Write-Host "name, optional model and Telegram), then the engine sign-in runs."
+Write-Host "Next time, open $Distro and type: sherman"
 Write-Host ""
 
 # The handoff itself, by the launcher's own path so no shell startup file

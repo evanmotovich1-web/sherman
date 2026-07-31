@@ -3,6 +3,31 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-07-30 — Added: model choice, Telegram bridge, and one vault on every machine
+
+- Driven by the first real Windows install (issue #9, ten runs on real
+  hardware): setup gained an optional **model** question — written into
+  codex's own config, the one place codex reads it, backed up and verified
+  by read-back — and an optional **Telegram** token question. The connect
+  flow may exist because the bridge now does: `bridge/telegram.js`, zero
+  dependencies, long-polling the Bot API, one engine session per chat over
+  the same assembled adapter as the shell, default-deny to every chat but
+  the one paired with `sherman telegram --allow`. Verified to the edge of
+  what a machine without a bot token can verify: a fake token reaches
+  Telegram's own Unauthorized and exits loud. WhatsApp remains unbuilt and
+  is stated as such, not menued.
+- **`sherman sync`** shares the vault across machines through the repo:
+  pull --ff-only, commit only the shared lanes (wiki, shared memory,
+  inbox), push when the machine has write access, and say plainly when it
+  only pulled. Private memory never travels; sync refuses to commit over
+  another session's staged work. The new **llm-wiki** skill (tenth) teaches
+  the habit: write the fact, sync, report what actually happened. The vault
+  is plain Markdown, so it doubles as an Obsidian vault as-is.
+- The compact launch card now says it is the small-window view and that a
+  larger window shows the full screen — on the first Windows run it read as
+  "an old Sherman" next to a maximized Mac, and a view that cannot explain
+  itself invites exactly that misreading.
+
 ## 2026-07-30 — Changed: skills reach the engine, speak the standard, and gain a ninth
 
 - Until now the skills reached the launch screen and nothing else — no

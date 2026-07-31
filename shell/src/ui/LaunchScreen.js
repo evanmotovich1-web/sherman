@@ -625,7 +625,9 @@ function CompactSummary({ width, info, stats, sessionId }) {
                 React.createElement(Text, { color: color.secondary }, '⋯ summary'),
                 React.createElement(Text, { color: color.muted }, ' · '),
                 React.createElement(Text, { color: color.tertiary }, '› activity'),
-                React.createElement(Text, { color: color.muted }, ' · /help commands')
+                // Small-window view must say so: on the first real Windows run
+                // this card read as "an old Sherman" next to a maximized Mac.
+                React.createElement(Text, { color: color.muted }, ' · /help · larger window shows the full screen')
             )
         )
     );

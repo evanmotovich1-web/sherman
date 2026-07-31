@@ -82,11 +82,16 @@ verified there.
 
 ## First run
 
-With no `~/.sherman/config.json`, `sherman` asks two questions:
+With no `~/.sherman/config.json`, `sherman` runs setup:
 
 1. **Provider.** Codex (OpenAI) is the only working backend today, and the
    only selectable one. Anthropic is listed as not yet available.
 2. **Your name.** It becomes your private-memory directory in the vault.
+3. **Model** (optional). Enter keeps the codex default; a name you type is
+   written to codex's own config — the one place codex actually reads it —
+   with a backup, and verified by reading it back.
+4. **Telegram** (optional). Paste a bot token from @BotFather to use Sherman
+   from your phone, or skip and connect later.
 
 Setup writes `~/.sherman/config.json` and confirms what landed where. Every
 launch after that rebuilds the engine adapter fresh in `~/.sherman/workspace/`
@@ -96,7 +101,20 @@ from the repo's persona, so the repo stays the single source of truth.
 sherman           the Sherman Shell — Sherman's own interface
 sherman --raw     the engine directly, its own chrome, for debugging
 sherman update    fast-forward this checkout when an update source exists
+sherman sync      pull + publish the shared vault, so every machine shares one brain
+sherman telegram  run the Telegram bridge (--token saves the bot token, --allow pairs the one chat it answers)
 ```
+
+## One vault, every machine
+
+The vault is plain Markdown living in this repo — which also makes it an
+Obsidian vault: open the `vault/` folder in Obsidian and every page is there.
+`sherman sync` is what makes it the **same** vault everywhere: it pulls what
+other machines published, commits only the shared lanes (wiki, shared
+memory, inbox — private memory never travels), and pushes when the machine
+has write access. A machine without push access still pulls; it says so
+plainly instead of claiming it published. The `llm-wiki` skill teaches
+Sherman the habit: write the fact, sync, and report what actually happened.
 
 ## The safety model
 
@@ -121,10 +139,12 @@ Planned, in rough order — none of this works today:
 - **Claude Code backend for the shell** (Claude Code currently runs only via
   `sherman --raw`)
 - **`curl | bash` one-line installer** (today: clone + `./install.sh`)
-- **Second-device onboarding and vault sync** for additional admins
 - **A vault service with per-user scopes**, so employees reach knowledge
   through Sherman without holding vault files
-- **A WhatsApp bridge** for asking Sherman questions from a phone
+- **A WhatsApp bridge** — Telegram shipped first (`sherman telegram`);
+  WhatsApp needs Meta's Business API and has no honest overnight path
+- **An always-on hosted bridge** — today `sherman telegram` runs only while
+  the machine runs it
 
 ## Repository map
 

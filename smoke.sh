@@ -1525,13 +1525,19 @@ else
 
     # Unbuilt integrations may appear ONLY at or below the marked roadmap
     # heading. Anywhere above it, they read as a feature menu of dead options.
+    # A channel leaves this list by SHIPPING ITS BRIDGE, not by editing the
+    # list: Telegram counts as built only while bridge/telegram.js exists.
     roadmap_line=$(grep -n '^## Not built yet' README.md | head -1 | cut -d: -f1)
     if [ -z "$roadmap_line" ]; then
         fail "README has no '## Not built yet' roadmap heading"
     else
-        stray=$(awk -v limit="$roadmap_line" 'NR < limit && /WhatsApp|Telegram/ { print NR": "$0 }' README.md)
+        unbuilt='WhatsApp'
+        if [ ! -f bridge/telegram.js ]; then
+            unbuilt='WhatsApp|Telegram'
+        fi
+        stray=$(awk -v limit="$roadmap_line" -v pat="$unbuilt" 'NR < limit && $0 ~ pat { print NR": "$0 }' README.md)
         if [ -z "$stray" ]; then
-            pass "unbuilt channels named only under the roadmap heading"
+            pass "unbuilt channels ($unbuilt) named only under the roadmap heading"
         else
             fail "unbuilt channel named above the roadmap heading: $(printf '%s' "$stray" | head -1)"
         fi

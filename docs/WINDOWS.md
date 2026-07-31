@@ -45,8 +45,8 @@ it), installs Ubuntu, installs git/curl/jq inside it, clones this repo into
 the Linux filesystem, runs `./install.sh` there — putting the launcher's
 directory on the login shell's PATH itself when the distro's profile lacks
 it, as root's stock `.profile` does — and then starts Sherman —
-whose own first-run setup asks its two questions and runs the engine's
-sign-in. It is idempotent: at
+whose own first-run setup asks its questions (provider, name, optional
+model and Telegram) and runs the engine's sign-in. It is idempotent: at
 whatever stage a previous run stopped — reboot, Linux user creation — run
 it again and it continues from what already exists. Every "verified" line
 it prints follows a real check, and what it cannot verify it names.

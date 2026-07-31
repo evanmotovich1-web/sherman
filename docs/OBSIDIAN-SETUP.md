@@ -13,6 +13,11 @@ tracked file.
 4. Confirm that Obsidian shows the Sherman `wiki`, `inbox`, and `memory`
    folders.
 
+The vault is plain Markdown in the repo, so no export step exists or is
+needed — what Obsidian edits is what Sherman reads. `sherman sync` is what
+moves the shared lanes (wiki, shared memory, inbox) between machines;
+private memory stays on the machine that wrote it.
+
 ## 2. Install the local MCP plugin
 
 1. Open **Settings → Community plugins**.

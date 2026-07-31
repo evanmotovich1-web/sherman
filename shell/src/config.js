@@ -42,6 +42,8 @@ function shermanHome() {
  * @property {string} workspacePath engine cwd; holds the assembled adapter
  * @property {string} configPath    where this came from
  * @property {number|null} contextWindowTokens optional operator override
+ * @property {string} telegramToken bot token for the Telegram bridge; '' unset
+ * @property {string} telegramChat  the one chat id the bridge answers; '' unpaired
  */
 
 /**
@@ -110,5 +112,10 @@ export function loadConfig() {
         workspacePath: join(home, 'workspace'),
         configPath,
         contextWindowTokens: parsed.context_window_tokens ?? null,
+        telegramToken: typeof parsed.telegram_token === 'string' ? parsed.telegram_token : '',
+        telegramChat:
+            typeof parsed.telegram_chat === 'string' || typeof parsed.telegram_chat === 'number'
+                ? String(parsed.telegram_chat)
+                : '',
     };
 }

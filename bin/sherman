@@ -6,10 +6,13 @@
 # whichever coding CLI you already have. This script runs the one-time wizard if
 # needed, assembles the engine adapter fresh from the repo, and hands off.
 #
-# Two ways to hand off:
+# The handoffs and subcommands:
 #
-#   sherman         the Sherman Shell — our UI, engine headless underneath
-#   sherman --raw   exec the engine directly, its own chrome, for debugging
+#   sherman           the Sherman Shell — our UI, engine headless underneath
+#   sherman --raw     exec the engine directly, its own chrome, for debugging
+#   sherman update    fast-forward this checkout from its remote
+#   sherman sync      pull + publish the shared vault (wiki, shared memory, inbox)
+#   sherman telegram  the Telegram bridge, same adapter and engine layer as the shell
 #
 # Target shell: macOS system bash 3.2. No ${var,,}, no associative arrays,
 # no readlink -f.
@@ -215,7 +218,7 @@ slugify() {
 
 run_wizard() {
     echo
-    echo "Setting up Sherman on this machine. Two questions."
+    echo "Setting up Sherman on this machine."
     echo
 
     # 1. Provider. This IS the engine choice. Sherman performs no OAuth of its
@@ -278,16 +281,83 @@ run_wizard() {
         [ -z "$user" ] && echo "  Need at least one letter or number."
     done
 
+    # 3. Model (codex only). Codex owns the model choice: the shell reads it
+    #    back from codex's own config and never forces -m, so the one honest
+    #    place to record a preference is that config. An existing top-level
+    #    model line is shown and kept unless a new name is typed; the file is
+    #    backed up before any edit, and the claim after follows a read-back.
+    if [ "$engine" = "codex" ]; then
+        codex_cfg="${CODEX_HOME:-$HOME/.codex}/config.toml"
+        current_model=""
+        if [ -f "$codex_cfg" ]; then
+            current_model=$(sed -n '/^\[/q; s/^[[:space:]]*model[[:space:]]*=[[:space:]]*"\{0,1\}\([^"#]*\)"\{0,1\}[[:space:]]*$/\1/p' "$codex_cfg" | head -1)
+        fi
+        echo
+        if [ -n "$current_model" ]; then
+            printf 'Codex model [current: %s] — Enter keeps it, or type another > ' "$current_model"
+        else
+            printf 'Codex model — Enter keeps the codex default, or type one (e.g. gpt-5.6-sol) > '
+        fi
+        read -r model_reply || model_reply=""
+        model_reply=$(printf '%s' "$model_reply" | tr -d '"' | tr -d ' ')
+        if [ -n "$model_reply" ]; then
+            mkdir -p "$(dirname "$codex_cfg")"
+            if [ -f "$codex_cfg" ]; then
+                cp "$codex_cfg" "$codex_cfg.sherman-backup"
+                if [ -n "$current_model" ]; then
+                    # Replace the top-level line only; section keys are that
+                    # section's business, exactly as the shell reads it.
+                    awk -v m="$model_reply" '
+                        /^\[/ { insec = 1 }
+                        !insec && /^[[:space:]]*model[[:space:]]*=/ && !done {
+                            print "model = \"" m "\""; done = 1; next
+                        }
+                        { print }' "$codex_cfg" > "$codex_cfg.sherman-tmp" \
+                        && mv "$codex_cfg.sherman-tmp" "$codex_cfg"
+                else
+                    { printf 'model = "%s"\n' "$model_reply"; cat "$codex_cfg.sherman-backup"; } > "$codex_cfg"
+                fi
+            else
+                printf 'model = "%s"\n' "$model_reply" > "$codex_cfg"
+            fi
+            written=$(sed -n '/^\[/q; s/^[[:space:]]*model[[:space:]]*=[[:space:]]*"\{0,1\}\([^"#]*\)"\{0,1\}[[:space:]]*$/\1/p' "$codex_cfg" | head -1)
+            if [ "$written" = "$model_reply" ]; then
+                echo "  model $model_reply set (verified: read back from codex's own config)"
+            else
+                echo "  could not verify the model landed in $codex_cfg -- codex's default stays in effect."
+            fi
+        fi
+    fi
+
+    # 4. Telegram (optional). The connect flow is offered because the bridge
+    #    exists (bridge/telegram.js) -- DESIGN.md's rule, honored in that
+    #    order. Enter skips; nothing is ever required here. WhatsApp is not
+    #    offered because no WhatsApp bridge exists yet, and this menu does
+    #    not sell what is not built.
+    echo
+    echo "Connect Telegram (optional): message @BotFather in Telegram, send"
+    echo "/newbot, and paste the bot token here. Enter skips -- you can"
+    echo "connect later with: sherman telegram --token <token>"
+    printf 'Telegram bot token > '
+    read -r tg_token || tg_token=""
+    tg_token=$(printf '%s' "$tg_token" | tr -d ' "')
+
     vault="$ROOT/vault"
 
     mkdir -p "$SHERMAN_HOME"
-    printf '{"version":1,"engine":"%s","user":"%s","vault_path":"%s"}\n' \
-        "$engine" "$user" "$vault" > "$CONFIG"
+    extra=""
+    [ -n "$tg_token" ] && extra=$(printf ',"telegram_token":"%s"' "$tg_token")
+    printf '{"version":1,"engine":"%s","user":"%s","vault_path":"%s"%s}\n' \
+        "$engine" "$user" "$vault" "$extra" > "$CONFIG"
 
     echo
     echo "  engine: $engine"
     echo "  user:   $user"
     echo "  vault:  $vault"
+    if [ -n "$tg_token" ]; then
+        echo "  telegram: token saved -- after setup, run: sherman telegram"
+        echo "            (first message to the bot prints the chat id to pair)"
+    fi
     echo
     echo "Starting your session."
     echo
@@ -301,6 +371,30 @@ config_get() {
         # Fallback for a machine without jq. Values here are engine names,
         # slugs and paths -- no embedded quotes to worry about.
         sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$CONFIG"
+    fi
+}
+
+# Set one string key in the config, verified by reading it back. The config is
+# this script's own single-line JSON, which is what keeps the no-jq fallback
+# honest: it edits a shape this script wrote.
+config_set() {
+    if [ ! -f "$CONFIG" ]; then
+        echo "No config yet. Run sherman once to set up this machine, then retry." >&2
+        exit 1
+    fi
+    if command -v /usr/bin/jq >/dev/null 2>&1; then
+        /usr/bin/jq --arg k "$1" --arg v "$2" '.[$k] = $v' "$CONFIG" > "$CONFIG.tmp" \
+            && mv "$CONFIG.tmp" "$CONFIG"
+    else
+        if grep -q "\"$1\"" "$CONFIG"; then
+            sed -i.bak "s/\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"$1\":\"$2\"/" "$CONFIG" && rm -f "$CONFIG.bak"
+        else
+            sed -i.bak "s/}\$/,\"$1\":\"$2\"}/" "$CONFIG" && rm -f "$CONFIG.bak"
+        fi
+    fi
+    if [ "$(config_get "$1")" != "$2" ]; then
+        echo "Could not write $1 to $CONFIG." >&2
+        exit 1
     fi
 }
 
@@ -349,6 +443,62 @@ run_update() {
     SHERMAN_UPDATE_RUNNING=1 "$ROOT/smoke.sh"
 
     echo "Updated: v$old_version -> v$(shell_version)"
+    exit 0
+}
+
+# --------------------------------------------------------------------- sync --
+# `sherman sync` makes the vault the SAME vault on every machine, through the
+# repo itself: pull what other machines published, publish what this one
+# learned. Only the shared lanes travel -- wiki, shared memory, inbox.
+# Private memory is gitignored and stays on this machine by design; this
+# function's explicit path list is the second fence. It never touches code,
+# and it refuses to run over someone else's staged work.
+run_sync() {
+    if ! command -v git >/dev/null 2>&1 \
+        || ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+        echo "This install is not a git checkout, so the vault cannot sync."
+        exit 1
+    fi
+    if [ -z "$(git -C "$ROOT" remote 2>/dev/null)" ]; then
+        echo "No remote configured -- there is no shared vault to sync with."
+        exit 1
+    fi
+
+    if ! git -C "$ROOT" diff --cached --quiet 2>/dev/null; then
+        echo "Something is already staged in this checkout -- likely another"
+        echo "session's work. Sync refuses to commit over it. Resolve that"
+        echo "staging first, then run sherman sync again."
+        exit 1
+    fi
+
+    if ! git -C "$ROOT" pull --ff-only; then
+        echo >&2
+        echo "manual merge needed -- this checkout cannot fast-forward onto its remote." >&2
+        exit 1
+    fi
+
+    git -C "$ROOT" add -A -- vault/wiki vault/memory/shared vault/inbox 2>/dev/null
+
+    if git -C "$ROOT" diff --cached --quiet; then
+        echo "Vault is in sync: pulled the latest, nothing new to publish from here."
+        exit 0
+    fi
+
+    who=""
+    [ -f "$CONFIG" ] && who=$(config_get user)
+    [ -n "$who" ] || who=$(whoami)
+    git -C "$ROOT" commit -m "vault: sync from $who ($(date +%Y-%m-%d))" >/dev/null
+    echo "Committed this machine's shared-vault changes."
+
+    if git -C "$ROOT" push 2>/dev/null; then
+        echo "Published (verified: git push succeeded). Every other machine"
+        echo "gets this on its next sherman sync."
+    else
+        echo "Could not push -- this machine has no write access to the remote."
+        echo "The commit is safe locally. Sign in to GitHub (for example:"
+        echo "gh auth login), then run sherman sync again to publish."
+        exit 1
+    fi
     exit 0
 }
 
@@ -481,6 +631,44 @@ if [ "${1:-}" = "update" ]; then
     run_update
 fi
 
+# `sync` likewise: vault sharing needs git and a remote, not an engine.
+if [ "${1:-}" = "sync" ]; then
+    run_sync
+fi
+
+# `telegram` runs the messaging bridge over the same assembled adapter the
+# shell uses -- same persona, same no-PHI contract, same engine session
+# layer. --token and --allow write the two config fields pairing needs; the
+# bare form falls through the normal launch path (wizard if unconfigured,
+# engine check, adapter assembly) and then execs the bridge instead of the
+# shell. DESIGN.md's rule is honored, not dodged: the connect flow exists
+# because the bridge now does.
+TELEGRAM=0
+if [ "${1:-}" = "telegram" ]; then
+    shift
+    case "${1:-}" in
+        --token)
+            if [ -z "${2:-}" ]; then
+                echo "Usage: sherman telegram --token <bot-token>   (from @BotFather)" >&2
+                exit 1
+            fi
+            config_set telegram_token "$2"
+            echo "token saved (verified: read back from config). Next: sherman telegram"
+            exit 0
+            ;;
+        --allow)
+            if [ -z "${2:-}" ]; then
+                echo "Usage: sherman telegram --allow <chat-id>" >&2
+                exit 1
+            fi
+            config_set telegram_chat "$2"
+            echo "chat $2 paired (verified: read back from config). Restart sherman telegram."
+            exit 0
+            ;;
+    esac
+    TELEGRAM=1
+fi
+
 # --raw is recognised as the FIRST argument only, and stripped before the engine
 # sees the rest. Everything else passes straight through, unchanged.
 RAW=0
@@ -535,4 +723,9 @@ if [ "$RAW" -eq 1 ]; then
 fi
 
 require_node
+
+if [ "$TELEGRAM" -eq 1 ]; then
+    exec node "$ROOT/bridge/telegram.js"
+fi
+
 exec node "$ROOT/shell/bin/sherman-shell.js" "$@"
