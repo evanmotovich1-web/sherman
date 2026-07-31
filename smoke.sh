@@ -343,16 +343,19 @@ for (const rows of ROWS) {
         process.exit(1);
     }
 
-    // v3 full-bleed: the panel top border must span the full render width.
-    const plain = lines.map(strip);
+    // Full bleed up to the 120-column design cap; past it the frame keeps
+    // its designed width and centers, so wide renders carry a symmetric left
+    // pad and the border itself is exactly the capped width.
+    const capped = Math.min(cols, 120);
+    const plain = lines.map((l) => strip(l).trimStart());
     const top = plain.findIndex((l) => l.startsWith('╭─') && l.trimEnd().endsWith('╮'));
     if (top < 0) {
         console.error('panel top border not found at ' + rows + ' rows');
         process.exit(1);
     }
-    if (width(plain[top].trimEnd()) !== cols) {
+    if (width(plain[top].trimEnd()) !== capped) {
         console.error(
-            'panel border is ' + width(plain[top].trimEnd()) + ' cols, expected ' + cols
+            'panel border is ' + width(plain[top].trimEnd()) + ' cols, expected ' + capped
         );
         process.exit(1);
     }

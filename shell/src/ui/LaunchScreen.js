@@ -57,6 +57,15 @@ const COMPANY = 'Sherman Abrams Labs';
 // which is why the doubled mark no longer needs a wider column of its own.
 const LEFT_COLUMN = 37;
 const LEFT_COLUMN_LARGE = Math.max(markSize(2).columns + 4, LEFT_COLUMN);
+
+// The widest frame the design was ever drawn at. Full bleed was right up to
+// the reference window (~120 columns), and wrong past it: a maximized wide
+// monitor (250 columns on the first real Windows machine) stretched the box
+// across the screen with the content marooned in its left third — "looks
+// great just weird because of all that empty space". Past this cap the frame
+// keeps its designed proportions and centers in the terminal instead of
+// thinning out to fill it.
+const PANEL_MAX_COLUMNS = 120;
 // Mark, one blank row, then the three identity lines.
 const IDENTITY_ROWS = 3;
 const LEFT_ROWS = markSize(1).rows + 1 + IDENTITY_ROWS;
@@ -109,6 +118,14 @@ const LAUNCH_FIXED_ROWS = 6;
 const MARK_ROWS = markSize(1).rows;
 // The doubled rendition used in the tall panel, in text rows.
 const MARK_ROWS_LARGE = markSize(2).rows;
+
+// The tallest body the stretch may produce: the doubled mark's own column
+// (art, gap, identity) plus two rows of air. The stretch existed to keep the
+// panel from clumping at the top of a tall screen, but uncapped it distributed
+// a 60-row terminal's slack INTO the box — ten-row voids between sections,
+// the same empty-space complaint the width cap answers horizontally. Past
+// this, slack falls below the top-anchored frame instead of hollowing it out.
+const STRETCH_MAX_INNER = MARK_ROWS_LARGE + 1 + IDENTITY_ROWS + 2;
 
 /**
  * Rows the right column occupies when it hugs its content: the registry
@@ -893,12 +910,17 @@ function welcome(stats) {
 export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }) {
     const reg = registry ?? cachedRegistry();
     const measured = useWindowSize();
-    const width = typeof columns === 'number' ? columns : measured.columns;
+    const terminal = typeof columns === 'number' ? columns : measured.columns;
     const height = typeof rows === 'number' ? rows : measured.rows;
 
-    // Full bleed: the panel spans the terminal, like Hermes. Never a fixed
-    // constant — the border is composed to the measured width, so a narrow
-    // terminal gets a narrow panel, not a spilled one.
+    // Up to the cap the panel spans the terminal, like Hermes — the border is
+    // composed to the measured width, so a narrow terminal gets a narrow
+    // panel, not a spilled one. Past the cap the frame keeps its designed
+    // width and the surplus becomes symmetric side margin: a maximized wide
+    // monitor gets the reference frame centered, not a box stretched thin
+    // around marooned content.
+    const width = Math.min(terminal, PANEL_MAX_COLUMNS);
+    const sidePad = Math.max(0, Math.floor((terminal - width) / 2));
     const panel = Math.max(1, width);
     // Border + horizontal padding consume six columns. Below the normal
     // two-column layout, stack identity above knowledge and let both shrink.
@@ -967,7 +989,16 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
     });
     const known = knowledgeRows(stats, reg, caps);
     const naturalInner = stack ? LEFT_ROWS + 1 + known : Math.max(LEFT_ROWS, known);
-    const bodyRows = compactPanel ? null : tallPanelRows(wmRows, height, naturalInner);
+    let bodyRows = compactPanel ? null : tallPanelRows(wmRows, height, naturalInner);
+
+    // The stretch is bounded now: the body grows to the doubled mark's column
+    // and no further, and rows past that fall below the welcome line — the
+    // frame stays top-anchored (a void ABOVE the wordmark reads as a broken
+    // first frame; the transcript anchor test records that decision).
+    // Uncapped, a 60-row terminal opened ten-row voids between the sections.
+    if (bodyRows) {
+        bodyRows = Math.min(bodyRows, Math.max(naturalInner, STRETCH_MAX_INNER));
+    }
 
     // The budget is settled before the mark is sized, so the larger rendition
     // can only ever fill room the panel had already claimed.
@@ -978,7 +1009,10 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
 
     return React.createElement(
         Box,
-        { flexDirection: 'column', marginBottom: 1 },
+        // paddingLeft (not alignItems) carries the horizontal centering so the
+        // offset is exact and identical for every child — wordmark, panel,
+        // and welcome line shift together and stay mutually aligned.
+        { flexDirection: 'column', marginBottom: 1, paddingLeft: sidePad },
         React.createElement(Wordmark, { columns: width, form: wordmarkForm }),
         midPanel
             ? React.createElement(

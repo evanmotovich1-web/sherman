@@ -104,7 +104,12 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
             }),
             { columns }
         );
-        assert.equal(maxWidth(output), columns, `${columns}x${rows} lost full-width launch geometry`);
+        // Full bleed up to the 120-column design cap; past it the frame keeps
+        // its designed width and centers, so the widest line is the pad plus
+        // the capped panel, never the whole terminal.
+        const cappedWidth = Math.min(columns, 120);
+        const expectedWidth = Math.floor((columns - cappedWidth) / 2) + cappedWidth;
+        assert.equal(maxWidth(output), expectedWidth, `${columns}x${rows} lost launch geometry`);
         assert.ok(
             rawRows(output).length <= rows - 2,
             `${columns}x${rows} launch crowds out status/composer`
@@ -160,6 +165,34 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         `tall terminals must stretch the launch panel (41 rows -> ${rowsAt41}, 60 -> ${rowsAt60})`
     );
     assert.ok(rowsAt60 <= 58, 'a stretched launch panel must not crowd out status and composer');
+    // The stretch is capped: slack past the doubled mark's column falls below
+    // the top-anchored frame instead of hollowing the box out with multi-row
+    // voids between its sections.
+    const at60Interior = at60.split('\n').filter((line) => line.startsWith('│'));
+    let voidRun = 0;
+    let worstVoid = 0;
+    for (const line of at60Interior) {
+        voidRun = line.replace(/[│\s]/g, '') === '' ? voidRun + 1 : 0;
+        worstVoid = Math.max(worstVoid, voidRun);
+    }
+    assert.ok(
+        worstVoid <= 4,
+        `stretched panel opened a ${worstVoid}-row void between sections`
+    );
+
+    // Maximized on a wide monitor (the first real Windows machine's 250-column
+    // fullscreen): the frame caps at its designed width and centers, instead
+    // of stretching a mostly-empty box across the whole screen.
+    const maximized = plain(renderToString(
+        React.createElement(LaunchScreen, {
+            info, stats, sessionId: '20260728_010000_layout', columns: 250, rows: 60,
+        }),
+        { columns: 250 }
+    ));
+    const maxBorder = rawRows(maximized).find((line) => line.includes('╭'));
+    assert.ok(maxBorder, 'maximized frame lost its panel border');
+    assert.equal(stringWidth(maxBorder.trimStart()), 120, 'maximized panel must cap at the design width');
+    assert.equal(maxBorder.length - maxBorder.trimStart().length, 65, 'maximized panel must center in the terminal');
 
     // Three tiers on a retro-wide terminal, each boundary crossed exactly
     // once: the compact card below 22 rows, the mid panel (Vault section
