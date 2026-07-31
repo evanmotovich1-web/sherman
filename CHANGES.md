@@ -3,6 +3,21 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-07-30 — Changed: old configs get the new questions; the installer grows the window
+
+- A config written before the model and Telegram questions existed now gets
+  exactly those questions asked once, on the next interactive launch, then
+  the config version bumps to 2 so it never repeats. "It didn't ask me" was
+  the real experience of the first Windows machine — its config predated the
+  questions — and silently never asking is the wrong kind of quiet.
+  Non-interactive runs skip: a pipe cannot answer. Verified end-to-end with
+  an expect-driven pty: model lands in codex's own config, version bumps.
+- install.ps1 (build 2026-07-30.14) grows the console to 120×45 best-effort
+  before starting Sherman: the full launch screen needs 29+ rows and the
+  wide banner 40+, and the person should not have to know that. Where the
+  terminal ignores console resize APIs, the compact card itself now names
+  the fix on screen.
+
 ## 2026-07-30 — Added: model choice, Telegram bridge, and one vault on every machine
 
 - Driven by the first real Windows install (issue #9, ten runs on real

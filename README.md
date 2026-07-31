@@ -93,9 +93,11 @@ With no `~/.sherman/config.json`, `sherman` runs setup:
 4. **Telegram** (optional). Paste a bot token from @BotFather to use Sherman
    from your phone, or skip and connect later.
 
-Setup writes `~/.sherman/config.json` and confirms what landed where. Every
-launch after that rebuilds the engine adapter fresh in `~/.sherman/workspace/`
-from the repo's persona, so the repo stays the single source of truth.
+Setup writes `~/.sherman/config.json` and confirms what landed where. A
+machine set up before newer questions existed is asked just the new ones,
+once, on its next interactive launch. Every launch rebuilds the engine
+adapter fresh in `~/.sherman/workspace/` from the repo's persona, so the
+repo stays the single source of truth.
 
 ```
 sherman           the Sherman Shell — Sherman's own interface

@@ -281,11 +281,36 @@ run_wizard() {
         [ -z "$user" ] && echo "  Need at least one letter or number."
     done
 
-    # 3. Model (codex only). Codex owns the model choice: the shell reads it
-    #    back from codex's own config and never forces -m, so the one honest
-    #    place to record a preference is that config. An existing top-level
-    #    model line is shown and kept unless a new name is typed; the file is
-    #    backed up before any edit, and the claim after follows a read-back.
+    ask_model
+    ask_telegram
+
+    vault="$ROOT/vault"
+
+    mkdir -p "$SHERMAN_HOME"
+    extra=""
+    [ -n "$tg_token" ] && extra=$(printf ',"telegram_token":"%s"' "$tg_token")
+    printf '{"version":2,"engine":"%s","user":"%s","vault_path":"%s"%s}\n' \
+        "$engine" "$user" "$vault" "$extra" > "$CONFIG"
+
+    echo
+    echo "  engine: $engine"
+    echo "  user:   $user"
+    echo "  vault:  $vault"
+    if [ -n "$tg_token" ]; then
+        echo "  telegram: token saved -- after setup, run: sherman telegram"
+        echo "            (first message to the bot prints the chat id to pair)"
+    fi
+    echo
+    echo "Starting your session."
+    echo
+}
+
+# Model question (codex only). Codex owns the model choice: the shell reads
+# it back from codex's own config and never forces -m, so the one honest
+# place to record a preference is that config. An existing top-level model
+# line is shown and kept unless a new name is typed; the file is backed up
+# before any edit, and the claim after follows a read-back. Reads $engine.
+ask_model() {
     if [ "$engine" = "codex" ]; then
         codex_cfg="${CODEX_HOME:-$HOME/.codex}/config.toml"
         current_model=""
@@ -328,38 +353,45 @@ run_wizard() {
             fi
         fi
     fi
+}
 
-    # 4. Telegram (optional). The connect flow is offered because the bridge
-    #    exists (bridge/telegram.js) -- DESIGN.md's rule, honored in that
-    #    order. Enter skips; nothing is ever required here. WhatsApp is not
-    #    offered because no WhatsApp bridge exists yet, and this menu does
-    #    not sell what is not built.
+# Telegram question (optional). The connect flow is offered because the
+# bridge exists (bridge/telegram.js) -- DESIGN.md's rule, honored in that
+# order. Enter skips; nothing is ever required here. WhatsApp is named as
+# not built because silence would read as "does not exist" -- but it is
+# named honestly, not menued. Sets $tg_token.
+ask_telegram() {
+    tg_token=""
     echo
     echo "Connect Telegram (optional): message @BotFather in Telegram, send"
     echo "/newbot, and paste the bot token here. Enter skips -- you can"
     echo "connect later with: sherman telegram --token <token>"
+    echo "(WhatsApp is not built yet; Telegram is the phone channel today.)"
     printf 'Telegram bot token > '
     read -r tg_token || tg_token=""
     tg_token=$(printf '%s' "$tg_token" | tr -d ' "')
+}
 
-    vault="$ROOT/vault"
-
-    mkdir -p "$SHERMAN_HOME"
-    extra=""
-    [ -n "$tg_token" ] && extra=$(printf ',"telegram_token":"%s"' "$tg_token")
-    printf '{"version":1,"engine":"%s","user":"%s","vault_path":"%s"%s}\n' \
-        "$engine" "$user" "$vault" "$extra" > "$CONFIG"
-
+# One-time catch-up for a machine set up before newer questions existed:
+# config versions below 2 get asked exactly the questions they never saw,
+# then the version is bumped so this never repeats. Interactive terminals
+# only -- a piped or scripted run is not a person who can answer.
+run_setup_upgrade() {
     echo
-    echo "  engine: $engine"
-    echo "  user:   $user"
-    echo "  vault:  $vault"
+    echo "Sherman has new setup options this machine has not answered yet."
+    engine="$ENGINE"
+    ask_model
+    ask_telegram
     if [ -n "$tg_token" ]; then
-        echo "  telegram: token saved -- after setup, run: sherman telegram"
+        config_set telegram_token "$tg_token"
+        echo "  telegram: token saved -- run: sherman telegram"
         echo "            (first message to the bot prints the chat id to pair)"
     fi
-    echo
-    echo "Starting your session."
+    if command -v /usr/bin/jq >/dev/null 2>&1; then
+        /usr/bin/jq '.version = 2' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
+    else
+        sed -i.bak 's/"version"[[:space:]]*:[[:space:]]*[0-9][0-9]*/"version":2/' "$CONFIG" && rm -f "$CONFIG.bak"
+    fi
     echo
 }
 
@@ -697,6 +729,18 @@ if [ -z "$ENGINE" ] || [ -z "$USER_SLUG" ] || [ -z "$VAULT" ]; then
     echo "Config at $CONFIG is incomplete. Delete it and run sherman again." >&2
     exit 1
 fi
+
+# A config from before the newer setup questions gets them asked once, now,
+# rather than silently never -- "it didn't ask me" is a bug report this
+# launcher takes seriously. Non-interactive runs skip; they cannot answer.
+cfg_version=$(config_get version)
+case "$cfg_version" in
+    ''|0|1)
+        if [ -t 0 ]; then
+            run_setup_upgrade
+        fi
+        ;;
+esac
 
 require_engine "$ENGINE"
 
