@@ -119,6 +119,14 @@ Windows runs of this script.
 
 ## What is different under WSL, stated plainly
 
+- **Windows' PATH shines through interop, and its codex cannot run here.**
+  With interop on, `codex` inside Ubuntu can resolve to the Windows npm's
+  shim under `/mnt/c/...`, which dies on its first import ("Missing
+  optional dependency @openai/codex-linux-x64") because the package behind
+  it is the Windows build. Seen on the first real Windows machine.
+  `install.sh` refuses to count anything under `/mnt` as an install, and
+  the launcher heals machines installed before that fix by installing the
+  Linux codex with its own runtime npm.
 - **The vault write-boundary is unproven here.** On macOS the engine is
   sealed by the seatbelt sandbox and that was verified by a test that tried
   to escape. On Linux, Codex enforces its sandbox with Landlock/seccomp and

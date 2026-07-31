@@ -124,8 +124,53 @@ engine_install_hint() {
     esac
 }
 
+# Seen on the first real Windows machine: with WSL's PATH interop on,
+# `codex` inside Ubuntu resolved to the WINDOWS npm's shim under /mnt/c/...,
+# which dies on its first import with "Missing optional dependency
+# @openai/codex-linux-x64" -- the package behind it is the Windows build.
+# That shim is not an install, it is a trap, and install.sh now refuses to
+# count it. This guard heals machines installed before that: if the codex
+# on PATH lives under /mnt, install the Linux one right here with the
+# runtime's own npm (already prepended to PATH above) and verify it runs.
+ensure_linux_codex() {
+    found=$(command -v codex 2>/dev/null || true)
+    case "$found" in
+        /mnt/*) ;;
+        *) return 0 ;;  # absent or already a Linux codex: nothing to heal
+    esac
+    echo "  the codex on PATH is Windows' own install ($found)"
+    echo "  and cannot run inside Ubuntu. Installing the Linux codex CLI"
+    echo "  (npm install -g @openai/codex) ..."
+    npm_bin=$(command -v npm 2>/dev/null || true)
+    case "$npm_bin" in /mnt/*) npm_bin="" ;; esac
+    if [ -z "$npm_bin" ]; then
+        echo "  ...but there is no Linux npm to install it with."
+        echo "  Run ./install.sh in the sherman repo, then sherman again."
+        return 1
+    fi
+    "$npm_bin" install -g @openai/codex >/dev/null 2>&1 || true
+    hash -r 2>/dev/null || true
+    found=$(command -v codex 2>/dev/null || true)
+    case "$found" in
+        /mnt/*|'')
+            echo "  ...npm ran but no Linux codex appeared on PATH."
+            echo "  Install it by hand:  npm install -g @openai/codex"
+            return 1 ;;
+    esac
+    if codex --version >/dev/null 2>&1; then
+        echo "  ...codex $(codex --version 2>/dev/null) installed at $found (verified: codex --version)"
+        return 0
+    fi
+    echo "  ...a codex appeared at $found but did not run. Install it by hand:"
+    echo "     npm install -g @openai/codex"
+    return 1
+}
+
 require_engine() {
     bin=$(engine_binary "$1")
+    if [ "$bin" = "codex" ]; then
+        ensure_linux_codex || exit 1
+    fi
     if ! command -v "$bin" >/dev/null 2>&1; then
         echo >&2
         engine_install_hint "$1" >&2
@@ -754,6 +799,7 @@ run_model_picker() {
         picked=$(provider_field "$reply" 1)
     done
 
+    ensure_linux_codex || exit 1
     if ! command -v codex >/dev/null 2>&1; then
         engine_install_hint codex
         exit 1

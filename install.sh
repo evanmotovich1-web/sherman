@@ -173,30 +173,51 @@ fi
 # with whichever npm is now available (the provisioned runtime's npm keeps
 # this sudo-free). Signing in stays Codex's own -- it happens on first
 # launch, never here.
-if command -v codex >/dev/null 2>&1; then
+#
+# "Present" means a codex THIS system can run. Under WSL, Windows' PATH
+# shines through interop, and the Windows npm drops an extensionless shim
+# at /mnt/c/.../npm/codex that Linux happily executes -- straight into
+# "Missing optional dependency @openai/codex-linux-x64", because the
+# package it loads is the Windows one. Counting that shim as an install
+# left the first real Windows machine with no runnable codex at all, so
+# anything under /mnt is disqualified here -- for codex, and for the npm
+# used to install it.
+linux_codex() {
+    for c in "$RUNTIME"/node-*/bin/codex "$TARGET_DIR/codex"; do
+        [ -x "$c" ] && { printf '%s' "$c"; return 0; }
+    done
+    c=$(command -v codex 2>/dev/null || true)
+    case "$c" in ''|/mnt/*) return 1 ;; esac
+    printf '%s' "$c"
+}
+
+npm_bin=$(command -v npm 2>/dev/null || true)
+case "$npm_bin" in /mnt/*) npm_bin="" ;; esac
+
+if codex_bin=$(linux_codex) && "$codex_bin" --version >/dev/null 2>&1; then
     echo "  codex CLI found (sign-in stays codex's own)"
 elif [ -n "${SHERMAN_INSTALL_NO_FETCH:-}" ]; then
     echo "  NOTE: the codex CLI is missing and network fetches are disabled"
     echo "        (SHERMAN_INSTALL_NO_FETCH). Nothing was installed."
     echo "        Install it yourself:  npm install -g @openai/codex"
-elif ! command -v npm >/dev/null 2>&1; then
+elif [ -z "$npm_bin" ]; then
     echo "  NOTE: the codex CLI is missing and there is no npm to install it"
     echo "        with. Once Node 22+ is present, re-run ./install.sh"
 else
     echo "  installing the codex CLI (npm install -g @openai/codex)"
-    npm install -g @openai/codex --silent >/dev/null 2>&1 || true
+    "$npm_bin" install -g @openai/codex --silent >/dev/null 2>&1 || true
 
     # npm's global bin may not be on PATH (the provisioned runtime's is not,
     # until linked). Resolve where npm actually put it, link it next to
     # sherman, and only then decide whether "installed" is true.
-    if ! command -v codex >/dev/null 2>&1; then
-        npm_prefix=$(npm prefix -g 2>/dev/null || true)
+    if ! linux_codex >/dev/null; then
+        npm_prefix=$("$npm_bin" prefix -g 2>/dev/null || true)
         if [ -n "$npm_prefix" ] && [ -x "$npm_prefix/bin/codex" ]; then
             ln -sfn "$npm_prefix/bin/codex" "$TARGET_DIR/codex"
         fi
     fi
 
-    if command -v codex >/dev/null 2>&1 && codex --version >/dev/null 2>&1; then
+    if codex_bin=$(linux_codex) && "$codex_bin" --version >/dev/null 2>&1; then
         echo "  codex CLI installed (verified: codex --version)"
         echo "        sign-in is codex's own; it runs on first launch"
     else
