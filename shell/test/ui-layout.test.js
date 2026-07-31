@@ -101,15 +101,25 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         const output = renderToString(
             React.createElement(LaunchScreen, {
                 info, stats, sessionId: '20260728_010000_abc123', columns, rows,
+                platform: 'win32',
             }),
             { columns }
         );
-        // Full bleed up to the 120-column design cap; past it the frame keeps
-        // its designed width and centers, so the widest line is the pad plus
-        // the capped panel, never the whole terminal.
+        // On the PC: full bleed up to the 120-column design cap; past it the
+        // frame keeps its designed width and centers, so the widest line is
+        // the pad plus the capped panel, never the whole terminal.
         const cappedWidth = Math.min(columns, 120);
         const expectedWidth = Math.floor((columns - cappedWidth) / 2) + cappedWidth;
         assert.equal(maxWidth(output), expectedWidth, `${columns}x${rows} lost launch geometry`);
+        // On the Mac the same terminal gets the original full-bleed frame.
+        const macOutput = renderToString(
+            React.createElement(LaunchScreen, {
+                info, stats, sessionId: '20260728_010000_abc123', columns, rows,
+                platform: 'darwin',
+            }),
+            { columns }
+        );
+        assert.equal(maxWidth(macOutput), columns, `${columns}x${rows} lost the Mac's full-width launch geometry`);
         assert.ok(
             rawRows(output).length <= rows - 2,
             `${columns}x${rows} launch crowds out status/composer`
@@ -149,6 +159,7 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     const at60 = plain(renderToString(
         React.createElement(LaunchScreen, {
             info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 60,
+            platform: 'win32',
         }),
         { columns: 120 }
     ));
@@ -165,9 +176,9 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         `tall terminals must stretch the launch panel (41 rows -> ${rowsAt41}, 60 -> ${rowsAt60})`
     );
     assert.ok(rowsAt60 <= 58, 'a stretched launch panel must not crowd out status and composer');
-    // The stretch is capped: slack past the doubled mark's column falls below
-    // the top-anchored frame instead of hollowing the box out with multi-row
-    // voids between its sections.
+    // The PC stretch is capped: slack past the doubled mark's column falls
+    // below the top-anchored frame instead of hollowing the box out with
+    // multi-row voids between its sections.
     const at60Interior = at60.split('\n').filter((line) => line.startsWith('│'));
     let voidRun = 0;
     let worstVoid = 0;
@@ -186,6 +197,7 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     const maximized = plain(renderToString(
         React.createElement(LaunchScreen, {
             info, stats, sessionId: '20260728_010000_layout', columns: 250, rows: 60,
+            platform: 'win32',
         }),
         { columns: 250 }
     ));
@@ -193,6 +205,32 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     assert.ok(maxBorder, 'maximized frame lost its panel border');
     assert.equal(stringWidth(maxBorder.trimStart()), 120, 'maximized panel must cap at the design width');
     assert.equal(maxBorder.length - maxBorder.trimStart().length, 65, 'maximized panel must center in the terminal');
+
+    // The same maximized terminal on the Mac is the design being restored:
+    // the panel spans the full width, uncentered, and the tall stretch is
+    // unbounded — the operator kept the PC cap and asked for the Mac back.
+    const macMaximized = plain(renderToString(
+        React.createElement(LaunchScreen, {
+            info, stats, sessionId: '20260728_010000_layout', columns: 250, rows: 60,
+            platform: 'darwin',
+        }),
+        { columns: 250 }
+    ));
+    const macBorder = rawRows(macMaximized).find((line) => line.includes('╭'));
+    assert.ok(macBorder, 'Mac maximized frame lost its panel border');
+    assert.equal(stringWidth(macBorder.trimStart()), 250, 'Mac maximized panel must span the terminal');
+    assert.equal(macBorder.length - macBorder.trimStart().length, 0, 'Mac maximized panel must not be centered');
+    const macAt60 = plain(renderToString(
+        React.createElement(LaunchScreen, {
+            info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 60,
+            platform: 'darwin',
+        }),
+        { columns: 120 }
+    ));
+    assert.ok(
+        macAt60.split('\n').length > rowsAt60,
+        'the Mac tall frame must keep the unbounded stretch the PC gave up'
+    );
 
     // Three tiers on a retro-wide terminal, each boundary crossed exactly
     // once: the compact card below 22 rows, the mid panel (Vault section

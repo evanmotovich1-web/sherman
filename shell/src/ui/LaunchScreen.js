@@ -59,12 +59,20 @@ const LEFT_COLUMN = 37;
 const LEFT_COLUMN_LARGE = Math.max(markSize(2).columns + 4, LEFT_COLUMN);
 
 // The widest frame the design was ever drawn at. Full bleed was right up to
-// the reference window (~120 columns), and wrong past it: a maximized wide
-// monitor (250 columns on the first real Windows machine) stretched the box
-// across the screen with the content marooned in its left third — "looks
-// great just weird because of all that empty space". Past this cap the frame
-// keeps its designed proportions and centers in the terminal instead of
-// thinning out to fill it.
+// the reference window (~120 columns), and wrong past it ON THE PC: a
+// maximized wide monitor (250 columns on the first real Windows machine)
+// stretched the box across the screen with the content marooned in its left
+// third — "looks great just weird because of all that empty space". Past this
+// cap the frame keeps its designed proportions and centers in the terminal
+// instead of thinning out to fill it.
+//
+// The cap is a PC decision, not a universal one. Applied everywhere it
+// regressed the Mac, whose maximized terminal had the full-bleed Hermes-style
+// frame the design was praised for — the operator's verdict was exact: "the
+// way it looks on the PC is great … restore the Mac CLI design to how it was
+// before". So the cap (and the bounded stretch below) applies off-darwin —
+// Windows and WSL, where the complaint came from — and darwin keeps the
+// original full-bleed geometry.
 const PANEL_MAX_COLUMNS = 120;
 // Mark, one blank row, then the three identity lines.
 const IDENTITY_ROWS = 3;
@@ -125,6 +133,8 @@ const MARK_ROWS_LARGE = markSize(2).rows;
 // a 60-row terminal's slack INTO the box — ten-row voids between sections,
 // the same empty-space complaint the width cap answers horizontally. Past
 // this, slack falls below the top-anchored frame instead of hollowing it out.
+// Like the width cap, this bound is PC-only: the Mac's tall frame spreads
+// its sections across the height, and that is the design being restored.
 const STRETCH_MAX_INNER = MARK_ROWS_LARGE + 1 + IDENTITY_ROWS + 2;
 
 /**
@@ -906,21 +916,30 @@ function welcome(stats) {
  *
  * `rows` is injectable for the same reason and selects only the short-terminal
  * summary; full launch cards always hug their content.
+ *
+ * `platform` is injectable so both geometries stay testable from one machine:
+ * the tests pin the PC's capped frame and the Mac's full-bleed frame
+ * explicitly, whatever host runs them. Live, nothing passes it.
  */
-export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }) {
+export function LaunchScreen({ info, stats, sessionId, columns, rows, registry, platform }) {
     const reg = registry ?? cachedRegistry();
     const measured = useWindowSize();
     const terminal = typeof columns === 'number' ? columns : measured.columns;
     const height = typeof rows === 'number' ? rows : measured.rows;
 
+    // The maximized-monitor discipline is per-platform (see PANEL_MAX_COLUMNS):
+    // capped and centered on the PC, full bleed on the Mac.
+    const capped = (platform ?? process.platform) !== 'darwin';
+
     // Up to the cap the panel spans the terminal, like Hermes — the border is
     // composed to the measured width, so a narrow terminal gets a narrow
-    // panel, not a spilled one. Past the cap the frame keeps its designed
-    // width and the surplus becomes symmetric side margin: a maximized wide
-    // monitor gets the reference frame centered, not a box stretched thin
-    // around marooned content.
-    const width = Math.min(terminal, PANEL_MAX_COLUMNS);
-    const sidePad = Math.max(0, Math.floor((terminal - width) / 2));
+    // panel, not a spilled one. Past the cap (PC only) the frame keeps its
+    // designed width and the surplus becomes symmetric side margin: a
+    // maximized wide monitor gets the reference frame centered, not a box
+    // stretched thin around marooned content. On the Mac the panel spans the
+    // terminal at every width, as it always did.
+    const width = capped ? Math.min(terminal, PANEL_MAX_COLUMNS) : terminal;
+    const sidePad = capped ? Math.max(0, Math.floor((terminal - width) / 2)) : 0;
     const panel = Math.max(1, width);
     // Border + horizontal padding consume six columns. Below the normal
     // two-column layout, stack identity above knowledge and let both shrink.
@@ -991,12 +1010,13 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
     const naturalInner = stack ? LEFT_ROWS + 1 + known : Math.max(LEFT_ROWS, known);
     let bodyRows = compactPanel ? null : tallPanelRows(wmRows, height, naturalInner);
 
-    // The stretch is bounded now: the body grows to the doubled mark's column
-    // and no further, and rows past that fall below the welcome line — the
-    // frame stays top-anchored (a void ABOVE the wordmark reads as a broken
-    // first frame; the transcript anchor test records that decision).
-    // Uncapped, a 60-row terminal opened ten-row voids between the sections.
-    if (bodyRows) {
+    // The stretch is bounded on the PC: the body grows to the doubled mark's
+    // column and no further, and rows past that fall below the welcome line —
+    // the frame stays top-anchored (a void ABOVE the wordmark reads as a
+    // broken first frame; the transcript anchor test records that decision).
+    // Uncapped, a 60-row PC terminal opened ten-row voids between the
+    // sections. The Mac keeps the unbounded stretch it launched with.
+    if (bodyRows && capped) {
         bodyRows = Math.min(bodyRows, Math.max(naturalInner, STRETCH_MAX_INNER));
     }
 

@@ -324,6 +324,10 @@ const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 const fullPanelModes = [];
 
 for (const rows of ROWS) {
+    // The 120-column cap is a PC decision (darwin full-bleeds), so the PC
+    // platform is pinned here and the capped expectation below stays true on
+    // whatever machine runs smoke. The Mac geometry is pinned by the shell
+    // test suite (ui-layout).
     const out = renderToString(
         React.createElement(LaunchScreen, {
             info,
@@ -331,6 +335,7 @@ for (const rows of ROWS) {
             sessionId: '20260726_120000_abc123',
             columns: cols,
             rows,
+            platform: 'win32',
         }),
         { columns: cols }
     );
