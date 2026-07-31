@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 
 import { color } from './theme.js';
 import { fitCategory, loadRegistry } from '../registry.js';
-import { Wordmark, wordmarkRows } from './Wordmark.js';
+import { SMALL_ROWS, Wordmark, wordmarkRows } from './Wordmark.js';
 import { Mark, markSize } from './Mark.js';
 import { safeTerminalText } from './sanitize.js';
 
@@ -581,8 +581,19 @@ function Knowledge({ stats, registry, caps, info, sessionId, width, stretch = fa
     );
 }
 
+// Rows the compact frame spends around the card's four base lines: the
+// wordmark is counted by the caller (its height varies with the terminal);
+// this is everything else — the panel's marginTop, its two border rows, the
+// four content rows, the welcome line with its margins, and the chrome below
+// (status rule plus the three composer rows). The spare-row budget the card
+// receives is the terminal height minus wordmark minus this, and the card may
+// grow by AT MOST that many rows: one row over and Ink duplicates frames on
+// repaint (the small-viewport waterfall, issue #18), which is a worse screen
+// than a shorter card.
+export const COMPACT_BASE_ROWS = 14;
+
 /** Short-terminal readiness card: operational facts win over decorative art. */
-function CompactSummary({ width, info, stats, sessionId }) {
+function CompactSummary({ width, info, stats, sessionId, registry, spare = 0 }) {
     if (width < 4) return React.createElement(Text, { wrap: 'truncate' }, 'sherman');
 
     const facts = stats.wiki + stats.shared + stats.private;
@@ -590,6 +601,32 @@ function CompactSummary({ width, info, stats, sessionId }) {
         ? `${plural(facts, 'fact')} · ${plural(stats.inbox, 'inbox item')}`
         : 'unavailable · check vault_path';
     const session = sessionId ? `…${sessionId.slice(-6)}` : '—';
+
+    // What Sherman can do, in the card's own label/value grammar: one line per
+    // registry, category names carrying the light and the honest total after
+    // them. This is the mid-size answer to "the PC screen shows less than the
+    // Mac" — the full panel's lists need rows a short terminal does not have,
+    // but two lines fit almost everywhere, so the card stops hiding the
+    // capability set. Rendered only when the height budget covers both lines,
+    // and a registry that failed to load contributes NO line: the full panel
+    // prints its reason, but this card never promised it, and a fabricated
+    // row is worse than a missing one.
+    const capabilities = [];
+    if (spare >= 2 && registry) {
+        for (const [label, result] of [['tools', registry.tools], ['skills', registry.skills]]) {
+            if (!result?.ok) continue;
+            const names = result.categories.map((c) => c.name).join(', ');
+            capabilities.push(
+                React.createElement(
+                    Text,
+                    { key: label, wrap: 'truncate' },
+                    React.createElement(Text, { color: color.muted }, label.padEnd(10)),
+                    React.createElement(Text, { color: color.value }, names),
+                    React.createElement(Text, { color: color.muted }, ` · ${result.count} total`)
+                )
+            );
+        }
+    }
 
     return React.createElement(
         Box,
@@ -619,6 +656,7 @@ function CompactSummary({ width, info, stats, sessionId }) {
                 { color: color.muted, wrap: 'truncate' },
                 `user      ${safeTerminalText(info.user)} · session ${session}`
             ),
+            ...capabilities,
             React.createElement(
                 Text,
                 { wrap: 'truncate' },
@@ -714,6 +752,14 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
                       info,
                       stats,
                       sessionId,
+                      registry: reg,
+                      // The wordmark actually drawn is the compact one below
+                      // 40 rows regardless of width, so the budget must count
+                      // THAT form, not the one wordmarkRows would pick.
+                      spare:
+                          height
+                          - (compactWordmark ? SMALL_ROWS : wordmarkRows(width))
+                          - COMPACT_BASE_ROWS,
                   })
               )
             : React.createElement(

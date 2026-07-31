@@ -111,6 +111,12 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         );
         if (rows < 29) {
             assert.match(plain(output), /\/help/);
+            // The card carries the capability lines whenever the height budget
+            // covers them — the first real Windows machine read the bare card
+            // as "an old Sherman" next to a maximized Mac, and the tool and
+            // skill categories are what it was missing. 24 rows affords them.
+            assert.match(plain(output), /tools {5}\w[\w-]*(, [\w-]+)* · \d+ total/);
+            assert.match(plain(output), /skills {4}\w[\w-]*(, [\w-]+)* · \d+ total/);
         } else {
             assert.match(plain(output), /\bVault\b/);
             // The closing tally is unconditional above the compact cutoff: the
@@ -170,6 +176,18 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     ));
     assert.doesNotMatch(wideCompact, /\bVault\b/);
     assert.match(wideFull, /\bVault\b/);
+
+    // Below the budget the capability lines vanish rather than overflow: one
+    // row past the viewport and Ink duplicates frames (the waterfall). At 20
+    // rows the base card is an exact fit, so the lines must be gone.
+    const tight = plain(renderToString(
+        React.createElement(LaunchScreen, {
+            info, stats, sessionId: '20260728_010000_boundary', columns: 80, rows: 20,
+        }),
+        { columns: 80 }
+    ));
+    assert.doesNotMatch(tight, /tools {5}/);
+    assert.doesNotMatch(tight, /skills {4}/);
 
     // The stacked boundary moved 40/41 -> 43/44 with the identity block: a
     // stacked frame carries the identity under the mark now, and at 41-43 rows
