@@ -151,7 +151,12 @@ export function StatusBar({
     // silent turn, this status indicator is the sole moving liveness signal.
     const { frame, time } = useAnimation({ interval: reducedMotion ? 1000 : 100, isActive: busy });
     // Return intentionally unused: this hook repaints the idle session clock.
-    useAnimation({ interval: 1000, isActive: !busy });
+    // 10s, not 1s: on a terminal too short for the tree (seen in Windows
+    // Terminal via ConPTY), Ink cannot repaint in place and every tick
+    // appends a copy of the frame -- a once-a-second idle clock turned that
+    // into a waterfall. An idle clock that hops 10s at a time costs nothing;
+    // during a turn the busy hook above still animates at full rate.
+    useAnimation({ interval: 10000, isActive: !busy });
 
     if (viewportWidth < MIN_STATUS_COLUMNS) return null;
 
