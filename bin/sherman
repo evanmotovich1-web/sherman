@@ -718,12 +718,99 @@ if [ "${1:-}" = "sync" ]; then
     run_sync
 fi
 
-# `model` reads or sets the codex model -- the same backed-up, read-back
-# verified write setup performs, callable any time a wrong value needs
-# fixing without re-running setup.
+# `model` -- interactive picker with no argument, direct set with one.
+# The picker walks provider -> sign-in -> model: the provider menu renders
+# from the same registry as setup (an unavailable provider is shown and
+# refuses selection, never sold), the sign-in check is codex's own
+# `codex login status`, and the model menu lists the models this shell
+# knows context windows for -- read live from shell/src/config.js, so one
+# map feeds both -- stated as "known here", because codex 0.145 offers no
+# way to enumerate models and this menu does not pretend otherwise.
+run_model_picker() {
+    echo
+    echo "Provider:"
+    total=$(provider_count)
+    i=1
+    while [ "$i" -le "$total" ]; do
+        if [ "$(provider_field "$i" 4)" = "available" ]; then
+            echo "  [$i] $(provider_field "$i" 2)"
+        else
+            echo "  [$i] $(provider_field "$i" 2) — not available yet"
+        fi
+        i=$((i + 1))
+    done
+    picked=""
+    while [ -z "$picked" ]; do
+        printf 'Choose a number > '
+        if ! read -r reply; then echo; exit 1; fi
+        case "$reply" in ''|*[!0-9]*) echo "  Enter a number between 1 and $total."; continue ;; esac
+        if [ "$reply" -lt 1 ] || [ "$reply" -gt "$total" ]; then
+            echo "  Enter a number between 1 and $total."; continue
+        fi
+        if [ "$(provider_field "$reply" 4)" != "available" ]; then
+            echo "  $(provider_field "$reply" 2) is not available yet — $(provider_field "$reply" 5)."
+            continue
+        fi
+        picked=$(provider_field "$reply" 1)
+    done
+
+    if ! command -v codex >/dev/null 2>&1; then
+        engine_install_hint codex
+        exit 1
+    fi
+    if codex login status >/dev/null 2>&1; then
+        echo "  signed in ($(codex login status 2>/dev/null | head -1))"
+    else
+        printf 'Not signed in. Run codex login now (opens a browser)? [y/N] > '
+        read -r yn || yn=""
+        case "$yn" in
+            y|Y|yes|YES)
+                codex login || { echo "  login did not complete; try again later."; exit 1; }
+                ;;
+            *)
+                echo "  staying signed out -- codex will run its login on first use."
+                ;;
+        esac
+    fi
+
+    current=$(read_codex_model)
+    echo
+    if [ -n "$current" ]; then
+        echo "Model [current: $current] -- the models this shell knows"
+    else
+        echo "Model [current: codex default] -- the models this shell knows"
+    fi
+    echo "(codex accepts others too; type a name instead of a number):"
+    known_models=$(sed -n "/MODEL_CONTEXT_WINDOWS/,/})/s/^[[:space:]]*'\([^']*\)':.*/\1/p" "$ROOT/shell/src/config.js")
+    i=1
+    for m in $known_models; do
+        echo "  [$i] $m"
+        i=$((i + 1))
+    done
+    count=$((i - 1))
+    printf 'Choose a number, type a model name, or Enter to keep as is > '
+    read -r choice || choice=""
+    choice=$(printf '%s' "$choice" | tr -d '" ')
+    [ -z "$choice" ] && { echo "  keeping it as is."; exit 0; }
+    case "$choice" in
+        *[!0-9]*)
+            write_codex_model "$choice"; exit $? ;;
+        *)
+            if [ "$choice" -ge 1 ] && [ "$choice" -le "$count" ]; then
+                sel=$(printf '%s\n' $known_models | sed -n "${choice}p")
+                write_codex_model "$sel"; exit $?
+            fi
+            echo "  Enter 1-$count, a model name, or nothing."
+            exit 1 ;;
+    esac
+}
+
 if [ "${1:-}" = "model" ]; then
     shift
     if [ -z "${1:-}" ]; then
+        if [ -t 0 ]; then
+            run_model_picker
+        fi
         current=$(read_codex_model)
         if [ -n "$current" ]; then
             echo "model: $current (from $(codex_config_path))"

@@ -104,7 +104,7 @@ sherman           the Sherman Shell — Sherman's own interface
 sherman --raw     the engine directly, its own chrome, for debugging
 sherman update    fast-forward this checkout when an update source exists
 sherman sync      pull + publish the shared vault, so every machine shares one brain
-sherman model     read or set the codex model (verified by read-back)
+sherman model     pick provider, sign-in, and model from menus; or set one directly (verified by read-back)
 sherman telegram  run the Telegram bridge; it shows a pairing code, and the chat that texts it back is the one it answers
 ```
 
