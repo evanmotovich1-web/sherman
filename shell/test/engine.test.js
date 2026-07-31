@@ -132,7 +132,9 @@ test('does not call redirected cat a read and preserves completion-only patches'
         changes: [{ path: '/tmp/sherman-test/vault/wiki/new.md', kind: 'add' }],
         status: 'completed',
     });
-    assert.equal(patch.label, 'patch wiki/new.md');
+    // Every change an `add` is a creation, and the trace says so.
+    assert.equal(patch.label, 'create wiki/new.md');
+    assert.equal(patch.category, 'file-create');
     assert.equal(patch.outcome, 'succeeded');
     assert.equal(patch.durationMs, null);
 });
@@ -159,6 +161,48 @@ test('a read command and a shell command report different categories', () => {
         id: 'p1', type: 'command_execution', command: '/bin/bash -lc "cat a | rm -rf b"',
     });
     assert.equal(piped.category, 'command');
+});
+
+test('locating commands report file-search; compound ones stay honest execs', () => {
+    const codex = session();
+
+    // The label keeps the command verbatim: grep, find and ls are different
+    // searches, so the binary name is information, not noise.
+    const [grep] = map(codex, 'item.started', {
+        id: 's1', type: 'command_execution', command: '/bin/bash -lc "grep -rn boundary skills"',
+    });
+    assert.equal(grep.category, 'file-search');
+    assert.equal(grep.label, 'grep -rn boundary skills');
+
+    const [ls] = map(codex, 'item.started', {
+        id: 's2', type: 'command_execution', command: '/bin/bash -lc "ls vault/wiki"',
+    });
+    assert.equal(ls.category, 'file-search');
+
+    // Shell operators disqualify, exactly as they do for reads.
+    const [piped] = map(codex, 'item.started', {
+        id: 's3', type: 'command_execution', command: '/bin/bash -lc "grep -rn x . | xargs rm"',
+    });
+    assert.equal(piped.category, 'command');
+
+    // A prefix is not a binary: `lsof` must not be softened into a find.
+    const [lsof] = map(codex, 'item.started', {
+        id: 's4', type: 'command_execution', command: '/bin/bash -lc "lsof -i :3000"',
+    });
+    assert.equal(lsof.category, 'command');
+});
+
+test('a mixed file-change batch stays a patch; only all-adds create', () => {
+    const codex = session();
+    const [mixed] = map(codex, 'item.completed', {
+        id: 'm1', type: 'file_change', status: 'completed',
+        changes: [
+            { path: '/tmp/sherman-test/vault/wiki/new.md', kind: 'add' },
+            { path: '/tmp/sherman-test/vault/wiki/old.md', kind: 'update' },
+        ],
+    });
+    assert.equal(mixed.category, 'file-change');
+    assert.match(mixed.label, /^patch /);
 });
 
 // --------------------------------------------------------------------------

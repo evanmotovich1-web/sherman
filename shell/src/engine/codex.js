@@ -715,8 +715,19 @@ function toolPresentation(item, config) {
     switch (item.type) {
         case 'command_execution':
             return commandPresentation(item.command);
-        case 'file_change':
-            return { category: 'file-change', label: fileChangeLabel(item.changes, config) };
+        case 'file_change': {
+            // Every change a `kind:'add'` is a creation, not a patch — the
+            // same evidence the differ already uses (an add legitimately has
+            // no before-image), carried out to the category so the trace can
+            // mark making a file differently from editing one. A mixed batch
+            // stays a patch: one edited file makes the whole change an edit.
+            const changes = Array.isArray(item.changes) ? item.changes : [];
+            const creates = changes.length > 0 && changes.every((change) => change?.kind === 'add');
+            return {
+                category: creates ? 'file-create' : 'file-change',
+                label: fileChangeLabel(item.changes, config, creates ? 'create' : 'patch'),
+            };
+        }
         case 'mcp_tool_call': {
             const target = [safeLabel(item.server), safeLabel(item.tool)].filter(Boolean).join('.');
             return { category: 'mcp', label: target ? `mcp ${target}` : 'mcp tool' };
@@ -847,6 +858,15 @@ function commandPresentation(value) {
     const read = unsafe ? null : command.match(/^(?:cat|head|tail)\s+(?:--\s+)?([^\s]+)$/);
     if (read) return { category: 'read', label: `read ${firstLine(read[1])}` };
 
+    // The locating commands get the same treatment on the same terms: one
+    // simple command, no shell operators, whose whole job is finding files or
+    // lines. The label keeps the command verbatim — grep, rg, fd, find and ls
+    // are different searches, so unlike cat/head/tail the binary name is
+    // information, not noise.
+    if (!unsafe && /^(?:grep|rg|fd|find|ls)\b/.test(command)) {
+        return { category: 'file-search', label: firstLine(command) };
+    }
+
     return { category: 'command', label: `exec ${firstLine(command)}` };
 }
 
@@ -890,10 +910,10 @@ function displayPath(value, config) {
     return safeLabel(basename(value));
 }
 
-function fileChangeLabel(changes, config) {
+function fileChangeLabel(changes, config, verb = 'patch') {
     if (!Array.isArray(changes) || changes.length === 0) return null;
     const paths = changes.map((change) => displayPath(change?.path, config)).filter(Boolean);
     if (paths.length === 0) return null;
-    if (paths.length === 1) return `patch ${paths[0]}`;
-    return `patch ${paths.slice(0, 2).join(', ')}${paths.length > 2 ? ` +${paths.length - 2}` : ''}`;
+    if (paths.length === 1) return `${verb} ${paths[0]}`;
+    return `${verb} ${paths.slice(0, 2).join(', ')}${paths.length > 2 ? ` +${paths.length - 2}` : ''}`;
 }

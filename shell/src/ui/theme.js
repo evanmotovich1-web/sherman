@@ -167,6 +167,12 @@ export const ACTIVITY_GLYPH = Object.freeze({
     read: '📖',
     command: '💻',
     'file-change': '📝',
+    // Making a file and editing one are different acts (a create has no
+    // before-image), and locating things is not executing things. Both new
+    // glyphs keep the single-code-point/2-column invariant: ✨ and 🔎 carry
+    // default emoji presentation without a VS16.
+    'file-create': '✨',
+    'file-search': '🔎',
     'web-search': '🔍',
     mcp: '🔌',
     subagent: '🤖',

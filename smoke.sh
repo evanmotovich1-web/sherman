@@ -639,8 +639,10 @@ if (uncertainSedStarts.some((event) => !event?.label?.startsWith('exec sed'))) {
 if (/[\x00-\x1f\x7f-\x9f]/.test(controlStart[0]?.label ?? '')) {
     mappingMissing.push('tool label control-character stripping');
 }
-if (patchStart[0]?.phase !== 'started' || patchStart[0]?.label !== 'patch output.txt') {
-    mappingMissing.push('Codex patch start mapping');
+// The fixture change is a single kind:'add', which the engine reports as a
+// creation, not a patch — making a file and editing one are different acts.
+if (patchStart[0]?.phase !== 'started' || patchStart[0]?.label !== 'create output.txt') {
+    mappingMissing.push('Codex create start mapping');
 }
 if (patchDone[0]?.phase !== 'completed' || typeof patchDone[0]?.durationMs !== 'number') {
     mappingMissing.push('Codex patch completion duration');

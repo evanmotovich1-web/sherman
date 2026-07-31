@@ -62,6 +62,8 @@ const TRACE_TAG = Object.freeze({
     command: '$',
     read: 'read',
     'file-change': 'patch',
+    'file-create': 'create',
+    'file-search': 'find',
     'web-search': 'search',
     mcp: 'mcp',
     subagent: 'agent',
