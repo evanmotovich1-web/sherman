@@ -1,7 +1,8 @@
 // First-party Sherman Shell commands. Commands are local UI capabilities, not
 // executable code loaded from the vault and not pretend engine tools.
 
-import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -353,6 +354,85 @@ export function wikiAvailable({ home = homedir() } = {}) {
         && (existsSync(join(dir, '.venv', 'bin', 'python'))
             || existsSync(join(dir, '.venv', 'Scripts', 'python.exe')))
     );
+}
+
+/**
+ * Why a wiki capture would fail, found BEFORE the turn is spent finding it.
+ *
+ * The mute version of this failure shipped first: /wiki ran a full engine
+ * turn whose entire result was the model saying the MCP tools were not
+ * reachable — one line, no cause, nothing the operator could act on. Every
+ * cause is checkable from the shell in milliseconds, so this checks them in
+ * order and names the first broken thing with its fix in the same sentence:
+ *
+ *   1. the install (CLI entry + venv interpreter — wikiAvailable's probe),
+ *   2. the runtime (the interpreter actually runs the CLI; a venv whose
+ *      python exists but whose packages are broken dies here, which is
+ *      invisible to an existence check),
+ *   3. the registration, for the engine that needs one: codex reads
+ *      [mcp_servers.llmwiki] from its own config.toml, and a launch that
+ *      failed to append it leaves every codex turn wiki-blind. Claude Code
+ *      reads .mcp.json, which the launcher rewrites in the workspace every
+ *      launch, so there is nothing stale to check for it.
+ *
+ * @returns {{ok: boolean, reason: string|null}} reason names the fix.
+ */
+export function wikiPreflight({
+    home = homedir(),
+    engine = null,
+    run = spawnSync,
+    env = process.env,
+} = {}) {
+    const dir = join(home, '.sherman', 'llmwiki');
+    const cli = join(dir, 'llmwiki');
+    const python = [
+        join(dir, '.venv', 'bin', 'python'),
+        join(dir, '.venv', 'Scripts', 'python.exe'),
+    ].find((candidate) => existsSync(candidate));
+    if (!existsSync(cli) || !python) {
+        return {
+            ok: false,
+            reason: 'the LLM Wiki is not installed on this machine — re-run install.sh to provision it',
+        };
+    }
+
+    try {
+        const probe = run(python, [cli, '--help'], { timeout: 10000, encoding: 'utf8' });
+        if (!probe || probe.error || probe.status !== 0) {
+            const evidence = probe?.error
+                ? `${probe.error.code ?? 'failed to start'}`
+                : `exited ${probe?.status ?? 'abnormally'}`;
+            const stderrLine = String(probe?.stderr ?? '').split('\n', 1)[0].trim();
+            return {
+                ok: false,
+                reason: `the wiki's own runtime is broken (python ${evidence}`
+                    + `${stderrLine ? `: ${stderrLine}` : ''}) — re-run install.sh to repair it`,
+            };
+        }
+    } catch (error) {
+        return {
+            ok: false,
+            reason: `the wiki's own runtime is broken (python ${error?.code ?? 'failed to start'}) — re-run install.sh to repair it`,
+        };
+    }
+
+    if (engine === 'codex') {
+        const configPath = join(env.CODEX_HOME || join(home, '.codex'), 'config.toml');
+        let config = '';
+        try {
+            config = readFileSync(configPath, 'utf8');
+        } catch {
+            // Unreadable and absent report the same way: not registered.
+        }
+        if (!/^\s*\[mcp_servers\.llmwiki\]/m.test(config)) {
+            return {
+                ok: false,
+                reason: `the LLM Wiki MCP is not registered in ${configPath} — relaunch sherman to register it`,
+            };
+        }
+    }
+
+    return { ok: true, reason: null };
 }
 
 /**

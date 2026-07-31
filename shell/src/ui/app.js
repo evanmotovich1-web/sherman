@@ -37,6 +37,7 @@ import {
     skillTurn,
     wikiAvailable,
     wikiCaptureRequest,
+    wikiPreflight,
     workerRequest,
 } from '../commands.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
@@ -226,6 +227,11 @@ export function App({
     // /wiki satisfies the exit capture the way a manual /eval satisfies the
     // exit eval.
     const [wikiOn] = useState(() => (wiki === null || wiki === undefined ? wikiAvailable() : Boolean(wiki)));
+    // An explicit `wiki` prop is the caller overriding the machine probe, so
+    // the deeper /wiki preflight is skipped for the same reason wikiAvailable
+    // was: both are probes of the same installation, and a caller that has
+    // asserted the answer is not asking.
+    const wikiProbed = wiki === null || wiki === undefined;
     const wikiRanRef = useRef(false);
 
     const [busy, setBusy] = useState(false);
@@ -645,6 +651,17 @@ export function App({
             if (parsed.kind === 'command' && parsed.name === 'wiki') {
                 if (!wikiOn) {
                     commit('error', 'The LLM Wiki is not installed on this machine — re-run install.sh to provision it.');
+                    return;
+                }
+                // Before spending a turn: is the wiki actually reachable from
+                // THIS engine? A broken venv or an unregistered codex MCP
+                // entry would otherwise surface as one causeless line from
+                // the model after a whole turn of discovering it.
+                const preflight = wikiProbed
+                    ? wikiPreflight({ engine: session.info.engine })
+                    : { ok: true, reason: null };
+                if (!preflight.ok) {
+                    commit('error', `The LLM Wiki cannot capture: ${preflight.reason}.`);
                     return;
                 }
                 request = wikiCaptureRequest(log.path, goal);
