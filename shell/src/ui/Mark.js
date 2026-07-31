@@ -155,6 +155,76 @@ function magnify(grid, factor) {
 /** Pixel dimensions of the authored art, before any scaling. */
 export const MARK_PIXELS = { width: GRID[0].length, height: GRID.length };
 
+// ------------------------------------------------------- horizontal strip --
+// The same three shapes laid side by side: dot, inner ring, outer ring, each
+// trimmed to its inked columns and centered on the tallest band. Derived from
+// GRID at module load rather than authored twice, so the two arrangements can
+// never drift into different marks. The strip exists for terminals tall
+// enough to deserve the art but too short for the 11-row stack — the vertical
+// mark alone is taller than the whole panel body a 26-row window can afford.
+//
+// Band bounds name the blank separator rows in GRID by position; the trim
+// below re-derives the inked columns, so only a change to the gaps themselves
+// (the shape order or count) would need these updated.
+const BANDS = [
+    [0, 4],   // dot
+    [6, 12],  // inner ring
+    [14, 22], // outer ring
+];
+const STRIP_GAP = 2;
+
+function stripGrid() {
+    const bands = BANDS.map(([from, to]) => {
+        const rows = GRID.slice(from, to);
+        let lo = Infinity;
+        let hi = -1;
+        for (const row of rows) {
+            for (let x = 0; x < row.length; x++) {
+                if (row[x] !== '.') {
+                    lo = Math.min(lo, x);
+                    hi = Math.max(hi, x);
+                }
+            }
+        }
+        return rows.map((row) => row.slice(lo, hi + 1));
+    });
+
+    const height = Math.max(...bands.map((rows) => rows.length));
+    const gap = '.'.repeat(STRIP_GAP);
+    const out = [];
+    for (let y = 0; y < height; y++) {
+        out.push(
+            bands
+                .map((rows) => {
+                    const top = Math.floor((height - rows.length) / 2);
+                    return rows[y - top] ?? '.'.repeat(rows[0].length);
+                })
+                .join(gap)
+        );
+    }
+    return out;
+}
+
+const STRIP = stripGrid();
+
+/** Character-cell size of the strip: two pixel rows per text row, as ever. */
+export function markStripSize() {
+    return { columns: STRIP[0].length, rows: STRIP.length / 2 };
+}
+
+/** Dot, inner ring, outer ring, left to right — the mark for short panels. */
+export function MarkStrip() {
+    const rows = [];
+    for (let y = 0; y < STRIP.length; y += 2) {
+        rows.push(spans(STRIP[y], STRIP[y + 1] ?? '.'.repeat(STRIP[y].length)));
+    }
+    return React.createElement(
+        Box,
+        { flexDirection: 'column' },
+        ...rows.map((runs, i) => React.createElement(Row, { key: i, runs }))
+    );
+}
+
 /**
  * Character-cell size of the mark at a given integer scale.
  *

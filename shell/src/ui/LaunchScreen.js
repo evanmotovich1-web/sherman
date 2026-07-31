@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { color } from './theme.js';
 import { fitCategory, loadRegistry } from '../registry.js';
 import { SMALL_ROWS, Wordmark, wordmarkRows } from './Wordmark.js';
-import { Mark, markSize } from './Mark.js';
+import { Mark, MarkStrip, markSize } from './Mark.js';
 import { safeTerminalText } from './sanitize.js';
 
 // Resolved from THIS file, never process.cwd() — at runtime the cwd is the
@@ -581,6 +581,102 @@ function Knowledge({ stats, registry, caps, info, sessionId, width, stretch = fa
     );
 }
 
+// The shortest terminal the mid panel fits: its body is eight inner rows
+// (the mark strip, a gap, and three identity lines on the left; two dense
+// registry sections, the vault line, and the tally on the right), and the
+// frame around the body — compact wordmark, margins, borders, welcome — plus
+// the two rows owed to the chrome puts the whole frame at exactly 22.
+export const MID_MIN_ROWS = 22;
+
+/**
+ * The mid-height frame: the full panel's design, abridged to eight body rows.
+ *
+ * This exists because the first real Windows machine launches in a ~26-row
+ * terminal, which the full panel cannot fit (its left column alone — the
+ * stacked mark plus identity — is fifteen rows), and the compact card,
+ * however honest, does not look like Sherman on the Mac. Same two-column
+ * arrangement, same bordered panel with the build in its top border, same
+ * mark — laid horizontally (dot, inner ring, outer ring) at four rows
+ * instead of eleven — same identity block, and the registry sections
+ * compressed to one dense line each: every category name, then the honest
+ * total. A registry that failed to load prints its reason, exactly like the
+ * full panel's sections; the vault line keeps all four counts.
+ */
+function MidPanel({ panel, inner, info, stats, sessionId, registry }) {
+    const leftWidth = Math.min(LEFT_COLUMN, inner);
+
+    const section = (key, title, result) =>
+        React.createElement(
+            Box,
+            { key, flexDirection: 'column' },
+            React.createElement(Text, { color: color.accent, bold: true, wrap: 'truncate' }, title),
+            result.ok
+                ? React.createElement(
+                      Text,
+                      { wrap: 'truncate' },
+                      React.createElement(
+                          Text,
+                          { color: color.value },
+                          `  ${result.categories.map((c) => c.name).join(', ')}`
+                      ),
+                      React.createElement(Text, { color: color.muted }, ` · ${result.count} total`)
+                  )
+                : React.createElement(Text, { color: color.muted, wrap: 'truncate' }, `  ${result.reason}`)
+        );
+
+    const vaultLine = stats.ok
+        ? `${plural(stats.wiki, 'wiki page')} · ${plural(stats.shared, 'shared fact')} · `
+          + `${plural(stats.private, 'private fact')} · ${plural(stats.inbox, 'inbox item')}`
+        : 'unreadable — check vault_path in ~/.sherman/config.json';
+
+    return React.createElement(
+        Box,
+        { width: panel, flexDirection: 'column' },
+        React.createElement(VersionBorder, { width: panel }),
+        React.createElement(
+            Box,
+            {
+                width: panel,
+                borderStyle: 'round',
+                borderTop: false,
+                borderColor: color.frame,
+                paddingX: PANEL_PAD_X,
+                flexDirection: 'row',
+            },
+            React.createElement(
+                Box,
+                {
+                    flexShrink: 0,
+                    width: leftWidth,
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                },
+                React.createElement(MarkStrip),
+                React.createElement(
+                    Box,
+                    { marginTop: 1 },
+                    React.createElement(MarkIdentity, { info, sessionId, width: leftWidth })
+                )
+            ),
+            React.createElement(
+                Box,
+                // The gutter: a 37-cell identity line otherwise butts against
+                // the right column's titles ("…Labs Vault" reads as one line).
+                { flexGrow: 1, flexDirection: 'column', marginLeft: 1 },
+                section('tools', 'Available Tools', registry.tools),
+                section('skills', 'Available Skills', registry.skills),
+                React.createElement(
+                    Box,
+                    { marginTop: 1, flexDirection: 'column' },
+                    React.createElement(Text, { color: color.accent, bold: true, wrap: 'truncate' }, 'Vault'),
+                    React.createElement(Text, { color: color.muted, wrap: 'truncate' }, `  ${vaultLine}`)
+                ),
+                React.createElement(Totals, { tools: registry.tools, skills: registry.skills })
+            )
+        )
+    );
+}
+
 // Rows the compact frame spends around the card's four base lines: the
 // wordmark is counted by the caller (its height varies with the terminal);
 // this is everything else — the panel's marginTop, its two border rows, the
@@ -718,6 +814,11 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
     // which already carries model, user, vault and session in four rows — is
     // the honest fit.
     const compactPanel = height < (stack ? 44 : 29);
+    // Between the compact card and the full panel, and only where two columns
+    // fit: the abridged Mac frame. A stacked (narrow) terminal skips it — the
+    // mid design IS its two columns, and stacking them re-creates the very
+    // pile the compact card exists to avoid.
+    const midPanel = compactPanel && !stack && height >= MID_MIN_ROWS;
 
     // Stacked, the mark sits above the knowledge column and the two heights
     // add; side by side, the taller of the two sets the natural height.
@@ -743,7 +844,20 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry }
         Box,
         { flexDirection: 'column', marginBottom: 1 },
         React.createElement(Wordmark, { columns: width, compact: compactWordmark }),
-        compactPanel
+        midPanel
+            ? React.createElement(
+                  Box,
+                  { marginTop: 1, width: panel, flexDirection: 'column' },
+                  React.createElement(MidPanel, {
+                      panel,
+                      inner,
+                      info,
+                      stats,
+                      sessionId,
+                      registry: reg,
+                  })
+              )
+            : compactPanel
             ? React.createElement(
                   Box,
                   { marginTop: 1, width: panel, flexDirection: 'column' },

@@ -11,8 +11,8 @@
 #   4. The shell entry point launches and exits clean on --version.
 #   5. Backend selection follows config.json's engine field.
 #   6. The --raw path still execs the engine.
-#   7. The launch screen crosses its compact/full boundary at 80 columns, no overflow.
-#   8. The launch screen crosses its compact/full boundary at 200 columns, no overflow.
+#   7. The launch screen crosses its card/panel boundary at 80 columns, no overflow.
+#   8. The launch screen crosses its card/panel boundary at 200 columns, no overflow.
 #   9. The launch screen's colours are emitted as real ANSI sequences.
 #  10. `sherman update` exits honestly in this repo's state.
 #  11. A scripted turn through a fake backend renders the prompt marker,
@@ -295,7 +295,12 @@ import { LaunchScreen } from './src/ui/LaunchScreen.js';
 const cols = Number(process.env.SMOKE_COLS);
 // Exercise the real layout boundary at every width: 28 rows uses CompactSummary;
 // 29 rows uses the full launch panel. Both must remain within the terminal.
-const ROWS = [28, 29];
+// 21/22 is the card/mid boundary now: the mid panel (the abridged Mac
+// frame, with a Vault section title) begins at 22 rows, and the compact
+// card holds below it. The full panel boundary at 29 is covered by the
+// shell test suite; this check guards the first crossing, where the
+// Vault title first appears. No apostrophes here -- see the NOTE above.
+const ROWS = [21, 22];
 const info = {
     engine: 'codex',
     model: 'smoke-model',
@@ -373,7 +378,7 @@ for (const rows of ROWS) {
 }
 
 if (fullPanelModes[0] || !fullPanelModes[1]) {
-    console.error('launch did not cross compact/full boundary between 28 and 29 rows');
+    console.error('launch did not cross the card/panel boundary between 21 and 22 rows');
     process.exit(1);
 }
 process.exit(0);

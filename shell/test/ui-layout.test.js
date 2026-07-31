@@ -111,12 +111,11 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         );
         if (rows < 29) {
             assert.match(plain(output), /\/help/);
-            // The card carries the capability lines whenever the height budget
-            // covers them — the first real Windows machine read the bare card
-            // as "an old Sherman" next to a maximized Mac, and the tool and
-            // skill categories are what it was missing. 24 rows affords them.
-            assert.match(plain(output), /tools {5}\w[\w-]*(, [\w-]+)* · \d+ total/);
-            assert.match(plain(output), /skills {4}\w[\w-]*(, [\w-]+)* · \d+ total/);
+            // 24 rows on a wide terminal is the mid panel: the abridged Mac
+            // frame — section titles with one dense category line each — not
+            // the compact card. The first real Windows machine launches here.
+            assert.match(plain(output), /Available Tools/);
+            assert.match(plain(output), /\bVault\b/);
         } else {
             assert.match(plain(output), /\bVault\b/);
             // The closing tally is unconditional above the compact cutoff: the
@@ -162,24 +161,45 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     );
     assert.ok(rowsAt60 <= 58, 'a stretched launch panel must not crowd out status and composer');
 
-    const wideCompact = plain(renderToString(
+    // Three tiers on a wide terminal, each boundary crossed exactly once:
+    // the compact card below 22 rows, the mid panel (Vault section title and
+    // dense category lines, but no per-category label rows) from 22 to 28,
+    // the full panel (per-category rows like "session: goal, …") at 29.
+    const wideAt = (rows) => plain(renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_boundary', columns: 120, rows: 28,
+            info, stats, sessionId: '20260728_010000_boundary', columns: 120, rows,
         }),
         { columns: 120 }
     ));
-    const wideFull = plain(renderToString(
-        React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_boundary', columns: 120, rows: 29,
-        }),
-        { columns: 120 }
-    ));
-    assert.doesNotMatch(wideCompact, /\bVault\b/);
+    const wideCard = wideAt(21);
+    const wideMid = wideAt(22);
+    const wideMidTop = wideAt(28);
+    const wideFull = wideAt(29);
+    assert.doesNotMatch(wideCard, /\bVault\b/);
+    assert.match(wideCard, /larger window shows the full screen/);
+    for (const mid of [wideMid, wideMidTop]) {
+        assert.match(mid, /\bVault\b/);
+        assert.match(mid, /Available Tools/);
+        assert.doesNotMatch(mid, /session: /);
+    }
     assert.match(wideFull, /\bVault\b/);
+    assert.match(wideFull, /session: /);
 
-    // Below the budget the capability lines vanish rather than overflow: one
-    // row past the viewport and Ink duplicates frames (the waterfall). At 20
-    // rows the base card is an exact fit, so the lines must be gone.
+    // The card's own capability lines belong to terminals too narrow for two
+    // columns: stacked, with height to spare, the card lists the categories —
+    // and at a height where the base card is an exact fit, they vanish
+    // rather than overflow (one row past the viewport duplicates frames,
+    // issue #18's waterfall).
+    const narrowTall = plain(renderToString(
+        React.createElement(LaunchScreen, {
+            info, stats, sessionId: '20260728_010000_boundary', columns: 50, rows: 30,
+        }),
+        { columns: 50 }
+    ));
+    // Only the line heads: at 50 columns the category run truncates, and the
+    // total after it is the first thing the ellipsis eats.
+    assert.match(narrowTall, /tools {5}\w[\w-]*, /);
+    assert.match(narrowTall, /skills {4}\w[\w-]*, /);
     const tight = plain(renderToString(
         React.createElement(LaunchScreen, {
             info, stats, sessionId: '20260728_010000_boundary', columns: 80, rows: 20,
@@ -248,8 +268,21 @@ test('the mark scales with the tall panel and stays compact below it', () => {
         { columns: 120 }
     );
 
-    // The compact card carries no mark at all, so there is nothing to scale.
-    assert.equal(markRun(frame(24)), 0, 'the compact card renders no mark');
+    // 24 rows on a wide terminal is the mid panel now, and its mark is the
+    // horizontal strip: the widest run is the outer ring's bottom edge
+    // (▀▀██████▀▀), ten cells — same picture, lying down. The card itself
+    // (short AND narrow) still carries no mark at all.
+    assert.equal(markRun(frame(24)), 10, 'the mid panel renders the strip mark');
+    assert.equal(
+        markRun(renderToString(
+            React.createElement(LaunchScreen, {
+                info, stats, sessionId: '20260728_010000_markscale', columns: 120, rows: 21,
+            }),
+            { columns: 120 }
+        )),
+        0,
+        'the compact card renders no mark'
+    );
     // A hugging panel and the first stretched sizes keep the 12-column mark;
     // only a panel with 22 inner rows to spare doubles it.
     assert.equal(markRun(frame(40)), 10, 'a hugging panel must keep the compact mark');
