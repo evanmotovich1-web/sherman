@@ -645,6 +645,15 @@ run_update() {
         fi
     fi
 
+    # -------------------------------------------------------- agent reach --
+    # The same provisioner install.sh runs, so an existing machine GROWS the
+    # capability on update rather than only new installs getting it. It is
+    # silent when Agent Reach already answers, installs it when it does not,
+    # and degrades to a NOTE on a machine that cannot have it.
+    if [ -x "$ROOT/bin/provision-agent-reach.sh" ]; then
+        "$ROOT/bin/provision-agent-reach.sh" || true
+    fi
+
     # smoke calls `sherman update`, and update runs smoke after a real pull.
     # The env guard is what keeps that pair from recursing forever.
     if ! SHERMAN_UPDATE_RUNNING=1 "$ROOT/smoke.sh"; then

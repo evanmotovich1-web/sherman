@@ -107,6 +107,33 @@ printed empty:
 It prints secret **names**, never values. Changes take effect on the next
 launch, because the launcher is what renders engine config.
 
+## Who installs the thing a connector points at
+
+A catalog entry describes how to launch something; it does not put that
+something on the machine. Two connectors ship with a provisioner, because a
+catalogued capability that every operator has to install by hand is a
+capability most machines will not have:
+
+| Connector | Provisioned by | Where |
+| --- | --- | --- |
+| `llmwiki` | `install.sh`, repaired by `sherman update` | `~/.sherman/llmwiki` |
+| `agent-reach` | `bin/provision-agent-reach.sh`, called by both | uv tool dir |
+| `exa` | nothing to install — a public HTTP endpoint | — |
+
+`bin/provision-agent-reach.sh` is one file called from **both** entry points on
+purpose. The wiki's arrangement — provisioned in `install.sh`, repaired in
+`sherman update` — is two copies of one idea, and they have already drifted.
+Being in the update path is also what lets a machine installed before this
+existed grow the capability by pressing update, instead of only new installs
+getting it.
+
+Agent Reach is pinned to a commit and its MCP dependency held below 2.0. Both
+are load-bearing: it is third-party software whose newest release already broke
+against the MCP 2.0 server API, and an install that follows someone else's main
+branch is a capability that stops working on a day nobody chose. Smoke check 27
+asserts both, along with the provisioner staying offline and claimless when
+fetches are disabled.
+
 ## Adding one by hand
 
 1. Add the entry to `agent/connectors.json`. Verify it launches first.

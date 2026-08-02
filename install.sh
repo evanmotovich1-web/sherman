@@ -347,6 +347,16 @@ else
 fi
 echo
 
+# -------------------------------------------------------------- agent reach --
+# Internet access for /mcp. Shared with `sherman update` rather than copied,
+# because the wiki's provision-here/repair-there split has already drifted.
+if [ -x "$ROOT/bin/provision-agent-reach.sh" ]; then
+    "$ROOT/bin/provision-agent-reach.sh" || true
+else
+    echo "  NOTE: bin/provision-agent-reach.sh is missing, so Agent Reach was not installed."
+fi
+echo
+
 # --------------------------------------------------------------- link sherman --
 # -f replaces an existing link so reinstall is clean.
 # -n stops ln nesting a new link *inside* an existing symlinked directory.

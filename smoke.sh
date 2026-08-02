@@ -39,6 +39,9 @@
 #  23. The Windows bootstrap exists, is routed to from the Windows doc, keeps
 #      the untested-platform honesty, and parses — when a PowerShell is
 #      available to parse it; the pass line names what was actually checked.
+#  27. The Agent Reach provisioner parses, is reachable from BOTH entry points,
+#      keeps the two constants that made the install work, and stays offline
+#      and claimless when fetches are disabled.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -58,7 +61,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=26
+TOTAL_CHECKS=27
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -2314,6 +2317,76 @@ else
         pass "$zero_out"
     else
         fail "$(printf '%s' "$zero_out" | head -3)"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 27 --
+# Agent Reach is how /mcp reaches the internet, and it is provisioned by ONE
+# script called from both install.sh and `sherman update` -- so an existing
+# machine grows the capability on update rather than only new installs getting
+# it. The wiki's provision-here/repair-there split drifted; this checks the
+# single copy stays reachable from both.
+#
+# The two constants are the whole reason the install works. The pin exists
+# because this is third-party software whose newest release already broke
+# against MCP 2.0, and the dependency floor is what holds it below that break.
+# Loosening either is how a working capability stops working on a day nobody
+# chose, so both are asserted rather than trusted.
+echo
+echo "27. the Agent Reach provisioner is honest and reachable from both entry points"
+
+PROVISION="bin/provision-agent-reach.sh"
+
+if [ ! -x "$PROVISION" ]; then
+    fail "$PROVISION is missing or not executable"
+elif ! sh -n "$PROVISION" 2>/dev/null; then
+    fail "$PROVISION does not parse"
+else
+    pass "the provisioner exists, is executable, and parses"
+
+    if grep -q 'provision-agent-reach.sh' install.sh \
+        && grep -q 'provision-agent-reach.sh' bin/sherman; then
+        pass "both install.sh and sherman update call it"
+    else
+        fail "the provisioner is not called from both entry points"
+    fi
+
+    # A 40-character commit, not a branch name: an install that follows
+    # someone else's main branch is a capability with no version at all.
+    if grep -qE '^PIN="[0-9a-f]{40}"$' "$PROVISION"; then
+        pass "Agent Reach is pinned to a full commit"
+    else
+        fail "the Agent Reach pin is missing or is not a full commit sha"
+    fi
+
+    if grep -q 'mcp\[cli\]>=1.0,<2' "$PROVISION"; then
+        pass "the MCP dependency is held below the 2.0 break"
+    else
+        fail "the MCP dependency floor is gone; a 2.0 resolve dies on import"
+    fi
+
+    # Offline, against a sandbox HOME: it must skip, say so, and claim nothing.
+    # This is the path every smoke run and every CI runner takes.
+    PROVHOME="$TMPHOME/agent-reach-home"
+    mkdir -p "$PROVHOME"
+    prov_out=$(env HOME="$PROVHOME" SHERMAN_INSTALL_NO_FETCH=1 "./$PROVISION" 2>&1)
+    prov_status=$?
+
+    if [ "$prov_status" -ne 0 ]; then
+        fail "the provisioner exited $prov_status instead of degrading: $(printf '%s' "$prov_out" | tail -2)"
+    elif printf '%s' "$prov_out" | grep -q "network fetches are disabled" \
+        && ! printf '%s' "$prov_out" | grep -q "installed (verified"; then
+        pass "disabled fetches are said plainly, with no install claim"
+    else
+        fail "the offline run claimed or hid provisioning work: $(printf '%s' "$prov_out" | tail -2)"
+    fi
+
+    # And it wrote nothing into that HOME. An enhancement that cannot install
+    # must not leave half a tool environment behind for the next run to find.
+    if [ -d "$PROVHOME/.local/share/uv/tools/agent-reach" ]; then
+        fail "the skipped run still created a tool directory"
+    else
+        pass "a skipped install leaves nothing behind"
     fi
 fi
 
