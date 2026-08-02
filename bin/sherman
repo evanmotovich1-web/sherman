@@ -550,13 +550,29 @@ run_update() {
         exit 0
     fi
 
-    old_version=$(shell_version)
+    # One press does everything: pull first, then hand the rest of the update
+    # to the launcher the pull just delivered. Without this re-exec, the copy
+    # of this script already loaded in memory keeps running its OLD logic
+    # against the NEW checkout -- so a fix to the update process itself never
+    # applies to the update that ships it, and the operator is told to press
+    # update twice. The env var is the loop guard: the re-exec'd run skips the
+    # pull (it already happened) and finishes with reconcile and verification.
+    # The pre-pull version rides along so "Updated: vX -> vY" reports the real
+    # transition rather than comparing the new version to itself.
+    if [ -z "${SHERMAN_UPDATE_REEXEC:-}" ]; then
+        old_version=$(shell_version)
 
-    if ! git -C "$ROOT" pull --ff-only; then
-        echo >&2
-        echo "manual update needed — this checkout cannot fast-forward onto its remote." >&2
-        exit 1
+        if ! git -C "$ROOT" pull --ff-only; then
+            echo >&2
+            echo "manual update needed — this checkout cannot fast-forward onto its remote." >&2
+            exit 1
+        fi
+
+        exec env SHERMAN_UPDATE_REEXEC=1 \
+            SHERMAN_UPDATE_OLD_VERSION="$old_version" \
+            "$ROOT/bin/sherman" update
     fi
+    old_version="${SHERMAN_UPDATE_OLD_VERSION:-$(shell_version)}"
 
     # Reconcile the shell's dependencies to the lockfile before verifying, with
     # `npm ci` -- a clean, exact install that wipes node_modules and rebuilds it
