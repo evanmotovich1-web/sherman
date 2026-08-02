@@ -71,6 +71,7 @@ to edit, not a fixed library.
 | `self-improvement` | agent | record a durable lesson from being corrected |
 | `session-eval` | agent | judge whether the session used skills and the vault, unprompted |
 | `capability-gap` | agent | find work that happened badly for want of a skill or tool |
+| `0-1` | agent | acquire the capability an idea needs, or hand over one checklist |
 | `evan` | method | plan a body of work as a loop that closes, with a written trail |
 | `wayfinder` | method | chart work too big for one session as a map of decision tickets |
 
@@ -103,6 +104,9 @@ Two rules follow from that, and they are not negotiable:
 - **A connector in the catalog is one that really works.** The catalog carries
   `capabilities.json`'s rule, because an invented entry is engine config that
   fails at startup — an error the operator meets far from its cause.
+
+`0-1` is what adds an entry. It verifies before it writes, wires what needs no
+person, and hands over one account-and-key checklist when one is required.
 
 ## Adding one
 

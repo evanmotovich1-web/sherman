@@ -58,7 +58,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=25
+TOTAL_CHECKS=26
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -2052,6 +2052,65 @@ else
         pass "$slash_out"
     else
         fail "$(printf '%s' "$slash_out" | head -3)"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 26 --
+# 0-1 is the skill that acquires capability, and its name starts with a digit.
+# That is the likeliest thing to break silently: a future tightening of the
+# slash regex, or a front-matter parser that decides 0-1 is a number, and the
+# skill stops being invocable with nothing on screen to say so.
+echo
+echo "26. 0-1 is loadable, invocable, and still bounded"
+
+ZERO_ONE_JS=$(cat <<'JS'
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { parseSubmission, typedSkillName } from './src/commands.js';
+import { loadSkills } from './src/registry.js';
+
+const root = new URL('..', import.meta.url).pathname;
+const skills = loadSkills(root);
+assert.equal(skills.ok, true, `skills did not load: ${skills.reason}`);
+
+const entry = skills.list.find((s) => s.name === '0-1');
+assert.ok(entry, '0-1 is not in the loaded skill list');
+assert.ok(!skills.malformed.includes('0-1'), '0-1 loaded as malformed');
+
+// The palette and the purple ink both key on these two, and a digit-leading
+// name is exactly the case a tightened regex would drop.
+const parsed = parseSubmission('/0-1 reach the shipping API');
+assert.equal(parsed.kind, 'command', '/0-1 did not parse as a slash invocation');
+assert.equal(parsed.name, '0-1', `/0-1 parsed as ${parsed.name}`);
+assert.equal(parsed.args, 'reach the shipping API', 'arguments were lost');
+assert.equal(typedSkillName('/0-1 anything', skills.list), '0-1', 'typedSkillName does not resolve 0-1');
+
+// The boundaries are the point of this skill. A capability-acquisition skill
+// that lost them is the one regression that matters here.
+const body = readFileSync(new URL('../skills/0-1/SKILL.md', import.meta.url), 'utf8');
+assert.match(body, /PHI/, '0-1 does not state the no-PHI boundary');
+assert.match(body, /never into the vault|never echoed/i, '0-1 does not state the secret boundary');
+assert.match(body, /Never invent a connector/i, '0-1 does not forbid inventing a connector');
+
+// The contract-level hook: the persona must point at it, or the engine reaches
+// for it only when a description happens to match.
+const persona = readFileSync(new URL('../agent/SYSTEM.md', import.meta.url), 'utf8');
+assert.match(persona, /0-1/, 'agent/SYSTEM.md does not route to 0-1');
+
+process.stdout.write('0-1 loads, parses, resolves, and keeps its boundaries');
+JS
+)
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot load 0-1"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    skip "shell/node_modules absent, run install.sh"
+else
+    zero_out=$(cd shell && node --input-type=module -e "$ZERO_ONE_JS" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "$zero_out"
+    else
+        fail "$(printf '%s' "$zero_out" | head -3)"
     fi
 fi
 
