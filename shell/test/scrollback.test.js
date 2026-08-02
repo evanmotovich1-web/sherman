@@ -226,17 +226,62 @@ test('the shell scrolls during a turn, counts honestly, and snaps back on submit
         stdin.write(SHIFT_UP);
         await until(() => countIn(captured) === 2);
 
-        // Paging goes further back and then stops: a second page at the top of
-        // the buffer must not keep incrementing a number nothing backs.
+        // The count once it has stopped moving, rather than the first frame
+        // that shows one. A single PageUp can repaint more than once on its way
+        // to the clamp, so `until(count > 2)` can return on an intermediate
+        // number — and comparing that against the settled number below is a
+        // race that only loses on a machine slow enough to render the
+        // intermediate step. A shared CI runner is exactly that machine: this
+        // read 9 on Linux against a true clamp of 10, and passed on macOS.
+        const settledCount = async () => {
+            let previous = null;
+            for (let attempt = 0; attempt < 100; attempt += 1) {
+                const now = countIn(captured);
+                if (now !== null && now === previous) return now;
+                previous = now;
+                await new Promise((resolve) => setTimeout(resolve, 60));
+            }
+            throw new Error('the history count never settled');
+        };
+
+        // Paging goes further back and then stops: once at the top of the
+        // buffer, more paging must not keep incrementing a number nothing
+        // backs.
+        //
+        // Getting to the top is its own step. This used to page ONCE and treat
+        // that as the top, which held only while one page happened to span the
+        // whole buffer; where it did not, the assertion still passed because
+        // the frame it compared against was a repaint of the pre-page state.
+        // A stale frame agreeing with a stale expectation is not a clamp being
+        // tested. So: page until the count stops moving, and only then assert
+        // that another page does not move it.
+        // `captured` is NOT cleared between pages from here on, deliberately.
+        // At the top a further PageUp changes nothing, so the shell renders no
+        // frame at all — correct behavior that a cleared buffer turns into an
+        // infinite wait for a repaint that is never coming. Reading the tail of
+        // the accumulated capture instead means "no new frame" reads as "the
+        // count did not move", which is precisely the claim under test.
         captured = '';
         stdin.write(PAGE_UP);
         await until(() => countIn(captured) > 2);
-        const atTop = countIn(captured);
-        captured = '';
+        let atTop = await settledCount();
+        for (let page = 0; page < 20; page += 1) {
+            stdin.write(PAGE_UP);
+            await new Promise((resolve) => setTimeout(resolve, 120));
+            const next = await settledCount();
+            if (next === atTop) break;
+            atTop = next;
+        }
+
         stdin.write(PAGE_UP);
         stdin.write(SHIFT_UP);
-        await until(() => countIn(captured) !== null);
-        assert.equal(countIn(captured), atTop, 'the count must clamp at the top of the buffer');
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        assert.equal(await settledCount(), atTop, 'the count must clamp at the top of the buffer');
+        // The clamp is a real position, not merely a number that stopped
+        // moving: the buffer here is taller than the viewport, so there is
+        // something above it to have scrolled to. `maxOffset` itself is
+        // asserted directly in the arithmetic test above.
+        assert.ok(atTop > 2, `expected a real scrollback depth, got ${atTop}`);
 
         // Paging back down returns to the tail and the indicator disappears
         // rather than lingering at zero.

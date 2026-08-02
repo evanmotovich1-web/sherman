@@ -830,7 +830,17 @@ test('/win judges the recorded sessions into a local page', async () => {
     stdin.setRawMode = () => {};
     stdin.ref = () => {};
     stdin.unref = () => {};
+    // An interactive TTY stdout, so frames arrive as the shell produces them.
+    // Off a TTY Ink writes only the final frame at unmount, which forced this
+    // test to guess when to unmount — the page landing on disk plus a fixed
+    // 50ms. The notice is committed a React pass after that write, and on a
+    // contended runner the pass had not happened yet: the frame captured was
+    // real and simply too early. `interactive: true` states the mode rather
+    // than inferring it, since Ink reads CI from the environment at import and
+    // would otherwise overrule the isTTY flag on exactly the machines where
+    // the guess fails.
     const stdout = new PassThrough();
+    stdout.isTTY = true;
     stdout.columns = 100;
     stdout.rows = 40;
     let captured = '';
@@ -841,14 +851,16 @@ test('/win judges the recorded sessions into a local page', async () => {
             session: main, sessionId: '20260731_100000_win1',
             sessionFactory: () => worker,
         }),
-        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false, interactive: true }
     );
 
     type(stdin, '/win', 40);
 
     const winDir = join(home, '.sherman', 'win');
     try {
-        // Same off-TTY rule as /email: wait on the page landing on disk.
+        // Wait on the page landing on disk, then on the notice that reports it
+        // — the notice is what the assertions below read, so waiting for the
+        // file alone unmounts a React pass too early.
         await until(() => {
             try {
                 return readdirSync(winDir).some((n) => n.endsWith('.html'));
@@ -856,7 +868,7 @@ test('/win judges the recorded sessions into a local page', async () => {
                 return false;
             }
         });
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await until(() => plain(captured).includes('could not open a browser here'));
         instance.unmount();
 
         assert.equal(workerRequests[0].mode, 'isolated-read-only');
