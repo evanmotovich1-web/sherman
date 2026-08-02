@@ -227,25 +227,37 @@ else
 fi
 
 # --------------------------------------------------------- shell dependencies --
-# The Sherman Shell is a Node app (Ink). `npm install` is idempotent, so this
-# stays safe to re-run -- R7.
+# The Sherman Shell is a Node app (Ink). `npm ci` installs the lockfile
+# EXACTLY -- it wipes node_modules first, so re-running install.sh repairs a
+# tree that has drifted from the lock rather than layering onto it. That
+# matters: a stale transitive width dependency (an older get-east-asian-width
+# that measures the composer box one cell short) is how the first Linux
+# machine failed the composer and node:test width checks while a fresh macOS
+# tree passed. `npm ci` is idempotent too, so this stays safe to re-run -- R7.
+# Only a machine with no lockfile to be exact against falls back to install.
 #
 # A missing npm is a warning, not a failure: the PATH symlink below is still
 # worth creating, and `sherman --raw` works with no Node at all. Aborting here
 # would leave the user with no `sherman` command over an optional dependency.
 if [ -f "$ROOT/shell/package.json" ]; then
     if command -v npm >/dev/null 2>&1; then
-        echo "  installing shell dependencies (npm install)"
+        if [ -f "$ROOT/shell/package-lock.json" ]; then
+            echo "  installing shell dependencies (npm ci)"
+            shell_npm="npm ci --silent"
+        else
+            echo "  installing shell dependencies (npm install)"
+            shell_npm="npm install --silent"
+        fi
         # "installed" is claimed only if the artifacts the shell actually
         # imports exist afterward -- npm exiting 0 is an attempt's report,
         # not a verification.
-        if (cd "$ROOT/shell" && npm install --silent >/dev/null 2>&1) \
+        if (cd "$ROOT/shell" && $shell_npm >/dev/null 2>&1) \
             && [ -d "$ROOT/shell/node_modules/ink" ] \
             && [ -d "$ROOT/shell/node_modules/react" ]; then
             echo "  shell dependencies installed (node_modules/ink and react verified)"
         else
-            echo "  NOTE: npm install did not produce the shell's dependencies."
-            echo "        Run it by hand:  cd $ROOT/shell && npm install"
+            echo "  NOTE: npm did not produce the shell's dependencies."
+            echo "        Run it by hand:  cd $ROOT/shell && npm ci"
             echo "        Until then:      sherman --raw"
         fi
     else
