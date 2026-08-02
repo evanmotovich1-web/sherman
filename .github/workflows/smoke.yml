@@ -1,0 +1,28 @@
+# Runs the same ./smoke.sh gate that guards every commit, on the two
+# platforms Sherman actually meets: macOS (where it was written) and Ubuntu
+# (what WSL2 runs). The Ubuntu leg exists because the first real Linux run —
+# on the first Windows machine — failed checks the macOS suite had never
+# exercised, and a failure CI can reproduce is one that gets fixed without
+# asking the operator to paste terminal scrollback.
+name: smoke
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: shell dependencies
+        run: npm ci --prefix shell
+      - name: smoke
+        run: ./smoke.sh
