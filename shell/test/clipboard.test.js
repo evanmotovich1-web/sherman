@@ -122,7 +122,7 @@ test('the unconfirmed notice does not assert that the clipboard was written', ()
 
 test('an unavailable copy says so plainly and gives the reason', () => {
     const notice = copyNotice({ ok: false, method: null, confirmed: false, reason: 'pbcopy exited 1' }, 0);
-    assert.match(notice, /^Copy unavailable: pbcopy exited 1\.$/);
+    assert.match(notice, /^Copy unavailable: pbcopy exited 1\. /);
 });
 
 // ------------------------------------------------------------- source text --
@@ -170,4 +170,40 @@ test('no reply yet returns null rather than an empty string', () => {
 
 test('a reply whose text is empty is not offered as copyable', () => {
     assert.equal(lastReplyText([{ id: '1', kind: 'message', text: '' }]), null);
+});
+
+// ------------------------------------------------------- windows fallbacks --
+
+test('clip.exe confirms on Windows when pbcopy is absent', () => {
+    const run = (command) => (command === 'clip.exe'
+        ? { status: 0 }
+        : { error: Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }) });
+    const result = copyText('the reply', { run, stdout: tty() });
+    assert.deepEqual(result, { ok: true, method: 'clip.exe', confirmed: true, reason: null });
+});
+
+test('powershell Set-Clipboard is tried when clip.exe is off the PATH', () => {
+    // A scheduled task or stripped PATH can lose System32 while still
+    // resolving PowerShell — the fallback exists for exactly that machine.
+    const attempted = [];
+    const run = (command, args) => {
+        attempted.push(command);
+        if (command !== 'powershell.exe') {
+            return { error: Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }) };
+        }
+        assert.ok(args.join(' ').includes('Set-Clipboard'), 'powershell writer must use Set-Clipboard');
+        return { status: 0 };
+    };
+    const result = copyText('the reply', { run, stdout: tty() });
+    assert.deepEqual(result, { ok: true, method: 'powershell.exe', confirmed: true, reason: null });
+    // Evidence writers stay ordered: the cheap native ones are probed first.
+    assert.deepEqual(attempted.slice(0, 3), ['pbcopy', 'clip.exe', 'powershell.exe']);
+});
+
+test('the unavailable notice teaches the Shift+drag escape hatch', () => {
+    // The shell captures the mouse for scrolling, so a plain drag cannot
+    // select; the notice must hand the reader the terminal's own way out.
+    const notice = copyNotice({ ok: false, method: null, confirmed: false, reason: 'no mechanism' }, 3);
+    assert.match(notice, /Copy unavailable/);
+    assert.match(notice, /Shift while dragging/);
 });

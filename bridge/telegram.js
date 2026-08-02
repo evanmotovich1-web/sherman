@@ -47,11 +47,19 @@ function persistPairedChat(chatId) {
 }
 
 if (!token) {
-    console.error('No Telegram bot token.');
+    // The config PATH is named because "I already gave it the token" is the
+    // most common state this error is read in: the token exists — in another
+    // profile's config, on the other side of a WSL/Windows boundary, or in a
+    // scheduler running as a different user. Naming where THIS process looked
+    // turns that from a mystery into a diff.
+    console.error(`No Telegram bot token in ${config.configPath}.`);
     console.error('');
     console.error('  1. In Telegram, message @BotFather: /newbot — it hands you a token.');
     console.error('  2. Save it:  sherman telegram --token <token>');
     console.error('  3. Run:      sherman telegram');
+    console.error('');
+    console.error('If you already saved a token, it is not in the file above — save it');
+    console.error('again from this same terminal, then rerun.');
     process.exit(1);
 }
 

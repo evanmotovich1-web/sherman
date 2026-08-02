@@ -72,6 +72,14 @@ export function copyText(text, { run = spawnSync, stdout = process.stdout } = {}
     const writers = [
         { command: 'pbcopy', args: [] },
         { command: 'clip.exe', args: [] },
+        // Windows, one layer up: clip.exe lives in System32, and a scheduled
+        // task or stripped PATH can lose System32 while still resolving
+        // PowerShell. `$input` is PowerShell's own name for its piped stdin,
+        // so Set-Clipboard receives the reply without a temp file.
+        {
+            command: 'powershell.exe',
+            args: ['-NoProfile', '-Command', '$input | Set-Clipboard'],
+        },
         { command: 'wl-copy', args: [] },
         { command: 'xclip', args: ['-selection', 'clipboard'] },
         { command: 'xsel', args: ['--clipboard', '--input'] },
@@ -154,7 +162,15 @@ export function copyNotice(result, lineCount) {
             + 'The terminal does not answer clipboard writes, so Sherman cannot confirm it landed — '
             + 'paste to check.';
     }
-    return `Copy unavailable: ${result.reason ?? 'no clipboard mechanism is available'}.`;
+    // The fallback that needs no mechanism at all: the shell captures the
+    // mouse for wheel scrolling, which is why a plain drag does not select —
+    // but every major terminal (Windows Terminal included) bypasses the app's
+    // mouse capture while Shift is held, handing selection back to the
+    // terminal's own copier. Worth saying exactly here, where someone who
+    // just wants the text is reading a failure notice.
+    return `Copy unavailable: ${result.reason ?? 'no clipboard mechanism is available'}. `
+        + 'To copy by hand, hold Shift while dragging to select — that uses the '
+        + "terminal's own selection, which Sherman cannot block.";
 }
 
 /**

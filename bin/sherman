@@ -14,6 +14,7 @@
 #   sherman sync      pull + publish the shared vault (wiki, shared memory, inbox)
 #   sherman model     read or set the codex model, verified by read-back
 #   sherman telegram  the Telegram bridge, same adapter and engine layer as the shell
+#   sherman brief     one headless morning-brief turn; delivers to Telegram when paired
 #
 # Target shell: macOS system bash 3.2. No ${var,,}, no associative arrays,
 # no readlink -f.
@@ -1042,6 +1043,18 @@ if [ "${1:-}" = "telegram" ]; then
     TELEGRAM=1
 fi
 
+# `brief` runs ONE headless morning-brief turn and exits -- the schedulable
+# shape (Windows Task Scheduler, cron). It prints the brief and, when a bot
+# token and a paired chat exist in the config, delivers it to Telegram; a
+# missing half is named with its one repair command (see bridge/brief.js).
+# Falls through the normal launch path like telegram does, so the turn runs
+# over the same assembled adapter and no-PHI contract.
+BRIEF=0
+if [ "${1:-}" = "brief" ]; then
+    shift
+    BRIEF=1
+fi
+
 # --raw is recognised as the FIRST argument only, and stripped before the engine
 # sees the rest. Everything else passes straight through, unchanged.
 RAW=0
@@ -1122,6 +1135,10 @@ require_node
 
 if [ "$TELEGRAM" -eq 1 ]; then
     exec node "$ROOT/bridge/telegram.js"
+fi
+
+if [ "$BRIEF" -eq 1 ]; then
+    exec node "$ROOT/bridge/brief.js"
 fi
 
 exec node "$ROOT/shell/bin/sherman-shell.js" "$@"
