@@ -346,6 +346,58 @@ export function evalRequest(logPath, { gaps = true, closed = false } = {}) {
 }
 
 /**
+ * The meta-eval turn: the judge gets judged.
+ *
+ * An eval whose quality nobody measures decays into confident noise — the
+ * Karpathy loop for graders: every eval verdict is itself graded, by a
+ * separate turn, against the contract the eval was supposed to follow. The
+ * meta-judge reads the VERDICT (inlined below, so a judge cannot be graded on
+ * a report it can quietly rewrite) and spot-checks its citations against the
+ * same session log.
+ *
+ * Read-only for the same reason the eval is: a grader with a pen edits the
+ * thing it grades. Its verdict rides the same eval store, and the pair —
+ * recommendation plus the grade of the recommender — is what the shell files
+ * into the vault inbox for review.
+ *
+ * @param {string} evalText the eval verdict under review, verbatim
+ * @param {string|null} logPath the session log that eval graded, for citation spot-checks
+ */
+export function metaEvalRequest(evalText, logPath = null) {
+    if (typeof evalText !== 'string' || !evalText.trim()) return null;
+    return {
+        text: [
+            'META-EVALUATION TURN — grade the eval, not the session.',
+            'A session eval just ran. Its full verdict is inlined below. Judge that',
+            'VERDICT against the meta-eval skill: read the skill, report on each of',
+            'its checks, and cite the specific line of the verdict behind every',
+            'judgment.',
+            '',
+            logPath
+                ? `The session log the eval graded is at ${logPath} — consult it only to spot-check the verdict's citations, never to re-grade the session yourself.`
+                : null,
+            '',
+            'THE VERDICT UNDER REVIEW:',
+            '--- verdict begins ---',
+            evalText.trim(),
+            '--- verdict ends ---',
+            '',
+            'End your report with exactly two lines:',
+            'GRADE: one of A, B, C, D, F',
+            'NEXT: the single change that would most improve the next eval, or "none"',
+            '',
+            'This turn is READ-ONLY. Do not write to the vault, to skills/, or to',
+            'agent/capabilities.json — filing the result is the shell\'s job, not',
+            'yours. Never quote patient-identifying data, even if the verdict under',
+            'review did; describe the shape and say the specifics were withheld.',
+            'The Sherman operating contract and no-PHI rule remain authoritative.',
+        ].filter(Boolean).join('\n'),
+        mode: 'read-only',
+        source: 'meta-eval',
+    };
+}
+
+/**
  * Whether the LLM Wiki is installed on this machine.
  *
  * The probe is the CLI entry point install.sh provisions plus the venv

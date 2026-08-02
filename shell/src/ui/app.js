@@ -30,6 +30,7 @@ import {
     evalRequest,
     goalEnvelope,
     helpText,
+    metaEvalRequest,
     parseEmailDraft,
     parseSubmission,
     planRequest,
@@ -42,7 +43,7 @@ import {
 } from '../commands.js';
 import { describe as describeConnectors } from '../connectors.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
-import { appendEvalReport, ungradedSessions } from '../evalstore.js';
+import { appendEvalReport, ungradedSessions, writeRecommendation } from '../evalstore.js';
 import { collectWinSources, renderWinHtml, winRequest, writeWinSite } from '../win.js';
 
 // Monotonic ids. React list keys must be stable per item, and array index is
@@ -493,6 +494,63 @@ export function App({
         [clearLingerTimers, commit, goal, log, session, setBusyBoth]
     );
 
+    // The meta-eval: the judge gets judged, every time a judge runs. A fresh
+    // read-only worker grades the verdict against the meta-eval skill, its
+    // report lands beside the verdict in ~/.sherman/evals/, and the PAIR —
+    // recommendation plus the grade of the recommender — is filed by the
+    // SHELL (never the judge) into vault/inbox/eval-recommendations/ where
+    // the operator reviews it and sherman sync publishes it. Shared by every
+    // eval path: exit, manual /eval, checkpoint, catch-up.
+    //
+    // Quiet about its own failure modes by the eval store's own contract: a
+    // meta worker that dies still leaves the eval verdict filed, just
+    // ungraded — the loop must never cost the verdict it exists to check.
+    const runMetaEval = useCallback(
+        async ({ evalText, target, logPath }) => {
+            const request = metaEvalRequest(evalText, logPath);
+            if (!request || !sessionFactory) {
+                return writeRecommendation({
+                    vaultPath: session.info.vaultPath, sessionId: target, evalText,
+                });
+            }
+            commit('notice', 'meta eval · grading the eval itself · read-only worker');
+            const worker = sessionFactory();
+            let metaReply = '';
+            try {
+                for await (const event of worker.send(request)) {
+                    if (event.kind === 'message') {
+                        metaReply = metaReply ? `${metaReply}\n\n${event.text}` : event.text;
+                    }
+                    if (event.kind === 'error') {
+                        commit('error', `meta eval failed: ${event.message}`);
+                        metaReply = '';
+                        break;
+                    }
+                }
+                if (metaReply) {
+                    commit('worker-message', metaReply);
+                    log.append('worker', metaReply);
+                    appendEvalReport(target, 'meta eval', metaReply);
+                }
+            } catch (err) {
+                commit('error', `meta eval failed: ${err?.message ?? String(err)}`);
+                metaReply = '';
+            } finally {
+                workerUsageRef.current = addUsage(workerUsageRef.current, worker.usage ?? emptyUsage());
+                setUsage(addUsage(session.usage, workerUsageRef.current));
+                worker.dispose();
+            }
+            const file = writeRecommendation({
+                vaultPath: session.info.vaultPath, sessionId: target, evalText, metaText: metaReply,
+            });
+            commit('notice', file
+                ? `recommendation filed under the vault inbox · review it there, publish with sherman sync`
+                : 'recommendation could not be filed under the vault inbox — the verdict is still in ~/.sherman/evals/');
+            return file;
+        },
+        [commit, log, session, sessionFactory]
+    );
+
     // The newest submit, for the one command that recurses into it: /exit runs
     // the end-of-session eval as a real submission, and a callback cannot name
     // itself inside its own useCallback body.
@@ -927,6 +985,10 @@ export function App({
 
             if (isEval && evalReply) {
                 appendEvalReport(sessionId, 'session eval', evalReply);
+                // The loop on the loop: this verdict now gets graded, and the
+                // recommendation-plus-grade pair is filed for review. Awaited,
+                // so an exit's filing lands before the shell disposes.
+                await runMetaEval({ evalText: evalReply, target: sessionId, logPath: log.path });
             }
 
             if (isWin) {
@@ -972,7 +1034,7 @@ export function App({
                 await compactSession('');
             }
         },
-        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills]
+        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, runMetaEval, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills]
     );
     submitRef.current = submit;
 
@@ -985,12 +1047,12 @@ export function App({
     // IT JUDGED — which for a catch-up is not this one. Worker tokens land in
     // the worker usage total like any worker's.
     const gradeOnWorker = useCallback(
-        async ({ request, kind, target, notice }) => {
+        async ({ request, kind, target, notice, logPath = null }) => {
             const worker = sessionFactory();
             bgEvalWorkerRef.current = worker;
             commit('notice', notice);
+            let verdict = '';
             try {
-                let verdict = '';
                 for await (const event of worker.send(request)) {
                     if (event.kind === 'message') {
                         verdict = verdict ? `${verdict}\n\n${event.text}` : event.text;
@@ -1007,14 +1069,21 @@ export function App({
                 }
             } catch (err) {
                 commit('error', `${kind} failed: ${err?.message ?? String(err)}`);
+                verdict = '';
             } finally {
                 workerUsageRef.current = addUsage(workerUsageRef.current, worker.usage ?? emptyUsage());
                 setUsage(addUsage(session.usage, workerUsageRef.current));
                 worker.dispose();
                 bgEvalWorkerRef.current = null;
             }
+            // After the judge's worker is disposed, the meta-judge takes its
+            // turn — the loop runs on every eval path, background ones
+            // included, or the least-watched judges would be the least checked.
+            if (verdict) {
+                await runMetaEval({ evalText: verdict, target, logPath });
+            }
         },
-        [commit, log, session, sessionFactory]
+        [commit, log, runMetaEval, session, sessionFactory]
     );
 
     // The background checkpoint eval: every `evalEveryMs`, a session with new
@@ -1051,6 +1120,7 @@ export function App({
                 request,
                 kind: 'checkpoint eval',
                 target: sessionId,
+                logPath: log.path,
                 notice: 'checkpoint eval · background · read-only worker grading the session so far',
             });
         };
@@ -1087,6 +1157,7 @@ export function App({
                 request,
                 kind: 'catch-up eval',
                 target: stale.id,
+                logPath: stale.path,
                 notice: `catch-up eval · session ${stale.id} ended without a verdict · grading it in the background`,
             });
         }, catchUpDelayMs);
