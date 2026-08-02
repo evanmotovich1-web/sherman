@@ -13,6 +13,8 @@ import React from 'react';
 import { render } from 'ink';
 import chalk from 'chalk';
 
+import { until } from '../test-support/until.js';
+
 import { App } from '../src/ui/app.js';
 import {
     AUTO_COMPACT_RATIO,
@@ -29,13 +31,8 @@ chalk.level = 0;
 const zeroUsage = () => ({ input: 0, cachedInput: 0, output: 0, reasoning: 0, total: 0 });
 const ansi = /\x1b\[[0-9;?]*[A-Za-z]/g;
 const plain = (value) => value.replace(ansi, '');
-const until = async (predicate, deadline = 3000) => {
-    const started = Date.now();
-    while (!predicate()) {
-        if (Date.now() - started >= deadline) throw new Error('timed out waiting for rendered state');
-        await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-};
+// One shared copy — see test-support/until.js. This file had already drifted to a
+// different number than the other three, which is the whole argument for it.
 
 test('the auto-compact threshold is 90% and never fires on a guess', () => {
     assert.equal(AUTO_COMPACT_RATIO, 0.9);

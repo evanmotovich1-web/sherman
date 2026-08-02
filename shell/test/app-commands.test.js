@@ -8,6 +8,8 @@ import React from 'react';
 import { render } from 'ink';
 import chalk from 'chalk';
 
+import { until } from '../test-support/until.js';
+
 import { App } from '../src/ui/app.js';
 
 // Colour level is pinned, not inherited: chalk resolves 3 under a TTY (or an
@@ -27,13 +29,8 @@ const latestFrame = (writes, predicate = () => true) => {
     }
     return '';
 };
-const until = async (predicate, deadline = 2000) => {
-    const started = Date.now();
-    while (!predicate()) {
-        if (Date.now() - started >= deadline) throw new Error('timed out waiting for rendered state');
-        await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-};
+// One shared copy — see test-support/until.js for why the deadline is not a
+// constant in this file any more.
 
 function fakeSession(requests, label = 'main') {
     let disposed = 0;

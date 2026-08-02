@@ -19,6 +19,8 @@ import React from 'react';
 import { Box, render } from 'ink';
 import chalk from 'chalk';
 
+import { until } from '../test-support/until.js';
+
 import { App } from '../src/ui/app.js';
 import { Transcript } from '../src/ui/Transcript.js';
 import {
@@ -40,15 +42,8 @@ const PAGE_UP = '\x1b[5~';
 const PAGE_DOWN = '\x1b[6~';
 const SHIFT_UP = '\x1b[1;2A';
 
-const until = async (predicate, deadline = 2000) => {
-    const started = Date.now();
-    while (!predicate()) {
-        if (Date.now() - started >= deadline) {
-            throw new Error('timed out waiting for rendered state');
-        }
-        await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-};
+// One shared copy — see test-support/until.js for why the deadline is not a
+// constant in this file any more.
 
 function fakeTty() {
     const stdin = new PassThrough();
@@ -193,9 +188,14 @@ test('the shell scrolls during a turn, counts honestly, and snaps back on submit
     let captured = '';
     stdout.on('data', (chunk) => { captured += chunk.toString(); });
 
+    // ...and `interactive: true` is what makes that TTY flag stick. Ink decides
+    // as `!isInCi && isTTY`, with isInCi read from the environment at import, so
+    // on a CI runner the flag above is overruled and the buffering this comment
+    // warns about comes back — which is exactly how this test first failed the
+    // day CI started running. The mode is stated rather than inferred.
     const instance = render(
         React.createElement(App, { session, sessionId: '20260728_010000_scroll' }),
-        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false, interactive: true }
     );
 
     try {

@@ -18,6 +18,8 @@ import React from 'react';
 import { render } from 'ink';
 import chalk from 'chalk';
 
+import { until } from '../test-support/until.js';
+
 // These tests wait on repaints after events that may not re-render by
 // themselves; the idle clock is their backstop. Production hops it to 10s
 // (small-viewport waterfall, issue #18) — restore a fast tick here so the
@@ -39,15 +41,8 @@ chalk.level = 0;
 const ansi = /\x1b\[[0-9;?]*[A-Za-z]/g;
 const plain = (value) => value.replace(ansi, '');
 
-const until = async (predicate, deadline = 2000) => {
-    const started = Date.now();
-    while (!predicate()) {
-        if (Date.now() - started >= deadline) {
-            throw new Error('timed out waiting for rendered state');
-        }
-        await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-};
+// One shared copy — see test-support/until.js for why the deadline is not a
+// constant in this file any more.
 
 test('SGR 1006 reports parse into presses, releases and wheel notches', () => {
     // 2004 (bracketed paste) rides the same arming lifecycle — see paste.js.
@@ -201,9 +196,16 @@ test('the shell places the caret from a click and scrolls from the wheel', async
     let captured = '';
     stdout.on('data', (chunk) => { captured += chunk.toString(); });
 
+    // `interactive: true` says out loud what `stdout.isTTY` above was already
+    // asking for. Ink decides interactivity as `!isInCi && isTTY`, and isInCi
+    // is a module-level const read from the environment at import — so on any
+    // CI runner (GitHub sets CI=true) the isTTY here is overruled, Ink buffers
+    // every frame until unmount, and a test that watches for a mid-run repaint
+    // waits forever. This test asserts click and wheel behavior, not Ink's
+    // environment detection, so it states the mode it needs.
     const instance = render(
         React.createElement(App, { session, sessionId: '20260728_010000_mouse' }),
-        { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false, interactive: true }
     );
 
     try {
