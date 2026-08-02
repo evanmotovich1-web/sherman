@@ -195,7 +195,7 @@ verify-then-claim installer) — commits `1b07221`, `a7e87f3`, `8d66fb2`,
 condition met: nothing in the README, wizard, or installer advertises a
 capability that is not wired. Flipping visibility remains Evan's action.
 
-### Phase 8 — Connectors and method skills 🟡 Planned (2026-08-01, 3 plans)
+### Phase 8 — Connectors and method skills ✅ Complete (2026-08-01, 3/3 plans)
 
 Between Phase 7 and here, a large body of work shipped as direct commits rather
 than through the loop: the skills directory, the slash palette, `/eval`,
@@ -221,9 +221,22 @@ needs, instead of stopping at "I cannot reach that."**
   (renamed at Evan's direction, self-contained, engine-agnostic), and
   `wayfinder` adapted onto surfaces Sherman actually has.
 
-Exit condition: an idea needing an external service produces either a wired
-connector or one precise checklist — never a dead end — and the two planning
-methods work on a machine that has never had a `~/.claude` directory.
+Exit condition — **met**: an idea needing an external service produces either a
+wired connector or one precise checklist, and the two planning methods work on
+a machine that has never had a personal engine-config directory, proven by a
+check that greps for one rather than by inspection. Smoke 23 → 26, all green.
+
+Two things worth carrying forward:
+
+- **A fixed margin in a layout test is a tripwire on shipping skills.** The
+  launch panel's compact form hugs real content while the PC stretch is capped,
+  so every skill narrows the gap between them. `ui-layout.test.js` now asserts
+  the property that matters — a tall terminal never renders a shorter panel
+  than a short one — instead of a margin that erodes by design.
+- **Bash 3.2 scans `$( … )` for quote, paren, and backtick balance even inside
+  a quoted heredoc.** Two smoke checks broke this way on two different
+  characters, each time with a parse error hundreds of lines from the cause.
+  Literals in smoke heredocs are hex escapes now, with a comment saying why.
 
 ## Milestone v0.2 — Installer + second admin device + Codex adapter ⚪ Not started
 

@@ -3,15 +3,17 @@
 ## Current Position
 
 Milestone: v0.1 Evan-only local prototype — 🟡 In progress
-Phase: 8 (Connectors and method skills) — 🟡 Planned (3 plans)
-Plan: `08-01`, `08-02`, `08-03` created 2026-08-01; executing.
-Status: Phase 8 gives Sherman a way to acquire capability it does not have.
-The connector layer replaces the hardcoded LLM-Wiki MCP block with a catalog
-the launcher renders for both engines; `0-1` is the skill that adds entries to
-it, silently where it can and with one account-and-key checklist where it
-cannot; `evan` and `wayfinder` port two planning methods out of Evan's personal
-`~/.claude` and into the product.
-Last activity: 2026-08-01 — Phase 8 planned, three plans written
+Phase: 8 (Connectors and method skills) — ✅ COMPLETE (3/3 plans)
+Plan: None active. Ready to plan.
+Status: Sherman can now acquire capability it does not have. MCP stopped being
+a hardcoded block and became a catalog the launcher renders for both engines,
+with keys held outside the repo and a connector omitted whole rather than
+half-wired. `0-1` is the skill that adds entries — verifying first, wiring what
+needs no person, and handing over one account-and-key checklist when one is
+required. `evan` and `wayfinder` came out of a personal `~/.claude` and into
+the product, self-contained and engine-agnostic. Smoke 23 → 26 checks, all
+green; shell tests 174/174.
+Last activity: 2026-08-01 — Phase 8 complete: commits 638f3bc, 25c7962, 210b45a
 
 **Record gap, stated rather than papered over.** Between Phase 7 and Phase 8 a
 large body of work shipped as direct commits outside the loop — `skills/` and
@@ -34,7 +36,7 @@ Progress:
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ○        ○     [08-01/02/03 created, executing]
+  ✓        ✓        ✓     [08-01/02/03 loops complete — Phase 8 closed]
 ```
 
 Every loop closed cleanly:
@@ -48,6 +50,9 @@ Every loop closed cleanly:
 | `06-01` session identity + first frame v3 | 4/4 PASS + checkpoint approved | 6/6 Pass | `99331f3` |
 | `06-02` live turn UI | 4/4 PASS (1 D17 gap fixed) + checkpoint approved | 5/5 Pass | `f4b7518` |
 | `07-01` public-repo readiness | 3/3 PASS (+1 follow-up commit) | 5/5 Pass | `1b07221` `a7e87f3` `8d66fb2` `8899d45` |
+| `08-01` connector layer | 3/3 PASS | 6/6 Pass | `638f3bc` |
+| `08-03` method skills (evan, wayfinder) | 3/3 PASS | 5/5 Pass | `25c7962` |
+| `08-02` 0-1 | 3/3 PASS | 5/5 Pass | `210b45a` |
 
 Details: `.paul/phases/04-sherman-shell/04-01-SUMMARY.md`, `04-02-SUMMARY.md`,
 `.paul/phases/05-launch-screen-v2/05-01-SUMMARY.md`,
