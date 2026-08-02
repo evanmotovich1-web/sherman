@@ -286,7 +286,14 @@ elif ! command -v python3 >/dev/null 2>&1; then
     echo "        Install Python 3.11+ and re-run ./install.sh"
 else
     mkdir -p "$HOME/.sherman"
-    if [ -d "$WIKI_DIR/.git" ]; then
+    # The clone and pull are network fetches, and the no-fetch guard covers
+    # them like every other fetch in this script -- an "offline" smoke run
+    # was reaching across the network here. An already-present checkout is
+    # still provisioned below from whatever state it has.
+    if [ -n "${SHERMAN_INSTALL_NO_FETCH:-}" ]; then
+        [ -d "$WIKI_DIR" ] \
+            || echo "  NOTE: network fetches are disabled, so the LLM Wiki was not cloned."
+    elif [ -d "$WIKI_DIR/.git" ]; then
         # ff-only: a user's local edits to their wiki tooling are theirs.
         (cd "$WIKI_DIR" && git pull --ff-only --quiet >/dev/null 2>&1) \
             || echo "  NOTE: could not update the existing LLM Wiki checkout; keeping it as is."
@@ -304,11 +311,15 @@ else
         # enhancement, so it must degrade to the NOTE below, not kill Sherman.
         [ -x "$WIKI_PY" ] || python3 -m venv "$WIKI_DIR/.venv" >/dev/null 2>&1 || true
         if [ -x "$WIKI_PY" ]; then
-            # A venv can exist without pip (Debian and WSL split it out of
-            # python3-venv's minimal install); ensurepip is the repair for
-            # exactly that, and it is a no-op where pip already works.
+            # A venv can exist without pip: Debian/Ubuntu's `python3 -m venv`
+            # without python3-venv half-creates it -- bin/python exists and
+            # runs, then venv creation dies at the pip stage, because Debian
+            # DISABLES ensurepip system-wide. So this repair can fail on both
+            # sides, and without the trailing `|| true` that double failure
+            # trips `set -e` and silently kills the whole install right here --
+            # the second, quieter instance of the venv-creation bug one line up.
             "$WIKI_PY" -m pip --version >/dev/null 2>&1 \
-                || "$WIKI_PY" -m ensurepip --upgrade >/dev/null 2>&1
+                || "$WIKI_PY" -m ensurepip --upgrade >/dev/null 2>&1 || true
             # On failure, say what pip said — its last line names the actual
             # problem (a missing module, a network refusal, a compiler), and
             # a NOTE without it leaves the operator rerunning installs blind.

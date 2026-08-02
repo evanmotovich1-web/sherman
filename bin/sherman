@@ -610,8 +610,11 @@ run_update() {
             echo "NOTE: the LLM Wiki here is broken and python3 is missing, so it was not repaired."
         else
             echo "repairing the LLM Wiki (its CLI stopped answering from its venv)"
-            [ -d "$wiki_dir/.git" ] \
-                && git -C "$wiki_dir" pull --ff-only --quiet >/dev/null 2>&1
+            # `|| true` on the pull: in an `A && B` list a failing B is the
+            # final command, which set -e treats as fatal -- an offline pull
+            # would kill the update mid-repair.
+            { [ -d "$wiki_dir/.git" ] \
+                && git -C "$wiki_dir" pull --ff-only --quiet >/dev/null 2>&1; } || true
             # Trailing `|| true`: on Debian/Ubuntu/WSL without python3-venv this
             # fails outright, and under `set -e` that would abort the whole
             # update mid-repair -- before the honest NOTE below is ever reached.
@@ -619,10 +622,12 @@ run_update() {
             wiki_py="$wiki_dir/.venv/bin/python"
             [ -x "$wiki_py" ] || wiki_py="$wiki_dir/.venv/Scripts/python.exe"
             if [ -x "$wiki_py" ]; then
-                # A venv can exist without pip (Debian/WSL splits it out);
-                # ensurepip is the repair for exactly that.
+                # A venv can exist without pip: Debian/Ubuntu half-creates it
+                # (bin/python exists, runs) and DISABLES ensurepip system-wide,
+                # so this repair can fail on both sides -- without `|| true`
+                # that double failure kills the update right here, silently.
                 "$wiki_py" -m pip --version >/dev/null 2>&1 \
-                    || "$wiki_py" -m ensurepip --upgrade >/dev/null 2>&1
+                    || "$wiki_py" -m ensurepip --upgrade >/dev/null 2>&1 || true
                 pip_out=$("$wiki_py" -m pip install \
                     -r "$wiki_dir/api/requirements.txt" \
                     -r "$wiki_dir/mcp/requirements.txt" 2>&1) \
