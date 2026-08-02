@@ -625,6 +625,41 @@ FAKE_NPM_FAIL
     else
         fail "reconcile path broke (ok=$reconcile_status, bad=$badnpm_status): $(printf '%s' "$badnpm_out" | tail -3)"
     fi
+
+    # The one-press proof: after the pull, the rest of the update must run in
+    # the launcher the pull DELIVERED, not the copy already in memory --
+    # otherwise a fix to the update process never applies to the update that
+    # ships it, and the operator is told to press update twice. The fixture's
+    # git stub swaps in a different launcher during "pull"; only a real
+    # re-exec can produce that launcher's completion line.
+    cat > "$update_root/pulled-sherman" <<'PULLED'
+#!/bin/sh
+case "${1:-}" in
+    update) echo "finished by the pulled launcher"; exit 0 ;;
+    *) echo "unexpected pulled-launcher call: $*" >&2; exit 2 ;;
+esac
+PULLED
+    chmod +x "$update_root/pulled-sherman"
+    cat > "$update_stubs/git" <<SWAPPING_GIT
+#!/bin/sh
+case " \$* " in
+    *" rev-parse --git-dir "*) echo .git ;;
+    *" remote "*) echo origin ;;
+    *" pull --ff-only "*) cp "$update_root/pulled-sherman" "$update_root/bin/sherman" ;;
+    *) echo "unexpected fake git call: \$*" >&2; exit 2 ;;
+esac
+SWAPPING_GIT
+    chmod +x "$update_stubs/git"
+    reexec_out=$(env HOME="$update_home" PATH="$update_stubs:$PATH" \
+        "$update_root/bin/sherman" update 2>&1)
+    reexec_status=$?
+
+    if [ "$reexec_status" -eq 0 ] \
+        && printf '%s' "$reexec_out" | grep -q 'finished by the pulled launcher'; then
+        pass "after the pull, the update finishes in the launcher the pull delivered"
+    else
+        fail "update kept running the in-memory launcher past the pull (status=$reexec_status): $(printf '%s' "$reexec_out" | tail -3)"
+    fi
 fi
 
 # ----------------------------------------------------------------- check 11 --
