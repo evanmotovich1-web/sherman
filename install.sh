@@ -285,7 +285,12 @@ else
 
     WIKI_PY="$WIKI_DIR/.venv/bin/python"
     if [ -f "$WIKI_DIR/llmwiki" ]; then
-        [ -x "$WIKI_PY" ] || python3 -m venv "$WIKI_DIR/.venv" >/dev/null 2>&1
+        # venv creation itself fails outright on Debian/Ubuntu/WSL when the
+        # python3-venv package is absent -- the same split the pip repair below
+        # handles, one layer earlier. The trailing `|| true` keeps that failure
+        # from tripping `set -e` and aborting the whole install; the venv is an
+        # enhancement, so it must degrade to the NOTE below, not kill Sherman.
+        [ -x "$WIKI_PY" ] || python3 -m venv "$WIKI_DIR/.venv" >/dev/null 2>&1 || true
         if [ -x "$WIKI_PY" ]; then
             # A venv can exist without pip (Debian and WSL split it out of
             # python3-venv's minimal install); ensurepip is the repair for
