@@ -868,14 +868,23 @@ test('/win judges the recorded sessions into a local page', async () => {
                 return false;
             }
         });
-        await until(() => plain(captured).includes('could not open a browser here'));
+        // Matched against a whitespace-flattened frame, because the notice is
+        // one long line — "report written to <path> · could not open a browser
+        // here (...)" — and Ink wraps it to the 100-column viewport. Where the
+        // wrap lands depends on the length of the temp path, which differs by
+        // platform: /var/folders/... on macOS, /tmp/... on Linux. Asserting an
+        // unwrapped substring therefore passes on one OS and fails on the
+        // other for no reason the shell has any part in. Ink wraps at word
+        // boundaries, so collapsing runs of whitespace puts the sentence back.
+        const flattened = () => plain(captured).replace(/\s+/g, ' ');
+        await until(() => flattened().includes('could not open a browser here'));
         instance.unmount();
 
         assert.equal(workerRequests[0].mode, 'isolated-read-only');
         assert.equal(workerRequests[0].source, 'win');
         assert.match(workerRequests[0].text, /20260730_a\.jsonl/);
 
-        const output = plain(captured);
+        const output = flattened();
         // Two logs: the fixture AND the live session's own log — the shell
         // records the /win turn itself before the worker is spawned.
         assert.match(output, /judging 2 session logs/);
