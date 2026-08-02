@@ -71,6 +71,18 @@ to edit, not a fixed library.
 | `self-improvement` | agent | record a durable lesson from being corrected |
 | `session-eval` | agent | judge whether the session used skills and the vault, unprompted |
 | `capability-gap` | agent | find work that happened badly for want of a skill or tool |
+| `evan` | method | plan a body of work as a loop that closes, with a written trail |
+| `wayfinder` | method | chart work too big for one session as a map of decision tickets |
+
+The `method` category is different in kind from the rest. The other skills are
+how company work gets **done**; these two are how a body of work gets **shaped**
+before anyone does it. Reach for `evan` when the way is clear and the work needs
+a plan of record; reach for `wayfinder` when the way is not clear yet.
+
+`evan` is the first skill here to carry bundled resources — its `workflows/`,
+`templates/`, and `references/` directories, ported so every path resolves inside
+the skill and nothing points at any machine's home directory. The front-matter
+contract is unchanged by that: `SKILL.md` is still what the loader reads.
 
 `session-eval` and `capability-gap` are driven by `/eval`, which also runs
 automatically when a session that had turns ends. That turn is read-only by

@@ -13,7 +13,7 @@ seed_source: "https://chrisai.cv/skool"
 
 **Created:** {date}
 **Type:** Claude Code Workflow
-**Skill Loadout:** {skills relevant to building this — e.g., /paul:audit}
+**Skill Loadout:** {skills relevant to building this — e.g., /evan audit}
 **Quality Gates:** {quality checks — e.g., governance review, integration testing}
 
 ---
@@ -49,7 +49,7 @@ seed_source: "https://chrisai.cv/skool"
 | System | How It's Touched | Changes Needed |
 |--------|-----------------|----------------|
 | {e.g., CARL} | {e.g., new domain, rule updates} | {specific changes} |
-| {e.g., PAUL} | {e.g., new input format} | {specific changes} |
+| {e.g., EVAN} | {e.g., new input format} | {specific changes} |
 | {e.g., Existing commands} | {e.g., /graduate modification} | {specific changes} |
 
 ### Systems NOT Touched

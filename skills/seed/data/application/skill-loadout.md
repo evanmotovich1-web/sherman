@@ -4,7 +4,7 @@
 
 | Tool | Priority | Why |
 |------|----------|-----|
-| PAUL | required | Structured milestones and phases for managed build — applications are too complex for ad-hoc development |
+| EVAN | required | Structured milestones and phases for managed build — applications are too complex for ad-hoc development |
 | AEGIS | recommended | Post-build security and quality audit — catches OWASP issues, scalability gaps |
 | ui-ux-pro-max | recommended | Frontend design system, component patterns, responsive layouts — if the app has a UI |
 | sonarqube | optional | Continuous code quality scanning — useful for larger codebases or team projects |

@@ -58,7 +58,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=24
+TOTAL_CHECKS=25
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -1956,6 +1956,102 @@ else
         pass "$conn_out"
     else
         fail "$(printf '%s' "$conn_out" | head -3)"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 25 --
+# The method skills carry vendored content ported out of one person's ~/.claude.
+# A vendored framework that still points at its author's home directory works
+# perfectly on that machine and nowhere else — and that failure is invisible
+# here, which is exactly why it needs a check rather than an inspection.
+echo
+echo "25. the skills are self-contained and reference only what exists"
+
+if grep -rn '~/\.claude' skills/ >/dev/null 2>&1; then
+    fail "a skill references ~/.claude: $(grep -rln '~/\.claude' skills/ | head -3 | tr '\n' ' ')"
+else
+    pass "no skill points at a personal ~/.claude directory"
+fi
+
+if grep -rn '/Users/\|/home/[a-z]' skills/ >/dev/null 2>&1; then
+    fail "a skill hardcodes a home directory: $(grep -rln '/Users/\|/home/[a-z]' skills/ | head -3 | tr '\n' ' ')"
+else
+    pass "no skill hardcodes an absolute home path"
+fi
+
+# The bundled framework must actually be bundled, and the router must name it.
+if [ -d skills/evan/workflows ] && [ -f skills/evan/workflows/plan-phase.md ] \
+    && grep -q 'workflows/plan-phase.md' skills/evan/SKILL.md; then
+    pass "evan carries its workflows and its router names them"
+else
+    fail "evan's bundled workflows are missing or unreferenced from SKILL.md"
+fi
+
+# Every /slash token a skill mentions must be a real command or a real skill.
+# A method skill that routes to a command Sherman does not have sends the
+# operator somewhere that does not exist, which is the same confident-and-wrong
+# the capability registry exists to prevent.
+SLASHREF_JS=$(cat <<'JS'
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { COMMANDS } from './src/commands.js';
+import { loadSkills } from './src/registry.js';
+
+const root = new URL('..', import.meta.url).pathname;
+const skills = loadSkills(root);
+assert.equal(skills.ok, true, `skills did not load: ${skills.reason}`);
+
+const known = new Set([
+    ...COMMANDS.map((c) => c.name),
+    ...skills.list.map((s) => s.name),
+]);
+
+// SKILL.md files only -- the routers Sherman actually follows. Bundled
+// templates and examples are full of URL paths (/api, /login) and deliberate
+// placeholders (/skill-1), and flagging those would make this check noise
+// nobody reads. A SKILL.md that routes somewhere nonexistent is the real
+// defect: it sends the operator to a command that is not there.
+const files = [];
+const walk = (dir) => {
+    for (const entry of readdirSync(dir)) {
+        const path = join(dir, entry);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (entry === 'SKILL.md') files.push(path);
+    }
+};
+walk(join(root, 'skills'));
+
+const unknown = new Map();
+for (const path of files) {
+    // \x28 and \x60 for the open-paren and backtick, same reason as \x22 in
+    // check 24: bash 3.2 scans $( ... ) for balance even inside a quoted
+    // heredoc, so an unpaired one of either breaks smoke.sh with a parse error
+    // nowhere near this line. Do not simplify these back to literals.
+    for (const match of readFileSync(path, 'utf8').matchAll(/(?:^|[\s\x28\x60])\/([a-z0-9][a-z0-9-]{2,})\b/g)) {
+        const name = match[1];
+        if (!known.has(name)) {
+            if (!unknown.has(name)) unknown.set(name, path.slice(root.length));
+        }
+    }
+}
+assert.equal(unknown.size, 0,
+    `skills route to commands that do not exist: ${[...unknown].map(([n, f]) => `/${n} (${f})`).join(', ')}`);
+
+process.stdout.write(`${files.length} skill files, every /command reference resolves`);
+JS
+)
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot check slash references"
+elif [ ! -d "shell/node_modules/ink" ]; then
+    skip "shell/node_modules absent, run install.sh"
+else
+    slash_out=$(cd shell && node --input-type=module -e "$SLASHREF_JS" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "$slash_out"
+    else
+        fail "$(printf '%s' "$slash_out" | head -3)"
     fi
 fi
 

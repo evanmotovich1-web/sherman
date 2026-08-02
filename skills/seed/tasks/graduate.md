@@ -101,7 +101,7 @@ Read `projects/{name}/PLANNING.md` and extract:
 - **Type** metadata field (application, workflow, client, utility, campaign)
 - Overall content depth
 
-Reference `checklists/planning-quality.md` to assess whether the PLANNING.md is rich enough for a clean graduation and potential headless PAUL init.
+Reference `checklists/planning-quality.md` to assess whether the PLANNING.md is rich enough for a clean graduation and potential headless EVAN init.
 
 <if condition="Type metadata is missing">
 Infer type from content, or ask: "I can't find a Type field in this PLANNING.md. What type of project is this? (application, workflow, client, utility, campaign)"
@@ -112,7 +112,7 @@ Wait for response.
 <if condition="PLANNING.md appears too thin">
 Warn the user:
 
-> "This PLANNING.md looks light — it may not have enough detail for a strong README or future PAUL init. Want to go back to `/seed` to flesh it out, or graduate as-is?"
+> "This PLANNING.md looks light — it may not have enough detail for a strong README or future EVAN init. Want to go back to `/seed` to flesh it out, or graduate as-is?"
 
 Wait for response. If user wants to proceed, continue. If not, exit with suggestion to run `/seed`.
 </if>
@@ -163,8 +163,8 @@ Read `projects/{name}/PLANNING.md` fully. Generate `apps/{name}/README.md` by **
 - Keep technical architecture details
 - Keep implementation phases
 - Preserve tables and structured data (information-dense)
-- Preserve Type and Skill Loadout metadata — PAUL uses this for configuration
-- The README should be comprehensive enough to run `/paul:init` against
+- Preserve Type and Skill Loadout metadata — EVAN uses this for configuration
+- The README should be comprehensive enough to run `/evan init` against
 
 Present the generated README to the user:
 
@@ -213,8 +213,8 @@ Apply edits and re-present until approved.
    Git: Initialized with initial commit
 
    Next steps:
-   - `/paul:init` in apps/{name}/ to start a managed build
-   - `/seed launch {name}` does this automatically (graduate + PAUL init)
+   - `/evan init` in apps/{name}/ to start a managed build
+   - `/seed launch {name}` does this automatically (graduate + EVAN init)
 
    SEED v1.0 · Chris AI Systems · https://chrisai.cv/skool · https://youtube.com/@chris-ai-systems
    ```

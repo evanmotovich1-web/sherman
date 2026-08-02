@@ -14,7 +14,7 @@ seed_source: "https://chrisai.cv/skool"
 **Created:** {date}
 **Type:** Application
 **Stack:** {framework + language + db + cache + deployment}
-**Skill Loadout:** ui-ux-pro-max, /paul:audit, sonarqube scan
+**Skill Loadout:** ui-ux-pro-max, /evan audit, sonarqube scan
 **Quality Gates:** test coverage, security scan, accessibility, performance
 
 ---
@@ -44,7 +44,7 @@ seed_source: "https://chrisai.cv/skool"
 
 ## Data Model
 
-{Core entities and relationships. Can be rough at ideation stage — refine during PAUL planning.}
+{Core entities and relationships. Can be rough at ideation stage — refine during EVAN planning.}
 
 ### Entities
 
@@ -136,7 +136,7 @@ seed_source: "https://chrisai.cv/skool"
 
 ## Phase Breakdown
 
-{Independently shippable milestones. Each phase: what's built, what's testable, what's the user-facing outcome. Maps directly to PAUL milestones.}
+{Independently shippable milestones. Each phase: what's built, what's testable, what's the user-facing outcome. Maps directly to EVAN milestones.}
 
 ### Phase 1: {Name}
 - **Build:** {what gets built}
@@ -157,7 +157,7 @@ seed_source: "https://chrisai.cv/skool"
 | Skill | When It Fires | Purpose |
 |-------|--------------|---------|
 | ui-ux-pro-max | Frontend phases | Design system, component quality |
-| /paul:audit | End of each milestone | Architecture review |
+| /evan audit | End of each milestone | Architecture review |
 | sonarqube scan | End of each phase | Code quality, vulnerabilities |
 
 ### Quality Gates

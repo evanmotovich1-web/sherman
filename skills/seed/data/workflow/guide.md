@@ -11,7 +11,7 @@
 **Depth:** required
 
 ## Section 3: Integration Map
-**Explore:** What existing systems does this touch? BASE v2, PAUL, Skillsmith? What files does it read or write? What doesn't it touch?
+**Explore:** What existing systems does this touch? BASE v2, EVAN, Skillsmith? What files does it read or write? What doesn't it touch?
 **Suggest:** Draw the integration map as a table: System | Reads | Writes | Why. If touching more than 3 systems, consider whether this is really one workflow or two.
 **Depth:** required
 
@@ -26,8 +26,8 @@
 **Depth:** required
 
 ## Section 6: Downstream Handoff
-**Explore:** How does the output of this workflow connect to the next stage? Does it feed into PAUL, BASE, another command? Is there a manual step between?
-**Suggest:** If the handoff is manual, consider whether it should be automated. If it feeds PAUL, ensure the output format matches what PAUL expects.
+**Explore:** How does the output of this workflow connect to the next stage? Does it feed into EVAN, BASE, another command? Is there a manual step between?
+**Suggest:** If the handoff is manual, consider whether it should be automated. If it feeds EVAN, ensure the output format matches what EVAN expects.
 **Depth:** optional
 
 ## Section 7: Tool Discovery

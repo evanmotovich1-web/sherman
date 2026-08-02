@@ -7,7 +7,7 @@
 
 ## Section 2: Tech Stack
 **Explore:** Do you have a stack in mind, or are you exploring? What's the deployment target — local, cloud, edge? Any constraints from the team or existing infrastructure? Why this stack over alternatives?
-**Suggest:** For solo builders: Next.js + SQLite is fast to ship. For teams: consider what everyone knows. If they mention unfamiliar tech, suggest `/paul:discover` for research before committing.
+**Suggest:** For solo builders: Next.js + SQLite is fast to ship. For teams: consider what everyone knows. If they mention unfamiliar tech, suggest `/evan discover` for research before committing.
 **Depth:** required
 
 ## Section 3: Data Model
@@ -47,5 +47,5 @@
 
 ## Section 10: Skill Loadout
 **Explore:** Which ecosystem tools make sense for this build? Need code quality scanning? UI design help? Structured development workflow?
-**Suggest:** Load skill-loadout.md recommendations. For most applications: PAUL (required for managed build), AEGIS (recommended post-build audit), ui-ux-pro-max (if frontend-heavy).
+**Suggest:** Load skill-loadout.md recommendations. For most applications: EVAN (required for managed build), AEGIS (recommended post-build audit), ui-ux-pro-max (if frontend-heavy).
 **Depth:** optional

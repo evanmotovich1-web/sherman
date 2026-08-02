@@ -32,5 +32,5 @@
 
 ## Section 7: Skill Loadout
 **Explore:** Which ecosystem tools will speed up this project? Need business context extraction? Conversion copywriting help? Design system?
-**Suggest:** Load skill-loadout.md recommendations. For most client sites: ui-ux-pro-max (for design), PAUL (for structured phases).
+**Suggest:** Load skill-loadout.md recommendations. For most client sites: ui-ux-pro-max (for design), EVAN (for structured phases).
 **Depth:** optional

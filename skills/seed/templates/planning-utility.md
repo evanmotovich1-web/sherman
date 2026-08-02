@@ -107,14 +107,14 @@ seed_source: "https://chrisai.cv/skool"
 
 ---
 
-### PAUL Decision
+### EVAN Decision
 
-{Does this need PAUL?}
-- < 200 lines, single file → **Just build it, no PAUL**
-- Multiple files, tests needed → Light PAUL (1 milestone, 1-2 phases)
+{Does this need EVAN?}
+- < 200 lines, single file → **Just build it, no EVAN**
+- Multiple files, tests needed → Light EVAN (1 milestone, 1-2 phases)
 - Complex with integrations → Probably an Application, not a Utility
 
-**Decision:** {Just build it / Light PAUL / Reclassify as Application}
+**Decision:** {Just build it / Light EVAN / Reclassify as Application}
 
 ---
 

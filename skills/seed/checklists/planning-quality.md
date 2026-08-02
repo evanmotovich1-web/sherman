@@ -1,6 +1,6 @@
 # Planning Quality Checklist
 
-Quality gate for `/seed graduate` and `/seed launch`. Determines if a PLANNING.md is rich enough for clean graduation and headless PAUL initialization.
+Quality gate for `/seed graduate` and `/seed launch`. Determines if a PLANNING.md is rich enough for clean graduation and headless EVAN initialization.
 
 ## Universal Checks (All Types)
 
@@ -29,14 +29,14 @@ Reference `data/{type}/config.md` for the authority on required vs optional sect
 | Utility | 6 of 6 | tight — all required, but brief |
 | Campaign | 6 of 7 | creative — can be loose, but measurable goal required |
 
-## PAUL-Readiness Checks (for /seed launch)
+## EVAN-Readiness Checks (for /seed launch)
 
-These are only required if the user intends to run `/seed launch` (graduate + PAUL init). Skip for `/seed graduate` alone.
+These are only required if the user intends to run `/seed launch` (graduate + EVAN init). Skip for `/seed graduate` alone.
 
 - [ ] **Phase breakdown** exists with independently shippable milestones
 - [ ] **Each phase** has build, testable, and outcome defined
 - [ ] **Tech stack decisions** are resolved — no critical "TBD" items
-- [ ] **Enough detail** that PAUL can derive milestones, phases, and structure without re-asking questions
+- [ ] **Enough detail** that EVAN can derive milestones, phases, and structure without re-asking questions
 
 ## Assessment
 

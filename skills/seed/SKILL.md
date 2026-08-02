@@ -21,10 +21,10 @@ else in the task files is followed subject to these rules.
    `projects/` and `apps/` path in the task, template, and data files against
    `~/.sherman/projects/` (create it on first use). An ideation that survives
    only until the next launch is not an ideation.
-2. **Optional ecosystem.** PAUL, Aegis, and Skillsmith may not be installed on
-   this machine. `tasks/launch.md` already probes for PAUL and must degrade
-   honestly: when PAUL is absent, `/seed launch` performs the graduate step,
-   says PAUL was not found, and stops — it does not pretend to initialize it.
+2. **Optional ecosystem.** EVAN, Aegis, and Skillsmith may not be installed on
+   this machine. `tasks/launch.md` already probes for EVAN and must degrade
+   honestly: when EVAN is absent, `/seed launch` performs the graduate step,
+   says EVAN was not found, and stops — it does not pretend to initialize it.
 3. **Autonomous by default.** The task files came from an interview-driven
    workflow. In Sherman, every instruction or acceptance criterion to ask,
    offer choices, wait, confirm, review, or seek approval is an internal
@@ -71,7 +71,7 @@ Project coach — shapes raw ideas into structured, buildable plans.
 |---------|-------------|-----------|
 | `/seed` | Default — type-first guided ideation | tasks/ideate.md |
 | `/seed graduate` | Graduate ideation into `apps/` with a git repo | tasks/graduate.md |
-| `/seed launch` | Graduate + PAUL install/init when PAUL exists | tasks/launch.md |
+| `/seed launch` | Graduate + EVAN install/init when EVAN exists | tasks/launch.md |
 | `/seed status` | Show the pipeline under `projects/` | tasks/status.md |
 | `/seed add-type` | Add a custom project type to the data layer | tasks/add-type.md |
 

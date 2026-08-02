@@ -131,14 +131,14 @@ seed_source: "https://chrisai.cv/skool"
 
 ---
 
-### PAUL Decision
+### EVAN Decision
 
-{Does this campaign need PAUL?}
-- Single deliverable (one video, one post) → No PAUL, just do it
-- Multi-deliverable, single week → ACTIVE.md tracking, no PAUL
-- Multi-week campaign with dependencies → PAUL with timeline-based phases
+{Does this campaign need EVAN?}
+- Single deliverable (one video, one post) → No EVAN, just do it
+- Multi-deliverable, single week → ACTIVE.md tracking, no EVAN
+- Multi-week campaign with dependencies → EVAN with timeline-based phases
 
-**Decision:** {PAUL / ACTIVE.md tracking / Just do it}
+**Decision:** {EVAN / ACTIVE.md tracking / Just do it}
 
 ---
 

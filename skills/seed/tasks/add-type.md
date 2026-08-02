@@ -116,7 +116,7 @@ Apply any edits the user requests before writing.
 **Create data/{type}/skill-loadout.md:**
 
 > "Which ecosystem tools are useful for **{type}** projects? Here are some options:"
-> - PAUL, AEGIS, Skillsmith, ui-ux-pro-max, sonarqube
+> - EVAN, AEGIS, Skillsmith, ui-ux-pro-max, sonarqube
 > - content-flywheel-strategist, geo
 >
 > "List the relevant ones with priority (required/recommended/optional)."
@@ -172,7 +172,7 @@ Generate `templates/planning-{type}.md` from the user's defined sections so the 
 
    ## Implementation Phases
 
-   {High-level phase breakdown — or "TBD during /paul:plan"}
+   {High-level phase breakdown — or "TBD during /evan plan"}
 
    ---
 

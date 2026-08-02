@@ -14,7 +14,7 @@ seed_source: "https://chrisai.cv/skool"
 **Created:** {date}
 **Type:** Client Website
 **Client:** {name}
-**Skill Loadout:** ui-ux-pro-max, /paul:audit
+**Skill Loadout:** ui-ux-pro-max, /evan audit
 **Quality Gates:** conversion psychology checklist, mobile optimization, client approval
 
 ---

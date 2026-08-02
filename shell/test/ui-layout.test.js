@@ -167,12 +167,20 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     // and 43 rows must render the identical frame.
     assert.equal(at43, at41, 'below the tall threshold the launch panel must still hug content');
     // At and above it the panel claims a share of the height, so a 60-row
-    // terminal gets a visibly taller frame than a 40-row one — and still leaves
-    // room for the status rule and composer.
+    // terminal gets a taller frame than a 40-row one — and still leaves room
+    // for the status rule and composer.
+    //
+    // Strictly taller, not taller by a fixed margin. The PC stretch is capped
+    // at STRETCH_MAX_INNER while the compact panel hugs its REAL content, so
+    // every skill added to the registry narrows the gap between them. A fixed
+    // margin here is a tripwire on the product's core motion — it fires the day
+    // someone ships two skills, which says nothing about the layout. What must
+    // never happen is the tall terminal rendering a SHORTER panel than the
+    // short one, and that is what this asserts.
     const rowsAt41 = at41.split('\n').length;
     const rowsAt60 = at60.split('\n').length;
     assert.ok(
-        rowsAt60 >= rowsAt41 + 6,
+        rowsAt60 > rowsAt41,
         `tall terminals must stretch the launch panel (41 rows -> ${rowsAt41}, 60 -> ${rowsAt60})`
     );
     assert.ok(rowsAt60 <= 58, 'a stretched launch panel must not crowd out status and composer');

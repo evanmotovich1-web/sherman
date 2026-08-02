@@ -1,5 +1,5 @@
 <purpose>
-Guide a user through type-aware collaborative ideation, producing a populated PLANNING.md document ready for graduation or PAUL-managed build.
+Guide a user through type-aware collaborative ideation, producing a populated PLANNING.md document ready for graduation or EVAN-managed build.
 </purpose>
 
 <user-story>
@@ -268,7 +268,7 @@ Wait for response.
 When the user is ready (all sections covered or user signals completion):
 
 1. Read `templates/planning-{type}.md` for output structure
-2. Reference `checklists/planning-quality.md` — verify the content is rich enough for headless PAUL init
+2. Reference `checklists/planning-quality.md` — verify the content is rich enough for headless EVAN init
 3. Populate the template with content from the conversation
 4. Write to `projects/{name}/PLANNING.md`
 5. Fill in the metadata block (Type, Skill Loadout, Quality Gates)
@@ -310,7 +310,7 @@ After user approves the PLANNING.md:
 
    Next steps:
    - `/seed graduate {name}` — move to apps/ with git init
-   - `/seed launch {name}` — graduate + initialize PAUL for managed build
+   - `/seed launch {name}` — graduate + initialize EVAN for managed build
 
    SEED v1.0 · Chris AI Systems · https://chrisai.cv/skool · https://youtube.com/@chris-ai-systems
    ```
