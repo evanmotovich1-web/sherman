@@ -186,7 +186,17 @@ test('the shell scrolls during a turn, counts honestly, and snaps back on submit
     stdout.columns = 80;
     stdout.rows = 14;
     let captured = '';
-    stdout.on('data', (chunk) => { captured += chunk.toString(); });
+    // Both the running capture and the frames that made it. Some claims here
+    // are about what the shell shows NOW, and those cannot be read from an
+    // accumulation: "the indicator is gone" is never true of a string that
+    // still contains the frame where it was present. The same precedent is
+    // already in this file — the Transcript test reads writes.at(-1).
+    const frames = [];
+    stdout.on('data', (chunk) => {
+        const text = chunk.toString();
+        captured += text;
+        frames.push(text);
+    });
 
     // ...and `interactive: true` is what makes that TTY flag stick. Ink decides
     // as `!isInCi && isTTY`, with isInCi read from the environment at import, so
@@ -226,27 +236,92 @@ test('the shell scrolls during a turn, counts honestly, and snaps back on submit
         stdin.write(SHIFT_UP);
         await until(() => countIn(captured) === 2);
 
-        // Paging goes further back and then stops: a second page at the top of
-        // the buffer must not keep incrementing a number nothing backs.
+        // The count once it has stopped moving, rather than the first frame
+        // that shows one. A single PageUp can repaint more than once on its way
+        // to the clamp, so `until(count > 2)` can return on an intermediate
+        // number — and comparing that against the settled number below is a
+        // race that only loses on a machine slow enough to render the
+        // intermediate step. A shared CI runner is exactly that machine: this
+        // read 9 on Linux against a true clamp of 10, and passed on macOS.
+        const settledCount = async () => {
+            let previous = null;
+            for (let attempt = 0; attempt < 100; attempt += 1) {
+                const now = countIn(captured);
+                if (now !== null && now === previous) return now;
+                previous = now;
+                await new Promise((resolve) => setTimeout(resolve, 60));
+            }
+            throw new Error('the history count never settled');
+        };
+
+        // Paging goes further back and then stops: once at the top of the
+        // buffer, more paging must not keep incrementing a number nothing
+        // backs.
+        //
+        // Getting to the top is its own step. This used to page ONCE and treat
+        // that as the top, which held only while one page happened to span the
+        // whole buffer; where it did not, the assertion still passed because
+        // the frame it compared against was a repaint of the pre-page state.
+        // A stale frame agreeing with a stale expectation is not a clamp being
+        // tested. So: page until the count stops moving, and only then assert
+        // that another page does not move it.
+        // `captured` is NOT cleared between pages from here on, deliberately.
+        // At the top a further PageUp changes nothing, so the shell renders no
+        // frame at all — correct behavior that a cleared buffer turns into an
+        // infinite wait for a repaint that is never coming. Reading the tail of
+        // the accumulated capture instead means "no new frame" reads as "the
+        // count did not move", which is precisely the claim under test.
         captured = '';
         stdin.write(PAGE_UP);
         await until(() => countIn(captured) > 2);
-        const atTop = countIn(captured);
-        captured = '';
+        let atTop = await settledCount();
+        for (let page = 0; page < 20; page += 1) {
+            stdin.write(PAGE_UP);
+            await new Promise((resolve) => setTimeout(resolve, 120));
+            const next = await settledCount();
+            if (next === atTop) break;
+            atTop = next;
+        }
+
         stdin.write(PAGE_UP);
         stdin.write(SHIFT_UP);
-        await until(() => countIn(captured) !== null);
-        assert.equal(countIn(captured), atTop, 'the count must clamp at the top of the buffer');
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        assert.equal(await settledCount(), atTop, 'the count must clamp at the top of the buffer');
+        // The clamp is a real position, not merely a number that stopped
+        // moving: the buffer here is taller than the viewport, so there is
+        // something above it to have scrolled to. `maxOffset` itself is
+        // asserted directly in the arithmetic test above.
+        assert.ok(atTop > 2, `expected a real scrollback depth, got ${atTop}`);
 
         // Paging back down returns to the tail and the indicator disappears
         // rather than lingering at zero.
+        //
+        // Paged until it does, for the same reason the way up is: how many
+        // pages the buffer spans is a property of the terminal, not a constant
+        // this test may assume. This used to write exactly two PageDowns to
+        // undo exactly two PageUps, and once the way up stopped being two
+        // pages the way down could no longer reach the tail.
+        //
+        // Judged on the LAST frame, not the accumulation: the claim is that
+        // the indicator is gone, and an accumulated capture still holds the
+        // frame where it was showing. That predicate could only ever pass by
+        // the accident of both keypresses being consumed before a repaint.
+        // The last chunk that is actually a frame. Not simply the last chunk:
+        // Ink also emits short cursor-positioning writes, and one of those as
+        // `frames.at(-1)` contains neither the composer nor the indicator, so
+        // the predicate would read "no composer" rather than "no indicator".
+        // Same filter idiom as the Transcript test above.
+        const lastFrame = () => plain(
+            frames.filter((frame) => frame.includes('Ctrl+C to interrupt')).at(-1) ?? ''
+        );
+        let atTail = false;
+        for (let page = 0; page < 20 && !atTail; page += 1) {
+            stdin.write(PAGE_DOWN);
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            atTail = lastFrame() !== '' && !lastFrame().includes('viewing history');
+        }
+        assert.ok(atTail, 'paging down never returned to the tail');
         captured = '';
-        stdin.write(PAGE_DOWN);
-        stdin.write(PAGE_DOWN);
-        await until(() => {
-            const frame = plain(captured);
-            return frame.includes('Ctrl+C to interrupt') && !frame.includes('viewing history');
-        });
 
         // The turn completes while parked in history. The reply lands below the
         // window, so the view must NOT jump to it — and the proof that it was
