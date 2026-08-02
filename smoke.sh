@@ -2054,6 +2054,28 @@ writeFileSync(join(root, 'agent', 'connectors.json'), JSON.stringify({
         },
         { name: 'shelved', summary: 'catalogued, not enabled', transport: 'stdio',
             commandCandidates: [sh], args: ['-c', 'echo hi'], requires: [] },
+        // A server that needs its own environment. The PATH here is the shape
+        // the catalog actually uses -- one prepended directory, then whatever
+        // the launcher itself has -- and the prepended entry is ALSO present in
+        // the injected PATH, because that is the ordinary case and the
+        // duplicate it produces is what render must collapse.
+        //
+        // No apostrophes in these comments, on purpose: bash 3.2 scans the
+        // enclosing $( ... ) for quote balance even inside a quoted heredoc,
+        // and a lone one breaks smoke.sh with a parse error at the far end of
+        // the file. Same reason as the \x22 escapes below.
+        {
+            name: 'enved', summary: 'needs an environment', transport: 'stdio', autoEnable: true,
+            commandCandidates: [sh], args: ['-c', 'echo hi'], probe: ['-c', 'exit 0'],
+            env: { PATH: '/opt/fixture/bin:${PATH}', FIXTURE_MODE: 'quiet' }, requires: [],
+        },
+        // Same shape, but a variable nothing defines. It must block rather
+        // than hand the engine a server with a half-built environment.
+        {
+            name: 'envbroken', summary: 'environment does not resolve', transport: 'stdio',
+            autoEnable: true, commandCandidates: [sh], args: ['-c', 'echo hi'],
+            env: { PATH: '${NO_SUCH_VARIABLE}' }, requires: [],
+        },
     ],
 }), 'utf8');
 
@@ -2062,6 +2084,10 @@ writeFileSync(join(root, 'agent', 'connectors.json'), JSON.stringify({
 writeFileSync(join(home, 'connectors.json'), JSON.stringify({
     enabled: { keyless: { secrets: { FIXTURE_API_KEY: '' } }, other: { secrets: { X: SECRET } } },
 }), 'utf8');
+
+// A known PATH, containing the directory `enved` prepends, so the duplicate
+// the catalog shape produces is real rather than incidental to this machine.
+process.env.PATH = '/opt/fixture/bin:/usr/bin:/bin';
 
 const result = render(ws, { root, shermanHome: home });
 assert.equal(result.ok, true, `render failed: ${result.reason}`);
@@ -2091,7 +2117,30 @@ assert.match(notes, /fix it/, 'the repair command was not offered');
 // 4. A catalogued-but-not-enabled connector is wired nowhere.
 assert.equal(mcp.mcpServers.shelved, undefined, 'an unenabled connector was wired');
 
-// 5. No secret VALUE anywhere. This is the check the whole split exists for.
+// 5. A declared environment reaches BOTH engines, expanded and deduplicated.
+// A server that shells out to its own helpers is handed a truncated PATH
+// without this, and then reports its own capabilities as missing -- a wrong
+// answer indistinguishable from a right one.
+const envedEnv = mcp.mcpServers.enved?.env;
+assert.ok(envedEnv, 'a connector env did not reach .mcp.json');
+assert.equal(envedEnv.FIXTURE_MODE, 'quiet', 'a plain env value was not rendered');
+assert.equal(envedEnv.PATH, '/opt/fixture/bin:/usr/bin:/bin',
+    `PATH was not expanded and deduplicated: ${envedEnv.PATH}`);
+const envedToml = readFileSync(join(ws, '.codex-mcp', 'enved.toml'), 'utf8');
+assert.match(envedToml, /^\[mcp_servers\.enved\.env\]$/m, 'codex env sub-table is missing');
+assert.match(envedToml, /^FIXTURE_MODE = \x22quiet\x22$/m, 'codex env value is missing');
+// The sub-table must follow the keys of the parent table, or the TOML parses
+// as something else entirely.
+assert.ok(envedToml.indexOf('args = ') < envedToml.indexOf('[mcp_servers.enved.env]'),
+    'codex env sub-table precedes the keys it must follow');
+// A connector with no env declares none rather than an empty block.
+assert.equal(mcp.mcpServers.good.env, undefined, 'an empty env block was rendered');
+
+// 6. An environment that does not resolve blocks the connector entirely.
+assert.equal(mcp.mcpServers.envbroken, undefined, 'a connector with an unresolved env was wired');
+assert.match(notes, /envbroken.*environment did not resolve/, 'an unresolved env was not explained');
+
+// 7. No secret VALUE anywhere. This is the check the whole split exists for.
 const rendered = readFileSync(join(ws, '.mcp.json'), 'utf8') + toml + notes + JSON.stringify(result);
 assert.ok(!rendered.includes(SECRET), 'a secret value reached rendered output');
 

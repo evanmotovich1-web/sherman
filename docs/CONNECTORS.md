@@ -16,7 +16,25 @@ is not a roadmap item here — it is engine config that fails at startup, which
 the operator meets as one causeless error a long way from its cause.
 
 The `0-1` skill is what adds entries, and it is required to verify before it
-writes.
+writes. The `mcp` skill is what uses them once they are there.
+
+### The `env` field
+
+A stdio connector may declare `env` — the environment its server process runs
+under, with the same `${...}` expansion as every other field, and one extra
+variable: `${PATH}`, the launcher's own.
+
+That exists for servers that shell out to their own helper binaries. A
+committed catalog cannot know an operator's PATH, and a server handed a
+truncated one reports its own helpers as missing — a wrong answer that looks
+exactly like a correct one. So an entry writes `${HOME}/.local/bin:${PATH}` and
+means "the operator's, plus this one place". Duplicate entries are collapsed on
+render, first occurrence winning, because the result is written into a person's
+codex config and read by a person debugging a server.
+
+The probe runs under the same environment, so what is tested is what the engine
+is handed. A value that does not resolve blocks the connector rather than
+rendering a half-built environment.
 
 ## The enablement file — `~/.sherman/connectors.json`
 

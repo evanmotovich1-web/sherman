@@ -3,6 +3,39 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-02 — Added: Sherman can reach the public internet, through a connector it names
+
+- New skill `mcp`. It is the other half of `0-1`: that one acquires a
+  capability, this one spends it. Check what is actually wired before claiming
+  a capability, name the connector and platform an answer came through, and
+  separate what was reached from what was dark. Routed from `agent/SYSTEM.md`,
+  so it is reached from the operating contract rather than only when a
+  description happens to match.
+- Two connectors catalogued, both verified against a live server first.
+  `agent-reach` — Agent Reach 1.5.0 as a user-global uv tool, fifteen platforms
+  behind one router. Its MCP server exposes exactly one tool, `get_status`; the
+  fetching is its command-line tool, and the skill says so plainly rather than
+  letting a turn be wasted looking for tools that are not there. `exa` —
+  keyless semantic web search over live pages, HTTP transport, and therefore
+  Claude Code only, which `/connectors` and the launcher both state.
+- Connector catalog entries may now declare `env`, the environment their server
+  process runs under, with one new expansion variable: `${PATH}`, the
+  launcher's own. This exists because a server that shells out to its own
+  helper binaries and is handed a truncated PATH reports its own capabilities
+  as missing — a wrong answer that looks exactly like a right one. Agent Reach
+  read 4 of 15 channels under a bare PATH and 5 of 15 under the rendered one.
+  A committed catalog cannot know an operator's PATH, so an entry writes
+  `${HOME}/.local/bin:${PATH}`; duplicates are collapsed on render because the
+  result lands in a person's codex config. The probe runs under the same
+  environment, so what is tested is what the engine is handed, and a value that
+  does not resolve blocks the connector instead of half-building it.
+- Verified end to end: the rendered `.mcp.json` and codex `[mcp_servers.*.env]`
+  block both parse, Claude Code lists all three servers from the workspace, and
+  `get_status` answers when spawned from exactly the rendered command and
+  environment. A sandbox HOME without Agent Reach installed degrades to the
+  named repair command rather than a broken server, and that repair command was
+  itself run in a throwaway tool directory before being written down.
+
 ## 2026-07-31 — Changed: skills act first, and failed updates keep their evidence
 
 - Sherman now works autonomously by default: inspect the vault and available

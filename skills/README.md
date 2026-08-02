@@ -72,6 +72,7 @@ to edit, not a fixed library.
 | `session-eval` | agent | judge whether the session used skills and the vault, unprompted |
 | `capability-gap` | agent | find work that happened badly for want of a skill or tool |
 | `0-1` | agent | acquire the capability an idea needs, or hand over one checklist |
+| `mcp` | agent | reach outside through a wired connector, and name the one you used |
 | `evan` | method | plan a body of work as a loop that closes, with a written trail |
 | `wayfinder` | method | chart work too big for one session as a map of decision tickets |
 
@@ -107,6 +108,10 @@ Two rules follow from that, and they are not negotiable:
 
 `0-1` is what adds an entry. It verifies before it writes, wires what needs no
 person, and hands over one account-and-key checklist when one is required.
+`mcp` is the other half: how a wired connector actually gets used, and how a
+turn says which one it reached through. The two are deliberately separate —
+acquiring a capability and spending it are different decisions, and a skill
+that did both would quietly install things in the middle of ordinary work.
 
 ## Adding one
 
