@@ -63,3 +63,18 @@ a brief line someone acts on is a claim, and claims carry citations here.
 - **The brief reads; it does not tidy.** Building it writes nothing — not
   filing inbox items, not updating the wiki. If the brief surfaces work
   worth doing, doing it is the user's next ask, made deliberately.
+
+## Scheduling it
+
+`sherman brief` is the schedulable form: one headless turn that builds this
+brief, prints it, and — when the machine has a Telegram bot token and a
+paired chat — delivers it to the phone. That command, in the operating
+system's own scheduler (Windows Task Scheduler, cron), IS the scheduled
+morning brief; there is no other delivery path, and the bridge alone cannot
+send one (it only answers incoming messages).
+
+If a user asks to schedule their brief, that is the answer to give — along
+with its two prerequisites, checked, not assumed: a token saved via
+`sherman telegram --token <token>` and a chat paired by running
+`sherman telegram` once and texting it the pairing code. A missing half is
+reported by `sherman brief` itself as a sentence naming the repair command.

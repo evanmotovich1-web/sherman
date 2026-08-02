@@ -48,7 +48,14 @@ test('the writers are tried in order and each gets its own arguments', () => {
     const calls = [];
     const run = (command, args) => { calls.push({ command, args }); return failing('ENOENT'); };
     copyText('the reply', { run, stdout: { isTTY: false, write: () => true } });
-    assert.deepEqual(calls.map((call) => call.command), ['pbcopy', 'clip.exe', 'wl-copy', 'xclip', 'xsel']);
+    assert.deepEqual(
+        calls.map((call) => call.command),
+        ['pbcopy', 'clip.exe', 'powershell.exe', 'wl-copy', 'xclip', 'xsel']
+    );
+    assert.deepEqual(
+        calls.find((call) => call.command === 'powershell.exe').args,
+        ['-NoProfile', '-Command', '$input | Set-Clipboard']
+    );
     assert.deepEqual(calls.find((call) => call.command === 'xclip').args, ['-selection', 'clipboard']);
     assert.deepEqual(calls.find((call) => call.command === 'xsel').args, ['--clipboard', '--input']);
 });

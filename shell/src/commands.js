@@ -65,7 +65,7 @@ export const COMMANDS = Object.freeze([
         name: 'copy',
         usage: '/copy',
         summary: "copy the last Sherman reply to the clipboard",
-        detail: 'Copies the reply as plain text — no colour, no rule glyphs, no signature line. Also bound to ctrl+y. Where the clipboard write cannot be verified, the shell says so rather than reporting a copy it cannot prove.',
+        detail: 'Copies the reply as plain text — no colour, no rule glyphs, no signature line. Also bound to ctrl+y. Where the clipboard write cannot be verified, the shell says so rather than reporting a copy it cannot prove. To copy anything else on screen, hold Shift while dragging: the shell captures the mouse for scrolling, and Shift hands selection back to the terminal.',
     },
     {
         name: 'clear',
@@ -185,7 +185,7 @@ export function helpText(name = '') {
         'Sherman commands',
         ...COMMANDS.map((command) => `${command.usage.padEnd(23)} ${command.summary}`),
         '',
-        'Up/down select · Tab completes · ctrl+y copies the last reply · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
+        'Up/down select · Tab completes · ctrl+y copies the last reply · Shift+drag selects text (the shell holds the mouse for scrolling) · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
         // Mouse reporting is on for the whole time the shell is mounted, which
         // is what lets a click place the caret and the wheel scroll the
         // transcript -- and it takes drag-select away from the terminal, since
