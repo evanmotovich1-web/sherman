@@ -1743,6 +1743,49 @@ else
     fail "npm-missing run made a claim it could not verify"
 fi
 
+# Debian/Ubuntu/WSL ship python3 without the python3-venv package, so
+# `python3 -m venv` fails outright -- and the wiki step must degrade to its
+# NOTE, not abort the whole install under `set -e`. (This is the failure the
+# first real WSL run hit: five checks red because install.sh exited 1 here.)
+# Reproduced with stubs so it fires on macOS too, where a real venv succeeds:
+# a git whose clone fabricates a checkout, so the venv step is reached at all,
+# and a python3 whose venv subcommand fails the way Debian's does.
+VFHOME="$TMPHOME/venvfail-home"
+VFSTUB="$TMPHOME/venvfail-stub"
+mkdir -p "$VFHOME" "$VFSTUB"
+cat > "$VFSTUB/git" <<'VF_GIT'
+#!/bin/sh
+# clone fabricates a minimal llmwiki checkout so install.sh reaches the venv
+# step; every other git call is a harmless success.
+if [ "$1" = "clone" ]; then
+    for dest in "$@"; do :; done
+    mkdir -p "$dest/.git" && : > "$dest/llmwiki"
+fi
+exit 0
+VF_GIT
+cat > "$VFSTUB/python3" <<'VF_PY'
+#!/bin/sh
+# a python3 that cannot build a venv, like Debian/WSL without python3-venv.
+if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then
+    echo "Error: ensurepip is not available" >&2
+    exit 1
+fi
+exit 0
+VF_PY
+chmod +x "$VFSTUB/git" "$VFSTUB/python3"
+
+venvfail_out=$(env HOME="$VFHOME" PATH="$VFSTUB:/usr/bin:/bin" SHERMAN_INSTALL_NO_FETCH=1 \
+    bash "$FAKEROOT/install.sh" 2>&1)
+venvfail_status=$?
+
+if [ "$venvfail_status" -ne 0 ]; then
+    fail "install.sh exited $venvfail_status when python3 could not build a venv: $(printf '%s' "$venvfail_out" | tail -2)"
+elif printf '%s' "$venvfail_out" | grep -q "could not create the wiki's Python venv"; then
+    pass "a python3 that cannot build a venv degrades to the NOTE, install survives"
+else
+    fail "venv-failure run did not emit the honest venv NOTE: $(printf '%s' "$venvfail_out" | tail -3)"
+fi
+
 # ----------------------------------------------------------------- check 22 --
 echo
 echo "22. auto-provisioning claims follow checks, offline"
