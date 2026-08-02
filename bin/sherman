@@ -589,7 +589,10 @@ run_update() {
             echo "repairing the LLM Wiki (its CLI stopped answering from its venv)"
             [ -d "$wiki_dir/.git" ] \
                 && git -C "$wiki_dir" pull --ff-only --quiet >/dev/null 2>&1
-            [ -x "$wiki_py" ] || python3 -m venv "$wiki_dir/.venv" >/dev/null 2>&1
+            # Trailing `|| true`: on Debian/Ubuntu/WSL without python3-venv this
+            # fails outright, and under `set -e` that would abort the whole
+            # update mid-repair -- before the honest NOTE below is ever reached.
+            [ -x "$wiki_py" ] || python3 -m venv "$wiki_dir/.venv" >/dev/null 2>&1 || true
             wiki_py="$wiki_dir/.venv/bin/python"
             [ -x "$wiki_py" ] || wiki_py="$wiki_dir/.venv/Scripts/python.exe"
             if [ -x "$wiki_py" ]; then
