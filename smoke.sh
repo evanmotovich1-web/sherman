@@ -926,7 +926,32 @@ if (
     !/^╰─+╯$/.test(composerLines[2]) ||
     maxWidth(composerPlain) !== 80
 ) {
-    mappingMissing.push('rounded full-width composer box with the placeholder inside it');
+    // This render is synchronous and its inputs are pinned, so a mismatch can
+    // only come from the environment measuring characters differently -- name
+    // the versions and widths in the recap itself, so a failing machine's
+    // paste IS the diagnosis rather than a mystery to reconstruct remotely.
+    let widthDeps = 'unresolved';
+    try {
+        // Read the manifests by path: string-width's exports map blocks
+        // require('string-width/package.json').
+        const { readFileSync } = await import('node:fs');
+        const ver = (name) => JSON.parse(
+            readFileSync(`./node_modules/${name}/package.json`, 'utf8')
+        ).version;
+        const sw = (await import('string-width')).default;
+        widthDeps = `string-width@${ver('string-width')}`
+            + ` geaw@${ver('get-east-asian-width')}`
+            + ` sw('…')=${sw('…')} sw('❯')=${sw('❯')}`;
+    } catch (error) {
+        widthDeps = `unresolved: ${error.message}`;
+    }
+    mappingMissing.push(
+        'rounded full-width composer box with the placeholder inside it'
+        + ` [rows=${composerLines.length}`
+        + ` widths=${composerLines.map(visualWidth).join(',')}`
+        + ` node=${process.version} ${widthDeps}`
+        + ` row1=${JSON.stringify(composerLines[1] ?? '').slice(0, 60)}]`
+    );
 }
 
 const narrowComposer = renderToString(
@@ -1285,7 +1310,12 @@ else
         test_summary=$(printf '%s\n' "$test_err" \
             | grep '^# \(tests\|pass\|fail\|cancelled\|skipped\|todo\) ' \
             | tr '\n' '; ')
-        fail "node:test suite failed: ${test_summary:-no TAP summary was produced}"
+        # The failing test NAMES ride in the recap line itself: the recap is
+        # what an operator on another machine actually pastes back, and a
+        # count without names sends the diagnosis chasing a vanished log.
+        test_names=$(printf '%s\n' "$test_err" \
+            | sed -n 's/^not ok [0-9]* - //p' | head -4 | tr '\n' '|')
+        fail "node:test suite failed: ${test_summary:-no TAP summary was produced} failing: ${test_names:-unknown}"
     fi
 fi
 
@@ -1824,47 +1854,47 @@ else
     fail "npm-missing run made a claim it could not verify"
 fi
 
-# Debian/Ubuntu/WSL ship python3 without the python3-venv package, so
-# `python3 -m venv` fails outright -- and the wiki step must degrade to its
-# NOTE, not abort the whole install under `set -e`. (This is the failure the
-# first real WSL run hit: five checks red because install.sh exited 1 here.)
-# Reproduced with stubs so it fires on macOS too, where a real venv succeeds:
-# a git whose clone fabricates a checkout, so the venv step is reached at all,
-# and a python3 whose venv subcommand fails the way Debian's does.
+# Debian/Ubuntu/WSL's `python3 -m venv` without python3-venv does NOT fail
+# cleanly -- it HALF-creates the venv: .venv/bin/python exists and runs, then
+# creation dies at the pip stage, because Debian disables ensurepip
+# system-wide. So install.sh's `[ -x ]` probe sees a python, proceeds into the
+# pip repair, and BOTH sides of `pip --version || ensurepip --upgrade` fail --
+# the exact double failure that, unguarded under `set -e`, silently killed the
+# real WSL run one line past the venv fix. The wiki checkout is pre-seeded
+# because the no-fetch guard now (correctly) refuses to clone; the stub
+# python3 reproduces Debian's half-venv faithfully: it plants a bin/python
+# that answers nothing -- no pip, no ensurepip, no --help.
 VFHOME="$TMPHOME/venvfail-home"
 VFSTUB="$TMPHOME/venvfail-stub"
-mkdir -p "$VFHOME" "$VFSTUB"
-cat > "$VFSTUB/git" <<'VF_GIT'
-#!/bin/sh
-# clone fabricates a minimal llmwiki checkout so install.sh reaches the venv
-# step; every other git call is a harmless success.
-if [ "$1" = "clone" ]; then
-    for dest in "$@"; do :; done
-    mkdir -p "$dest/.git" && : > "$dest/llmwiki"
-fi
-exit 0
-VF_GIT
+mkdir -p "$VFHOME" "$VFSTUB" "$VFHOME/.sherman/llmwiki/.git"
+: > "$VFHOME/.sherman/llmwiki/llmwiki"
 cat > "$VFSTUB/python3" <<'VF_PY'
 #!/bin/sh
-# a python3 that cannot build a venv, like Debian/WSL without python3-venv.
+# Debian without python3-venv: `-m venv` half-creates the tree (bin/python
+# exists, executable) and then fails; every later probe of that python --
+# pip, ensurepip, --help -- fails too, because ensurepip is disabled.
 if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then
-    echo "Error: ensurepip is not available" >&2
+    mkdir -p "$3/bin"
+    printf '#!/bin/sh\nexit 1\n' > "$3/bin/python"
+    chmod +x "$3/bin/python"
+    echo "Error: Command '['$3/bin/python', '-m', 'ensurepip']' returned non-zero exit status 1" >&2
     exit 1
 fi
 exit 0
 VF_PY
-chmod +x "$VFSTUB/git" "$VFSTUB/python3"
+chmod +x "$VFSTUB/python3"
 
 venvfail_out=$(env HOME="$VFHOME" PATH="$VFSTUB:/usr/bin:/bin" SHERMAN_INSTALL_NO_FETCH=1 \
     bash "$FAKEROOT/install.sh" 2>&1)
 venvfail_status=$?
 
 if [ "$venvfail_status" -ne 0 ]; then
-    fail "install.sh exited $venvfail_status when python3 could not build a venv: $(printf '%s' "$venvfail_out" | tail -2)"
-elif printf '%s' "$venvfail_out" | grep -q "could not create the wiki's Python venv"; then
-    pass "a python3 that cannot build a venv degrades to the NOTE, install survives"
+    fail "install.sh exited $venvfail_status on a Debian-style half-created venv: $(printf '%s' "$venvfail_out" | tail -2)"
+elif printf '%s' "$venvfail_out" | grep -q "did not answer from its venv" \
+    && ! printf '%s' "$venvfail_out" | grep -q "LLM Wiki installed (verified"; then
+    pass "a Debian-style half-venv (python runs, pip and ensurepip dead) degrades to the NOTE, install survives"
 else
-    fail "venv-failure run did not emit the honest venv NOTE: $(printf '%s' "$venvfail_out" | tail -3)"
+    fail "half-venv run made a claim it could not verify or lost its NOTE: $(printf '%s' "$venvfail_out" | tail -3)"
 fi
 
 # ----------------------------------------------------------------- check 22 --
