@@ -53,6 +53,11 @@ they are not automatic reasons to pause. Use an interactive flow only when the
 person explicitly asks in the current request to be interviewed, shown choices,
 or asked before action.
 
+When a request needs something outside the vault and outside general knowledge —
+a live page, a search, a repository, a feed — reach for it through a wired
+connector, using `mcp`. Check what is actually wired before claiming the
+capability, name the connector you used, and say what you could not reach.
+
 When a request needs a capability you do not have, that is not a dead end. Use
 `0-1` to close the gap: verify the connector or service is real, wire it when no
 person is required, and hand over one precise account-and-key checklist when one

@@ -28,7 +28,7 @@ import { spawnSync } from 'node:child_process';
 import {
     accessSync, constants, mkdirSync, readFileSync, rmSync, writeFileSync, mkdtempSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { delimiter as pathDelimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir, tmpdir } from 'node:os';
 
@@ -132,6 +132,38 @@ function expand(value, vars) {
     return unresolved ? null : out;
 }
 
+/**
+ * `${HOME}/.local/bin:${PATH}` is the honest way for a committed catalog to
+ * say "the operator's PATH, plus this one place" — and on most machines that
+ * place is already in it, so the naive expansion repeats entries. Harmless to
+ * the loader, but this lands in a person's codex config and in a file they
+ * read when a server misbehaves, and a PATH with the same directory four times
+ * is noise that makes the real entries harder to see. First occurrence wins,
+ * so the prepended entry still takes precedence.
+ */
+function dedupePath(value) {
+    const seen = new Set();
+    const kept = [];
+    for (const part of String(value).split(pathDelimiter)) {
+        if (!part || seen.has(part)) continue;
+        seen.add(part);
+        kept.push(part);
+    }
+    return kept.join(pathDelimiter);
+}
+
+/** Expand every value of a string map. Returns null when any placeholder is unknown. */
+function expandMap(values, vars) {
+    if (!values || typeof values !== 'object') return {};
+    const out = {};
+    for (const [key, value] of Object.entries(values)) {
+        const expanded = expand(value, vars);
+        if (expanded === null) return null;
+        out[key] = key === 'PATH' ? dedupePath(expanded) : expanded;
+    }
+    return out;
+}
+
 function expandAll(values, vars) {
     if (!Array.isArray(values)) return [];
     const out = [];
@@ -150,7 +182,7 @@ function expandAll(values, vars) {
  * machine rather than being one.
  *
  * @returns {{
- *   wired: Array<{name, summary, transport, command?, args?, url?, headers?, mkdir: string[]}>,
+ *   wired: Array<{name, summary, transport, command?, args?, env, url?, headers?, mkdir: string[]}>,
  *   blocked: Array<{name, summary, missing: string[], reason?: string, signup?: object, repair?: string}>,
  *   known: Array<{name, summary, signup?: object}>,
  *   secrets: string[]
@@ -159,7 +191,18 @@ function expandAll(values, vars) {
 export function resolve(catalog, enablement, options = {}) {
     const io = { ...defaultIo, ...(options.io ?? {}) };
     const shermanHome = options.shermanHome ?? join(homedir(), '.sherman');
-    const baseVars = { SHERMAN_HOME: shermanHome, HOME: options.home ?? homedir() };
+    // PATH is a var rather than something a catalog entry may hardcode. A
+    // server that shells out to its own helper binaries needs the operator's
+    // PATH, and the operator's PATH is not knowable from a committed file —
+    // `${HOME}/.local/bin:${PATH}` is the only honest way to write "mine, plus
+    // this one place". Empty when the launcher has none, which `expand` then
+    // treats as unresolved and blocks on, rather than rendering a truncated
+    // PATH the server would fail against far from here.
+    const baseVars = {
+        SHERMAN_HOME: shermanHome,
+        HOME: options.home ?? homedir(),
+        PATH: options.path ?? process.env.PATH ?? '',
+    };
 
     const wired = [];
     const blocked = [];
@@ -224,9 +267,19 @@ export function resolve(catalog, enablement, options = {}) {
                 });
                 continue;
             }
+            // The server's environment, when it needs one. Same all-or-nothing
+            // rule as every other recipe field: a variable that does not
+            // resolve blocks the connector here, because the alternative is an
+            // engine handed a subprocess with a half-built PATH that fails
+            // somewhere the operator cannot connect to this file.
+            const env = expandMap(entry.env, vars);
+            if (env === null) {
+                blocked.push({ name: entry.name, summary, missing: [], reason: 'a value in its environment did not resolve' });
+                continue;
+            }
             const probe = expandAll(entry.probe ?? [], vars);
             wired.push({
-                name: entry.name, summary, transport: 'stdio', command, args,
+                name: entry.name, summary, transport: 'stdio', command, args, env,
                 probe: probe === null ? [] : probe,
                 mkdir: expandAll(entry.mkdir ?? [], vars) ?? [],
                 repair: entry.repair ?? null,
@@ -252,7 +305,7 @@ export function resolve(catalog, enablement, options = {}) {
             continue;
         }
         wired.push({
-            name: entry.name, summary, transport: 'http', url, headers,
+            name: entry.name, summary, transport: 'http', url, headers, env: {},
             probe: [], mkdir: [], repair: entry.repair ?? null,
         });
     }
@@ -282,9 +335,16 @@ export function redact(text, secrets = []) {
 export function renderMcpJson(wired) {
     const mcpServers = {};
     for (const connector of wired) {
-        mcpServers[connector.name] = connector.transport === 'stdio'
-            ? { command: connector.command, args: connector.args }
-            : { type: 'http', url: connector.url, headers: connector.headers };
+        if (connector.transport === 'stdio') {
+            const server = { command: connector.command, args: connector.args };
+            // Omitted when empty rather than written as {}. The rendered file is
+            // something an operator reads when a server misbehaves, and an empty
+            // env block invites the reading that the server was given one.
+            if (connector.env && Object.keys(connector.env).length > 0) server.env = connector.env;
+            mcpServers[connector.name] = server;
+        } else {
+            mcpServers[connector.name] = { type: 'http', url: connector.url, headers: connector.headers };
+        }
     }
     return { mcpServers };
 }
@@ -305,13 +365,21 @@ function tomlString(value) {
 export function renderCodexToml(connector) {
     if (connector.transport !== 'stdio') return null;
     const args = connector.args.map(tomlString).join(', ');
-    return [
+    const lines = [
         '',
         `[mcp_servers.${connector.name}]`,
         `command = ${tomlString(connector.command)}`,
         `args = [${args}]`,
-        '',
-    ].join('\n');
+    ];
+    // A sub-table, so it must follow the parent's keys — which is why it is
+    // appended here rather than being a field the caller can reorder.
+    const env = Object.entries(connector.env ?? {});
+    if (env.length > 0) {
+        lines.push('', `[mcp_servers.${connector.name}.env]`);
+        for (const [key, value] of env) lines.push(`${key} = ${tomlString(value)}`);
+    }
+    lines.push('');
+    return lines.join('\n');
 }
 
 /* ------------------------------------------------------------------ cli -- */
@@ -327,8 +395,15 @@ export function renderCodexToml(connector) {
  */
 function probes(connector) {
     if (!connector.probe || connector.probe.length === 0) return { ok: true };
+    // Under the connector's own environment, or the probe answers a question
+    // nobody asked: whether the server works HERE, rather than whether it works
+    // in the environment the engine will actually hand it.
     const result = spawnSync(connector.command, connector.probe, {
-        stdio: 'ignore', timeout: PROBE_TIMEOUT_MS,
+        stdio: 'ignore',
+        timeout: PROBE_TIMEOUT_MS,
+        env: Object.keys(connector.env ?? {}).length > 0
+            ? { ...process.env, ...connector.env }
+            : process.env,
     });
     return result.status === 0 ? { ok: true } : { ok: false };
 }
