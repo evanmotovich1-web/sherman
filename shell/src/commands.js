@@ -56,6 +56,12 @@ export const COMMANDS = Object.freeze([
         detail: 'Runs one turn that reads this session\'s log and folds what is worth keeping — research findings, decisions and their reasons, techniques — into your personal LLM Wiki through its MCP server (installed at ~/.sherman/llmwiki, workspace at ~/.sherman/research). Company facts still belong in the vault; the wiki is your research memory. Runs automatically when a session with turns ends, after the eval. If the wiki is not installed the command says so and does nothing.',
     },
     {
+        name: 'connectors',
+        usage: '/connectors',
+        summary: 'show what Sherman is connected to, and what is one key away',
+        detail: 'A local read of the committed catalog (agent/connectors.json) and this machine\'s enablement file (~/.sherman/connectors.json). Prints secret NAMES and never values. Three headings — Connected, Needs a key, Available — and an empty one is omitted rather than printed. Changes take effect on the next launch, because the launcher is what renders engine config. Ask /0-1 to add a connector for you.',
+    },
+    {
         name: 'copy',
         usage: '/copy',
         summary: "copy the last Sherman reply to the clipboard",

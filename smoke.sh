@@ -58,7 +58,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=23
+TOTAL_CHECKS=24
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -1853,6 +1853,109 @@ else
         fi
     else
         pass "no pwsh on this machine: presence, routing and honesty checked; syntax was not"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 24 --
+# The MCP path had no coverage at all until this check, which is remarkable
+# given it is the one place Sherman hands a live subprocess to the engine. It
+# runs against FIXTURE catalog and enablement files so it proves the renderer
+# rather than this machine's installs.
+CONNECTORS_JS=$(cat <<'JS'
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { render } from './src/connectors.js';
+
+const SECRET = 'sk-fixture-must-never-be-printed-9137';
+const base = mkdtempSync(join(tmpdir(), 'sherman-conn-'));
+const root = join(base, 'repo');
+const home = join(base, 'home');
+const ws = join(base, 'ws');
+mkdirSync(join(root, 'agent'), { recursive: true });
+mkdirSync(home, { recursive: true });
+mkdirSync(ws, { recursive: true });
+
+// A command that exists and answers, so "wired" is reachable without depending
+// on anything installed on this machine.
+const sh = process.platform === 'win32' ? 'C:\\Windows\\System32\\cmd.exe' : '/bin/sh';
+
+writeFileSync(join(root, 'agent', 'connectors.json'), JSON.stringify({
+    connectors: [
+        {
+            name: 'good', summary: 'wires cleanly', transport: 'stdio', autoEnable: true,
+            commandCandidates: [sh], args: ['-c', 'echo hi'], probe: ['-c', 'exit 0'],
+            requires: [],
+        },
+        {
+            name: 'keyless', summary: 'needs a key nobody supplied', transport: 'stdio',
+            commandCandidates: [sh], args: ['-c', 'echo hi'], requires: ['FIXTURE_API_KEY'],
+            signup: { url: 'https://example.invalid/signup', what: 'an API key' },
+        },
+        {
+            name: 'broken', summary: 'present but does not answer', transport: 'stdio',
+            autoEnable: true, commandCandidates: [sh], args: ['-c', 'echo hi'],
+            probe: ['-c', 'exit 3'], requires: [], repair: 'fix it',
+        },
+        { name: 'shelved', summary: 'catalogued, not enabled', transport: 'stdio',
+            commandCandidates: [sh], args: ['-c', 'echo hi'], requires: [] },
+    ],
+}), 'utf8');
+
+// `keyless` is enabled but its secret is blank -- the exact half-configured
+// state that must never produce half-written engine config.
+writeFileSync(join(home, 'connectors.json'), JSON.stringify({
+    enabled: { keyless: { secrets: { FIXTURE_API_KEY: '' } }, other: { secrets: { X: SECRET } } },
+}), 'utf8');
+
+const result = render(ws, { root, shermanHome: home });
+assert.equal(result.ok, true, `render failed: ${result.reason}`);
+
+// 1. The complete connector renders valid JSON and a valid codex block.
+const mcp = JSON.parse(readFileSync(join(ws, '.mcp.json'), 'utf8'));
+assert.ok(mcp.mcpServers.good, 'the complete connector was not rendered into .mcp.json');
+const toml = readFileSync(join(ws, '.codex-mcp', 'good.toml'), 'utf8');
+assert.match(toml, /^\[mcp_servers\.good\]$/m, 'codex block header is malformed');
+// \x22 rather than a literal double-quote character: bash 3.2 scans $( ... )
+// for quote balance even inside a quoted heredoc, so a lone one breaks smoke.sh
+// itself with a parse error 500 lines away. Do not simplify this back.
+assert.match(toml, /^command = \x22/m, 'codex block has no command');
+
+// 2. A connector missing its secret appears in NEITHER output, and is explained.
+assert.equal(mcp.mcpServers.keyless, undefined, 'a keyless connector reached .mcp.json');
+assert.ok(!existsSync(join(ws, '.codex-mcp', 'keyless.toml')), 'a keyless connector reached codex config');
+const notes = result.notes.join('\n');
+assert.match(notes, /keyless.*FIXTURE_API_KEY/, 'the missing secret was not named');
+assert.match(notes, /example\.invalid\/signup/, 'the signup URL was not offered');
+
+// 3. A probe that fails omits the connector and names the repair.
+assert.equal(mcp.mcpServers.broken, undefined, 'a connector whose probe failed was wired anyway');
+assert.match(notes, /broken.*does not answer/, 'a failed probe was not reported');
+assert.match(notes, /fix it/, 'the repair command was not offered');
+
+// 4. A catalogued-but-not-enabled connector is wired nowhere.
+assert.equal(mcp.mcpServers.shelved, undefined, 'an unenabled connector was wired');
+
+// 5. No secret VALUE anywhere. This is the check the whole split exists for.
+const rendered = readFileSync(join(ws, '.mcp.json'), 'utf8') + toml + notes + JSON.stringify(result);
+assert.ok(!rendered.includes(SECRET), 'a secret value reached rendered output');
+
+process.stdout.write(`${result.wired.length} wired, ${result.notes.length} notes, no secret leaked`);
+JS
+)
+
+echo
+echo "24. connector wiring renders honestly for both engines"
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot render connectors"
+else
+    conn_out=$(cd shell && node --input-type=module -e "$CONNECTORS_JS" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "$conn_out"
+    else
+        fail "$(printf '%s' "$conn_out" | head -3)"
     fi
 fi
 

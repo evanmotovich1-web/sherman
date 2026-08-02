@@ -195,6 +195,36 @@ verify-then-claim installer) — commits `1b07221`, `a7e87f3`, `8d66fb2`,
 condition met: nothing in the README, wizard, or installer advertises a
 capability that is not wired. Flipping visibility remains Evan's action.
 
+### Phase 8 — Connectors and method skills 🟡 Planned (2026-08-01, 3 plans)
+
+Between Phase 7 and here, a large body of work shipped as direct commits rather
+than through the loop: the skills directory, the slash palette, `/eval`,
+`/email`, `/win`, `/wiki` and the LLM Wiki integration, the Windows bootstrap,
+and the launch-screen rework. That work is real and committed; it is simply not
+recorded as PAUL phases, and this file does not pretend otherwise.
+
+Phase 8 returns to the loop for four things Evan asked for together, because
+they share one spine: **Sherman should be able to acquire the capability an idea
+needs, instead of stopping at "I cannot reach that."**
+
+- `08-01` **The connector layer.** MCP is hardcoded today — one fifty-line `if`
+  block in `bin/sherman` that knows the LLM Wiki by name. Replaced by a
+  declarative catalog (`agent/connectors.json`), machine-side enablement and
+  secrets outside the repo, one renderer for both engines, and `/connectors`.
+  Also the first test coverage the MCP path has ever had.
+- `08-02` **`0-1`.** The skill Sherman reaches for unprompted when a request
+  needs a capability it lacks: it verifies the connector is real, wires it
+  through the catalog when no human is required, and hands over one precise
+  account-and-key checklist when one is. Composes `graph-engineering` for the
+  search, and is the reason 08-01's catalog carries a `signup` field.
+- `08-03` **The method skills.** The PAUL loop ported and vendored as `evan`
+  (renamed at Evan's direction, self-contained, engine-agnostic), and
+  `wayfinder` adapted onto surfaces Sherman actually has.
+
+Exit condition: an idea needing an external service produces either a wired
+connector or one precise checklist — never a dead end — and the two planning
+methods work on a machine that has never had a `~/.claude` directory.
+
 ## Milestone v0.2 — Installer + second admin device + Codex adapter ⚪ Not started
 
 Full `curl | bash` wizard, `docs/ONBOARDING.md`, admin vault sync (pull on

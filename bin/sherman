@@ -803,58 +803,59 @@ BODY
         cp -R "$ROOT/skills" "$WORKSPACE/.claude/skills"
     fi
 
-    # ----------------------------------------------------------- llm wiki --
-    # The personal research wiki (lucasastorian/llmwiki), provisioned by
-    # install.sh at ~/.sherman/llmwiki with its workspace at
-    # ~/.sherman/research. Registered fresh from what is actually on disk:
-    # no install, no entry, and /wiki says so instead of pretending. Claude
-    # Code reads .mcp.json in its working directory; Codex reads
-    # [mcp_servers.*] in its own config, which gets the entry appended once
-    # (backed up first, claim only after read-back — the write_codex_model
-    # contract).
-    WIKI_DIR="$SHERMAN_HOME/llmwiki"
-    WIKI_WS="$SHERMAN_HOME/research"
-    WIKI_PY="$WIKI_DIR/.venv/bin/python"
-    [ -x "$WIKI_PY" ] || WIKI_PY="$WIKI_DIR/.venv/Scripts/python.exe"
+    # --------------------------------------------------------- connectors --
+    # What Sherman can reach outside itself, rendered from agent/connectors.json
+    # (the committed catalog) and ~/.sherman/connectors.json (this machine's
+    # enablement and secrets). See docs/CONNECTORS.md.
+    #
+    # This used to be a fifty-line block that knew the LLM Wiki by name. The
+    # wiki is now one catalog entry, gated by the same probe it always was, and
+    # adding a connector is data rather than another branch here. That is what
+    # gives the `0-1` skill a surface to add one TO.
+    #
+    # The resolver lives in JS because it substitutes paths, checks secrets, and
+    # emits JSON and TOML — none of which bash 3.2 (C4) should be doing. One
+    # node start per launch, the same cost the wiki probe already paid.
+    #
+    # Claude Code reads .mcp.json from its working directory; codex reads
+    # [mcp_servers.*] from its own config, which the resolver stages per
+    # connector and this function appends — backed up first, claimed only after
+    # read-back (the write_codex_model contract).
     rm -f "$WORKSPACE/.mcp.json"
-    # Wired only when the CLI actually ANSWERS from its venv — the same gate
-    # install.sh claims "installed" behind. Files existing is not a wiki: a
-    # venv whose packages never installed passes every existence check and
-    # then hands the engine an MCP server that dies on startup, which the
-    # operator meets as one causeless "not available" line mid-session. The
-    # probe costs one interpreter start per launch; a broken wiki says so
-    # here, at launch, with the repair command in the same breath.
-    if [ -x "$WIKI_PY" ] && [ -f "$WIKI_DIR/llmwiki" ] \
-        && ! "$WIKI_PY" "$WIKI_DIR/llmwiki" --help >/dev/null 2>&1; then
-        echo "  NOTE: the LLM Wiki is present but its CLI does not answer from its venv;" >&2
-        echo "        /wiki will not work. Run: sherman update  (it repairs the wiki)" >&2
-    elif [ -x "$WIKI_PY" ] && [ -f "$WIKI_DIR/llmwiki" ]; then
-        mkdir -p "$WIKI_WS"
-        cat > "$WORKSPACE/.mcp.json" <<MCPJSON
-{
-  "mcpServers": {
-    "llmwiki": {
-      "command": "$WIKI_PY",
-      "args": ["$WIKI_DIR/llmwiki", "mcp", "$WIKI_WS"]
-    }
-  }
-}
-MCPJSON
-        wiki_cfg=$(codex_config_path)
-        if [ -f "$wiki_cfg" ] && grep -q '^\[mcp_servers\.llmwiki\]' "$wiki_cfg" 2>/dev/null; then
-            : # already registered; the entry is the user's to edit now
-        else
-            mkdir -p "$(dirname "$wiki_cfg")"
-            [ -f "$wiki_cfg" ] && cp "$wiki_cfg" "$wiki_cfg.sherman-backup"
-            {
-                echo ''
-                echo '[mcp_servers.llmwiki]'
-                printf 'command = "%s"\n' "$WIKI_PY"
-                printf 'args = ["%s", "mcp", "%s"]\n' "$WIKI_DIR/llmwiki" "$WIKI_WS"
-            } >> "$wiki_cfg"
-            grep -q '^\[mcp_servers\.llmwiki\]' "$wiki_cfg" 2>/dev/null \
-                || echo "  NOTE: could not register the LLM Wiki MCP in $wiki_cfg" >&2
+    rm -rf "$WORKSPACE/.codex-mcp"
+    if [ ! -f "$ROOT/shell/src/connectors.js" ]; then
+        : # nothing to render from
+    elif ! command -v node >/dev/null 2>&1; then
+        echo "  NOTE: node not found; no MCP connectors were wired this launch." >&2
+    else
+        # Failure renders NOTHING rather than something partial: a half-written
+        # .mcp.json fails at engine startup, a long way from its cause.
+        #
+        # `2>&1 >file` before the substitution closes: stderr goes to the
+        # capture, stdout (the wired names, which this loop does not need — it
+        # walks .codex-mcp instead) goes to the scratch file. So conn_notes
+        # holds exactly the NOTE lines, which are relayed as our own.
+        conn_notes=$(SHERMAN_REPO_ROOT="$ROOT" SHERMAN_HOME="$SHERMAN_HOME" \
+            node "$ROOT/shell/src/connectors.js" --render "$WORKSPACE" 2>&1 >"$WORKSPACE/.connectors.out")
+        if [ -n "$conn_notes" ]; then
+            printf '%s\n' "$conn_notes" >&2
         fi
+        conn_cfg=$(codex_config_path)
+        if [ -d "$WORKSPACE/.codex-mcp" ]; then
+            for block in "$WORKSPACE/.codex-mcp"/*.toml; do
+                [ -f "$block" ] || continue
+                conn_name=$(basename "$block" .toml)
+                if [ -f "$conn_cfg" ] && grep -q "^\[mcp_servers\.$conn_name\]" "$conn_cfg" 2>/dev/null; then
+                    continue # already registered; the entry is the user's to edit now
+                fi
+                mkdir -p "$(dirname "$conn_cfg")"
+                [ -f "$conn_cfg" ] && cp "$conn_cfg" "$conn_cfg.sherman-backup"
+                cat "$block" >> "$conn_cfg"
+                grep -q "^\[mcp_servers\.$conn_name\]" "$conn_cfg" 2>/dev/null \
+                    || echo "  NOTE: could not register the $conn_name MCP in $conn_cfg" >&2
+            done
+        fi
+        rm -f "$WORKSPACE/.connectors.out"
     fi
 }
 

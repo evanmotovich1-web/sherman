@@ -2,17 +2,25 @@
 
 ## Current Position
 
-Milestone: v0.1 Evan-only local prototype — 🟡 In progress (5 of 7 phases)
-Phase: 7 (Public-repo readiness) — ✅ COMPLETE (1/1 plan)
-Plan: None active. Ready to plan.
-Status: The repo is ready for Evan to flip public. Secret audit of all 57
-prior commits ran CLEAN. README exists under the honesty laws; the wizard
-renders from a provider registry and cannot sell the stubbed Claude backend;
-install.sh claims only what it verified. Smoke 18 → 21 checks, all green;
-shell tests 128/128. Nothing pushed (a private origin now exists — see Git
-State). Flipping visibility remains Evan's action.
-Last activity: 2026-07-29 — Phase 7 complete: commits 1b07221, a7e87f3,
-8d66fb2, 8899d45
+Milestone: v0.1 Evan-only local prototype — 🟡 In progress
+Phase: 8 (Connectors and method skills) — 🟡 Planned (3 plans)
+Plan: `08-01`, `08-02`, `08-03` created 2026-08-01; executing.
+Status: Phase 8 gives Sherman a way to acquire capability it does not have.
+The connector layer replaces the hardcoded LLM-Wiki MCP block with a catalog
+the launcher renders for both engines; `0-1` is the skill that adds entries to
+it, silently where it can and with one account-and-key checklist where it
+cannot; `evan` and `wayfinder` port two planning methods out of Evan's personal
+`~/.claude` and into the product.
+Last activity: 2026-08-01 — Phase 8 planned, three plans written
+
+**Record gap, stated rather than papered over.** Between Phase 7 and Phase 8 a
+large body of work shipped as direct commits outside the loop — `skills/` and
+the whole starting set, the slash palette, `/eval`, `/email`, `/win`, `/wiki`
+and the LLM Wiki integration, `install.ps1` and the Windows bootstrap, the
+launch-screen rework, and smoke growing 21 → 23 checks. It is committed and
+green; it has no PLAN or SUMMARY. The tables below cover the loop, not the
+repo, and reconstructing summaries after the fact would invent a record rather
+than keep one.
 
 Progress:
 - Milestone v0.1: [███████░░░] 5/7 phases (command, shell, launch screen, session/turn UI, public-readiness done; vault seed and skills remain)
@@ -26,7 +34,7 @@ Progress:
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [07-01 loop complete — Phase 7 closed]
+  ✓        ○        ○     [08-01/02/03 created, executing]
 ```
 
 Every loop closed cleanly:

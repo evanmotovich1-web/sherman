@@ -40,6 +40,7 @@ import {
     wikiPreflight,
     workerRequest,
 } from '../commands.js';
+import { describe as describeConnectors } from '../connectors.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
 import { appendEvalReport, ungradedSessions } from '../evalstore.js';
 import { collectWinSources, renderWinHtml, winRequest, writeWinSite } from '../win.js';
@@ -532,6 +533,14 @@ export function App({
                 }
                 if (command.name === 'copy') {
                     copyLastReply();
+                    return;
+                }
+                if (command.name === 'connectors') {
+                    // Local, like /help: it reads the catalog and this
+                    // machine's enablement file. Spending an engine turn to
+                    // report what two local files say would be slower and less
+                    // reliable than reading them.
+                    commit('notice', describeConnectors());
                     return;
                 }
                 if (command.name === 'clear') {

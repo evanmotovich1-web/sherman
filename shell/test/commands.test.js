@@ -33,11 +33,15 @@ test('registry drives suggestions and help', () => {
     assert.deepEqual(suggestionsFor('/p').map((c) => c.name), ['plan']);
     assert.deepEqual(
         suggestionsFor('/').map((c) => c.name),
-        ['goal', 'plan', 'subagent', 'compact', 'eval', 'email', 'win', 'wiki', 'copy', 'clear', 'help', 'exit']
+        ['goal', 'plan', 'subagent', 'compact', 'eval', 'email', 'win', 'wiki',
+            'connectors', 'copy', 'clear', 'help', 'exit']
     );
-    // /compact, /copy, and /clear share a prefix, so none may swallow another.
-    assert.deepEqual(suggestionsFor('/c').map((c) => c.name), ['compact', 'copy', 'clear']);
-    assert.deepEqual(suggestionsFor('/co').map((c) => c.name), ['compact', 'copy']);
+    // /compact, /connectors, /copy, and /clear share a prefix, so none may
+    // swallow another — and /co now has three claimants, which is exactly the
+    // case a naive prefix match gets wrong.
+    assert.deepEqual(suggestionsFor('/c').map((c) => c.name), ['compact', 'connectors', 'copy', 'clear']);
+    assert.deepEqual(suggestionsFor('/co').map((c) => c.name), ['compact', 'connectors', 'copy']);
+    assert.deepEqual(suggestionsFor('/con').map((c) => c.name), ['connectors']);
     assert.deepEqual(suggestionsFor('/cl').map((c) => c.name), ['clear']);
     assert.deepEqual(suggestionsFor('/e').map((c) => c.name), ['eval', 'email', 'exit']);
     assert.deepEqual(suggestionsFor('/cop').map((c) => c.name), ['copy']);

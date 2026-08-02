@@ -1,0 +1,113 @@
+# Connectors
+
+How Sherman reaches things outside itself — MCP servers and credentialed APIs.
+
+Two files, deliberately kept apart.
+
+## The catalog — `agent/connectors.json`
+
+Committed. It describes what a connector **is**: its transport, how it launches,
+what files must exist, what secret names it needs, what to run when it is broken,
+and where a human signs up when a credential is required.
+
+It carries the same rule as `agent/capabilities.json`: **an entry describes a
+connector that really exists and really launches this way.** A speculative entry
+is not a roadmap item here — it is engine config that fails at startup, which
+the operator meets as one causeless error a long way from its cause.
+
+The `0-1` skill is what adds entries, and it is required to verify before it
+writes.
+
+## The enablement file — `~/.sherman/connectors.json`
+
+Per machine. **Never committed, never synced, never written to the vault.**
+`chmod 600`. It says which catalogued connectors are on, and holds their keys:
+
+```json
+{
+  "enabled": {
+    "some-service": {
+      "secrets": { "SOME_SERVICE_API_KEY": "…" }
+    }
+  },
+  "disabled": ["llmwiki"]
+}
+```
+
+- `enabled` — turn a catalogued connector on and supply its secrets.
+- `disabled` — turn off a connector that would otherwise wire itself.
+
+A connector with `autoEnable: true` in the catalog needs no entry here. Those are
+the ones that require no credential and are gated by a probe instead — the LLM
+Wiki is the shipping example: install it and it wires itself; remove it and it
+stops, with no config edit either way.
+
+### Why the split
+
+A connector's *shape* is company knowledge and belongs in the repo. A connector's
+*key* is a machine's secret, and it must not be able to reach a commit, a sync,
+or the vault. One file would make that a matter of remembering, and secrets do
+not survive a policy of remembering.
+
+## What the launcher does
+
+On every launch, `bin/sherman` runs the resolver once and rebuilds engine config
+from scratch:
+
+- `~/.sherman/workspace/.mcp.json` — Claude Code reads this from its working
+  directory.
+- `[mcp_servers.<name>]` appended to the codex config, once per connector,
+  backed up first and claimed only after read-back.
+
+Both are removed and rewritten every launch, so a connector removed from the
+catalog cannot survive one.
+
+A connector is wired only when **all** of these hold: it is enabled, every
+required secret is present and non-empty, every `requiresFile` exists, its
+command is executable, and its `probe` exits 0. Anything short of that is
+**omitted entirely and reported** — never half-written.
+
+Files existing is not an install. A Python venv whose packages never installed
+passes every existence check and then hands the engine a server that dies on
+startup. That is what the probe is for, and it costs one process start per
+launch.
+
+## Seeing the state
+
+```
+/connectors
+```
+
+Three headings, and a heading with nothing under it is omitted rather than
+printed empty:
+
+- **Connected** — wired and answering.
+- **Needs a key** — enabled, but a secret is missing. Names the secret and the
+  signup URL.
+- **Available** — in the catalog, not enabled.
+
+It prints secret **names**, never values. Changes take effect on the next
+launch, because the launcher is what renders engine config.
+
+## Adding one by hand
+
+1. Add the entry to `agent/connectors.json`. Verify it launches first.
+2. If it needs a credential, add it to `~/.sherman/connectors.json` under
+   `enabled`, with the secret under the name the catalog's `requires` lists.
+3. Relaunch. `/connectors` should show it under **Connected**.
+
+Or ask Sherman: `/0-1 <what you want to do>`. It does steps 1 and 2 when no
+human is required, and hands you a signup checklist when one is.
+
+## The boundaries
+
+- Secret **values** never appear in repo files, printed output, session logs, or
+  the vault. Only names, and whether they are present.
+- The no-PHI rule crosses every connector. A connector whose purpose is to move
+  patient data is refused, not catalogued with a caveat.
+- Enabling a connector gives the engine new external reach. Sherman states
+  plainly when it adds one — nobody should learn from a bill.
+- HTTP-transport connectors are wired for Claude Code only. Codex's config
+  surface for url-based MCP has not been verified here, and writing an unverified
+  key into someone's `config.toml` is the kind of confident guess this project
+  refuses everywhere else.

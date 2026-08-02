@@ -76,6 +76,22 @@ to edit, not a fixed library.
 automatically when a session that had turns ends. That turn is read-only by
 construction: it judges and proposes, and a person decides what gets written.
 
+## Connectors
+
+A skill that needs something outside Sherman — an MCP server, a credentialed
+API — does not hardcode it. It goes through the connector catalog at
+`agent/connectors.json`, which the launcher renders into engine config on every
+launch. `docs/CONNECTORS.md` is the whole story.
+
+Two rules follow from that, and they are not negotiable:
+
+- **Secrets never enter the repo.** Keys live in `~/.sherman/connectors.json`,
+  chmod 600, uncommitted and unsynced. A skill names a secret; it never prints,
+  logs, or writes its value, and never puts one in the vault.
+- **A connector in the catalog is one that really works.** The catalog carries
+  `capabilities.json`'s rule, because an invented entry is engine config that
+  fails at startup — an error the operator meets far from its cause.
+
 ## Adding one
 
 Create the directory, write `SKILL.md` with the front matter above, and run
