@@ -551,7 +551,6 @@ run_update() {
     fi
 
     old_version=$(shell_version)
-    old_head=$(git -C "$ROOT" rev-parse HEAD)
 
     if ! git -C "$ROOT" pull --ff-only; then
         echo >&2
@@ -559,13 +558,21 @@ run_update() {
         exit 1
     fi
 
-    # npm only when the pull actually changed the shell's dependency contract;
-    # package-lock.json matters as much as package.json. Anything else would
-    # re-resolve dependencies on every no-op update.
-    if ! git -C "$ROOT" diff --quiet "$old_head" HEAD -- \
-        shell/package.json shell/package-lock.json; then
-        if ! npm install --prefix "$ROOT/shell"; then
-            echo "Update downloaded, but the shell dependencies could not be installed." >&2
+    # Reconcile the shell's dependencies to the lockfile before verifying, with
+    # `npm ci` -- a clean, exact install that wipes node_modules and rebuilds it
+    # from the lock. The old code ran `npm install` only when a pull changed the
+    # dependency contract; that let a tree drift from the lock (an older
+    # transitive width dep that renders the composer a cell short, say) survive
+    # untouched and then FAIL the very verification below -- which is why the
+    # first Linux machine could never update: `sherman update` health-checked
+    # against node_modules that no longer matched the code. Doing it every
+    # update keeps the verified tree identical to the shipped lock, so a drifted
+    # machine self-heals on the next update with no manual step. It needs a
+    # lockfile to be exact against; without one (or without npm) there is
+    # nothing to reconcile to, and the fixture-driven smoke check relies on that.
+    if command -v npm >/dev/null 2>&1 && [ -f "$ROOT/shell/package-lock.json" ]; then
+        if ! npm ci --prefix "$ROOT/shell"; then
+            echo "Update downloaded, but the shell dependencies could not be reconciled." >&2
             echo "Run $ROOT/install.sh, then run sherman update again." >&2
             exit 1
         fi

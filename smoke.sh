@@ -579,6 +579,52 @@ FAILING_SMOKE
     else
         fail "update status propagation broke (pass=$update_ok_status, fail=$update_bad_status): $(printf '%s' "$update_bad_out" | tail -3)"
     fi
+
+    # The self-healing reconcile: with a lockfile present, update runs `npm ci`
+    # before verifying, so a node_modules that has drifted from the lock is
+    # rebuilt rather than health-checked as-is -- the fix for the machine that
+    # could never update because verification kept failing against stale deps.
+    # A stub npm records the call; a fixture lockfile arms the path the check
+    # above deliberately omits. A reconcile that fails must stop the update.
+    printf '{ "name": "x", "lockfileVersion": 3 }\n' > "$update_root/shell/package-lock.json"
+    npm_marker="$update_root/npm-reconcile-called"
+    rm -f "$npm_marker"
+    cat > "$update_stubs/npm" <<FAKE_NPM_OK
+#!/bin/sh
+echo "\$@" > "$npm_marker"
+exit 0
+FAKE_NPM_OK
+    chmod +x "$update_stubs/npm"
+    cat > "$update_root/smoke.sh" <<'PASSING_SMOKE2'
+#!/bin/sh
+echo "simulated verification passed"
+exit 0
+PASSING_SMOKE2
+    chmod +x "$update_root/smoke.sh"
+    reconcile_out=$(env HOME="$update_home" PATH="$update_stubs:$PATH" \
+        "$update_root/bin/sherman" update 2>&1)
+    reconcile_status=$?
+
+    cat > "$update_stubs/npm" <<'FAKE_NPM_FAIL'
+#!/bin/sh
+exit 3
+FAKE_NPM_FAIL
+    chmod +x "$update_stubs/npm"
+    badnpm_out=$(env HOME="$update_home" PATH="$update_stubs:$PATH" \
+        "$update_root/bin/sherman" update 2>&1)
+    badnpm_status=$?
+
+    if [ "$reconcile_status" -eq 0 ] \
+        && [ -f "$npm_marker" ] \
+        && grep -q '^ci ' "$npm_marker" \
+        && printf '%s' "$reconcile_out" | grep -q 'Updated:' \
+        && [ "$badnpm_status" -ne 0 ] \
+        && printf '%s' "$badnpm_out" | grep -q 'could not be reconciled' \
+        && ! printf '%s' "$badnpm_out" | grep -q 'Updated:'; then
+        pass "update reconciles deps with npm ci before verifying; a failed reconcile stops it"
+    else
+        fail "reconcile path broke (ok=$reconcile_status, bad=$badnpm_status): $(printf '%s' "$badnpm_out" | tail -3)"
+    fi
 fi
 
 # ----------------------------------------------------------------- check 11 --
