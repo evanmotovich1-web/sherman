@@ -3,6 +3,35 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-02 — Added: pressing update grows the capability, not just the catalog
+
+- `sherman update` now provisions Agent Reach, so a machine installed before
+  it existed gets internet access by pressing update rather than by reading a
+  changelog and running a command. Catalogued is not installed: the previous
+  state of this was a PC that pulled a connector entry pointing at a tool it
+  did not have, and `/mcp` correctly reporting it missing forever.
+- One provisioner, `bin/provision-agent-reach.sh`, called from both
+  `install.sh` and `sherman update`. The LLM Wiki's arrangement — provisioned
+  in one file, repaired in another — is two copies of one idea that have
+  already drifted, and this does not repeat it. It installs `uv` first when
+  that is missing, is silent when Agent Reach already answers, and degrades to
+  a named NOTE on a machine that cannot have it.
+- What it installs is deliberately the CLI, not only the MCP server. Agent
+  Reach's server exposes one tool, `get_status`; the fetching is its
+  command-line tool, so the install has to land something on the operator's
+  PATH — which `uv tool install` does and a private venv would not.
+- Pinned to a commit, with the MCP dependency held below 2.0. Both are
+  load-bearing: this is third-party software whose newest release already
+  broke against the 2.0 server API, and an install that follows someone
+  else's main branch is a capability that stops working on a day nobody chose.
+  Smoke check 27 asserts both, that both entry points still call the one
+  script, and that a fetch-disabled run stays offline, claims nothing, and
+  leaves no half-built tool directory behind.
+- Verified end to end against a sandbox HOME: a fresh install lands the CLI
+  shim and passes the same import probe the connector uses, and a second run
+  prints nothing. The update path reaches this on the FIRST press, because
+  update already re-execs into the launcher its own pull delivered.
+
 ## 2026-08-02 — Added: Sherman can reach the public internet, through a connector it names
 
 - New skill `mcp`. It is the other half of `0-1`: that one acquires a

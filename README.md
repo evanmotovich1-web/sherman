@@ -44,8 +44,15 @@ directory of `~/.local/bin`, `~/bin`, `/usr/local/bin`, installs the
 shell's npm dependencies — and if Node 22+ or the Codex CLI are missing, it
 installs those too (Node from nodejs.org into `~/.sherman/runtime`, codex
 via `npm install -g`; no sudo, nothing outside Sherman's own directories).
-Every "installed" line it prints follows a verification, and a failed
-download says so instead.
+It also provisions the two capabilities Sherman reaches outward with: the
+LLM Wiki, and Agent Reach — internet access for `/mcp`, pinned to a known
+commit and installed as a `uv` tool (uv itself is installed first if it is
+missing). Every "installed" line it prints follows a verification, and a
+failed download says so instead.
+
+`sherman update` runs the same provisioning, so a machine installed before a
+capability existed grows it on the next update rather than only new installs
+getting it.
 
 ## Install (Windows)
 
