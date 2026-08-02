@@ -144,6 +144,26 @@ export const markRamp = {
     outer: { top: c(33), mid: c(39), low: c(45) },
 };
 
+/**
+ * The activity face's two moods, per the owner's brief: the face should run
+ * hot while Sherman works and go full rainbow the moment a task lands.
+ *
+ * `work` is a warm ramp — salmon through orange and gold back into brand pink —
+ * that the face cycles through every animation tick while a turn is live.
+ * `rainbow` is the celebration palette, painted one colour per glyph across
+ * the face for a few beats after a tool completes.
+ *
+ * Neither ramp touches the retired red trio (196/160/124): 203/209/214 are
+ * warm but provably not that ramp, the same argument `error: 'red'` and the
+ * diff inks already made for semantic colour. These appear only on the live
+ * activity row — never on launch or brand chrome, so check 9's retirement of
+ * the old ramp from the launch surface still holds by construction.
+ */
+export const facePalette = Object.freeze({
+    work: Object.freeze([c(203), c(209), c(214), c(220), c(205), c(199)]),
+    rainbow: Object.freeze([c(203), c(214), c(227), c(84), c(51), c(39), c(135), c(205)]),
+});
+
 /** Spinner glyphs for the activity indicator. Braille reads as motion at small
  *  size without stealing attention the way ASCII spinners do. */
 export const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
