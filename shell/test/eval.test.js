@@ -261,29 +261,35 @@ test('the checkpoint eval grades new turns on a worker, once, in the background'
         await until(() => h.requests.length === 1);
 
         // Two full intervals with no further turns: exactly one checkpoint —
-        // an idle session is never re-graded.
-        await until(() => h.workerRequests.length === 1);
+        // an idle session is never re-graded. Every checkpoint is a PAIR of
+        // worker turns now: the judge, then the meta-judge grading its verdict.
+        await until(() => h.workerRequests.length === 2);
         await new Promise((resolve) => setTimeout(resolve, 300));
-        assert.equal(h.workerRequests.length, 1, 'an idle session was re-graded');
+        assert.equal(h.workerRequests.length, 2, 'an idle session was re-graded');
 
-        // The judge is a worker with the eval request, and the main thread
-        // spent nothing on it.
+        // The judge is a worker with the eval request, the meta-judge follows
+        // with the verdict under review, and the main thread spent nothing.
         assert.equal(h.workerRequests[0].source, 'eval');
         assert.equal(h.workerRequests[0].mode, 'read-only');
+        assert.equal(h.workerRequests[1].source, 'meta-eval');
+        assert.equal(h.workerRequests[1].mode, 'read-only');
+        assert.match(h.workerRequests[1].text, /CHECKPOINT VERDICT: on track\./);
         assert.equal(h.requests.length, 1, 'the checkpoint ran on the main session');
-        assert.equal(h.workers.length, 1);
+        assert.equal(h.workers.length, 2);
         assert.equal(h.workers[0].disposed(), 1, 'the checkpoint worker was not disposed');
+        assert.equal(h.workers[1].disposed(), 1, 'the meta worker was not disposed');
 
-        // A new turn re-arms the loop.
+        // A new turn re-arms the loop — another judge/meta-judge pair.
         h.stdin.write('more work');
         await new Promise((resolve) => setTimeout(resolve, 25));
         h.stdin.write('\r');
         await until(() => h.requests.length === 2);
-        await until(() => h.workerRequests.length === 2);
+        await until(() => h.workerRequests.length === 4);
 
         instance.unmount();
         assert.match(h.captured(), /checkpoint eval · background/);
         assert.match(h.captured(), /CHECKPOINT VERDICT/);
+        assert.match(h.captured(), /meta eval · grading the eval itself/);
     } finally {
         instance.unmount();
         process.env.HOME = oldHome;
@@ -311,7 +317,7 @@ test('working past a checkpoint still gets the exit eval for the tail', async ()
         await new Promise((resolve) => setTimeout(resolve, 25));
         h.stdin.write('\r');
         await until(() => h.requests.length === 1);
-        await until(() => h.workerRequests.length === 1);
+        await until(() => h.workerRequests.length >= 1);
 
         // New turns after the checkpoint: the tail the old flag left unjudged.
         h.stdin.write('more work');
@@ -327,8 +333,10 @@ test('working past a checkpoint still gets the exit eval for the tail', async ()
         // it. What must never happen — and did, under the old "an eval ever
         // ran" flag — is the session ending with the post-checkpoint turns
         // unjudged by anyone.
+        // Meta turns don't count as judging the tail — only a second EVAL does.
         const tailJudged =
-            h.requests.some((r) => r?.source === 'eval') || h.workerRequests.length >= 2;
+            h.requests.some((r) => r?.source === 'eval')
+            || h.workerRequests.filter((r) => r?.source === 'eval').length >= 2;
         assert.ok(tailJudged, 'the session ended with turns no eval ever graded');
     } finally {
         instance.unmount();
@@ -523,7 +531,7 @@ test('a launch catches up the newest dead ungraded session, and only that one', 
     );
 
     try {
-        await until(() => workerRequests.length === 1);
+        await until(() => workerRequests.length >= 1);
         // The newest DEAD session with sherman turns — not the live shell,
         // not the launch-and-quit, not the older backlog.
         assert.match(workerRequests[0].text, /20260730_020000_dead02\.jsonl/);
@@ -538,8 +546,13 @@ test('a launch catches up the newest dead ungraded session, and only that one', 
         assert.match(written, /And part two\./);
 
         // One per launch: the older dead session waits for the next shell.
+        // (The catch-up's own meta turn rides the same launch; only EVAL
+        // requests count as grading a session.)
         await new Promise((resolve) => setTimeout(resolve, 150));
-        assert.equal(workerRequests.length, 1, 'catch-up graded more than one session in a launch');
+        assert.equal(
+            workerRequests.filter((r) => r?.source === 'eval').length, 1,
+            'catch-up graded more than one session in a launch'
+        );
         assert.equal(existsSync(join(evalsDir(h.home), '20260730_010000_dead01.md')), false);
         assert.equal(existsSync(join(evalsDir(h.home), '20260731_070000_live04.md')), false);
         assert.equal(existsSync(join(evalsDir(h.home), '20260730_030000_quit03.md')), false);
@@ -571,5 +584,85 @@ test('eval reports persist per session and fail silently without a home', async 
         assert.equal(appendEvalReport('id', 'exit eval', '   ', { home }), false);
     } finally {
         rmSync(home, { recursive: true, force: true });
+    }
+});
+
+// ---------------------------------------------------------------- meta-eval --
+
+test('the meta-eval turn is read-only, sourced, and carries the verdict inline', async () => {
+    const { metaEvalRequest } = await import('../src/commands.js');
+    const request = metaEvalRequest('1. held — turn 3 cited the vault.', '/home/x/.sherman/sessions/abc.jsonl');
+    assert.equal(request.mode, 'read-only');
+    assert.equal(request.source, 'meta-eval');
+    // The verdict under review is inlined, so the judge cannot be graded on a
+    // report it could quietly rewrite; the log is offered for spot-checks only.
+    assert.match(request.text, /grade the eval, not the session/);
+    assert.match(request.text, /held — turn 3 cited the vault/);
+    assert.match(request.text, /\/home\/x\/\.sherman\/sessions\/abc\.jsonl/);
+    assert.match(request.text, /spot-check/);
+    assert.match(request.text, /meta-eval skill/);
+    assert.match(request.text, /GRADE: one of A, B, C, D, F/);
+    assert.match(request.text, /READ-ONLY/);
+    assert.match(request.text, /patient-identifying/);
+});
+
+test('no verdict is no meta turn, and a missing log path is tolerated', async () => {
+    const { metaEvalRequest } = await import('../src/commands.js');
+    assert.equal(metaEvalRequest(''), null);
+    assert.equal(metaEvalRequest('   '), null);
+    assert.equal(metaEvalRequest(null), null);
+    const request = metaEvalRequest('A verdict.');
+    assert.notEqual(request, null);
+    assert.doesNotMatch(request.text, /session log the eval graded is at/);
+});
+
+// The recommendation pair lands in the vault INBOX — the review queue — one
+// file per session, latest verdict wins, quiet on failure like the store.
+test('recommendations file into the vault inbox with the meta grade attached', async () => {
+    const { writeRecommendation } = await import('../src/evalstore.js');
+    const { readFileSync, existsSync } = await import('node:fs');
+
+    const vault = mkdtempSync(join(tmpdir(), 'sherman-vault-'));
+    try {
+        const file = writeRecommendation({
+            vaultPath: vault,
+            sessionId: '20260802_090000_cd34',
+            evalText: 'Vault-first: missed — turn 2 asserted uncited.',
+            metaText: 'Citations spot-checked.\nGRADE: B\nNEXT: none',
+        });
+        assert.equal(file, join(vault, 'inbox', 'eval-recommendations', '20260802_090000_cd34.md'));
+        const written = readFileSync(file, 'utf8');
+        assert.match(written, /awaiting review/);
+        assert.match(written, /## The eval's verdict/);
+        assert.match(written, /turn 2 asserted uncited/);
+        assert.match(written, /## The meta-eval's grade/);
+        assert.match(written, /GRADE: B/);
+        assert.match(written, /sherman sync/);
+
+        // A re-grade overwrites: the file is the LATEST recommendation.
+        writeRecommendation({
+            vaultPath: vault,
+            sessionId: '20260802_090000_cd34',
+            evalText: 'Exit verdict supersedes.',
+        });
+        const second = readFileSync(file, 'utf8');
+        assert.match(second, /Exit verdict supersedes\./);
+        assert.doesNotMatch(second, /turn 2 asserted uncited/);
+        // No meta text, no empty meta section pretending one ran.
+        assert.doesNotMatch(second, /## The meta-eval's grade/);
+
+        // A vault that does not exist is never conjured into existence: the
+        // launch screen's vault probe must keep reading the truth off disk.
+        const ghost = join(vault, 'no-such-vault');
+        assert.equal(writeRecommendation({ vaultPath: ghost, sessionId: 'id', evalText: 'x' }), null);
+        assert.equal(existsSync(ghost), false);
+
+        // Nothing to file, nothing filed, no crash — and no stray directory.
+        assert.equal(writeRecommendation({ vaultPath: vault, sessionId: '', evalText: 'x' }), null);
+        assert.equal(writeRecommendation({ vaultPath: vault, sessionId: 'id', evalText: '  ' }), null);
+        assert.equal(writeRecommendation({ vaultPath: '', sessionId: 'id', evalText: 'x' }), null);
+        assert.equal(existsSync(join(vault, 'inbox', 'eval-recommendations', 'id.md')), false);
+    } finally {
+        rmSync(vault, { recursive: true, force: true });
     }
 });

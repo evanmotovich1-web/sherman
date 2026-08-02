@@ -6,14 +6,15 @@
 // the trend. So each verdict is ALSO appended here, one Markdown file per
 // session under ~/.sherman/evals/, beside sessions/ and config. Operational
 // data, never the vault: how a Tuesday's session was graded is not company
-// knowledge.
+// knowledge. (writeRecommendation below is the one deliberate exception, and
+// it targets the vault INBOX — the review queue — not the knowledge lanes.)
 //
 // Same contract as sessionlog.js: persistence may quietly fail (unwritable
 // disk, missing home), but it may never crash a turn or print noise — the
 // verdict still reached the transcript and the session log, which are the
 // primary record.
 
-import { appendFileSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -41,6 +42,62 @@ export function appendEvalReport(sessionId, kind, text, { home = homedir() } = {
         return true;
     } catch {
         return false;
+    }
+}
+
+/**
+ * File an eval's recommendation — and the meta-eval's grade of it — into the
+ * vault inbox, where the operator reviews it.
+ *
+ * This is the ONE place an eval's conclusions touch the vault, and the judge
+ * is not the one holding the pen: the eval turn stays read-only, and the
+ * SHELL files its verdict afterward, mechanically, the way it already files
+ * session logs. The destination is the inbox lane precisely because of the
+ * inbox's contract — raw drops awaiting review, durable only once a human
+ * moves them. A recommendation nobody adopted is a proposal, not knowledge,
+ * and it must not be able to promote itself.
+ *
+ * One file per session, overwritten on re-grade: the ledger holds the LATEST
+ * recommendation for a session (an exit eval supersedes its checkpoints);
+ * ~/.sherman/evals/ keeps every intermediate verdict for the trend.
+ *
+ * Same quiet-failure contract as the rest of this file: a missing vault or
+ * unwritable disk returns null and never crashes the exit sequence.
+ *
+ * @param {{vaultPath: string, sessionId: string, evalText: string, metaText?: string}} input
+ * @returns {string|null} the path written, or null — callers may not claim more
+ */
+export function writeRecommendation({ vaultPath, sessionId, evalText, metaText = '' }) {
+    if (!vaultPath || !sessionId || typeof evalText !== 'string' || !evalText.trim()) return null;
+    try {
+        // File into a vault that exists; never conjure one. A machine whose
+        // vault is missing or mispointed has a bigger problem than an unfiled
+        // recommendation, and mkdir-ing a fake vault there would HIDE it —
+        // the launch screen's vault probe would start reading "ready" off a
+        // directory this function invented.
+        if (!existsSync(vaultPath)) return null;
+        const dir = join(vaultPath, 'inbox', 'eval-recommendations');
+        mkdirSync(dir, { recursive: true });
+        const file = join(dir, `${sessionId}.md`);
+        const meta = typeof metaText === 'string' ? metaText.trim() : '';
+        writeFileSync(file, [
+            `# Eval recommendation · session ${sessionId}`,
+            '',
+            `- recorded: ${new Date().toISOString()}`,
+            '- status: awaiting review — adopt deliberately (self-improvement for a lesson, a repo change for a skill), or discard',
+            '- publish to other machines with `sherman sync`',
+            '',
+            "## The eval's verdict",
+            '',
+            evalText.trim(),
+            ...(meta
+                ? ['', "## The meta-eval's grade of that verdict", '', meta]
+                : []),
+            '',
+        ].join('\n'));
+        return file;
+    } catch {
+        return null;
     }
 }
 
