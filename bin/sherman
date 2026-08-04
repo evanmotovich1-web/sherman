@@ -510,7 +510,25 @@ run_setup_upgrade() {
 }
 
 # ------------------------------------------------------------ config access --
-# Both accessors refuse a corrupt config with the remedy, never a raw jq
+# A corrupt config is REPAIRED, not diagnosed at the person: the file is
+# moved aside -- never deleted, it is evidence of a writer this repo
+# believes cannot exist -- and setup simply runs again. Both the launch
+# flow and `sherman update` call this, so either button a person presses
+# when something is wrong actually fixes it. Sets $config_quarantined so
+# the caller can say what happens next in its own context.
+config_quarantined=""
+quarantine_corrupt_config() {
+    [ -f "$CONFIG" ] || return 0
+    command -v /usr/bin/jq >/dev/null 2>&1 || return 0
+    /usr/bin/jq empty "$CONFIG" >/dev/null 2>&1 && return 0
+    config_quarantined="$CONFIG.bad.$(date +%Y%m%d_%H%M%S)"
+    mv "$CONFIG" "$config_quarantined"
+    echo "The config at $CONFIG did not parse and was moved aside to:"
+    echo "  $config_quarantined"
+}
+
+# Backstop for the paths that cannot re-run setup (a scheduler saving a
+# token, say): refuse a corrupt config with the remedy, never a raw jq
 # parse error. Under set -e, one failed jq inside $( ) kills this script
 # with nothing but jq's own noise on screen -- seen on a real Windows
 # machine as a bare "parse error: Invalid escape" and a Sherman that would
@@ -687,6 +705,16 @@ run_update() {
     # and degrades to a NOTE on a machine that cannot have it.
     if [ -x "$ROOT/bin/provision-agent-reach.sh" ]; then
         "$ROOT/bin/provision-agent-reach.sh" || true
+    fi
+
+    # ------------------------------------------------------ config repair --
+    # update is the button people press when something is wrong. A corrupt
+    # config cannot be rebuilt here -- its answers belong to a person -- but
+    # it CAN be moved out of the way so the next launch asks setup instead
+    # of failing. Same quarantine the launch flow runs; kept, not deleted.
+    quarantine_corrupt_config
+    if [ -n "$config_quarantined" ]; then
+        echo "The next sherman run asks the setup questions again."
     fi
 
     # smoke calls `sherman update`, and update runs smoke after a real pull.
@@ -1112,6 +1140,15 @@ fi
 # here as well would print the banner twice on every launch.
 if [ "$RAW" -eq 1 ]; then
     launch_screen
+fi
+
+# A corrupt config self-heals right here: quarantined, then setup runs
+# again exactly as if this were a first run. Nobody is told to delete a
+# file this script can move itself.
+quarantine_corrupt_config
+if [ -n "$config_quarantined" ]; then
+    echo "Setup will ask its questions again; the moved file is kept for diagnosis."
+    echo
 fi
 
 if [ ! -f "$CONFIG" ]; then

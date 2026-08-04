@@ -3,6 +3,23 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-03 — Changed: a corrupt config self-heals; `sherman update` repairs it too
+
+- The launch flow no longer tells a person to delete a file the script can
+  move itself. A config that does not parse is quarantined beside itself
+  (`config.json.bad.<timestamp>` — kept, never deleted: it is evidence of a
+  writer this repo believes cannot exist), setup asks its questions again,
+  and the launch completes. One press of `sherman` fixes the machine.
+- `sherman update` runs the same quarantine in its repair pass, alongside the
+  LLM Wiki repair and Agent Reach provisioning — update is the button people
+  press when something is wrong, and now it moves a corrupt config out of the
+  way too, so the next launch asks setup instead of failing.
+- Paths that cannot re-run setup (a scheduler saving a Telegram token, say)
+  keep the earlier named remedy. Smoke check 28 now drives the full
+  self-heal — corrupt config in, quarantined intact byte-for-byte, fresh
+  valid config out, launch exits 0 — plus the both-call-sites assertion and
+  the backstop remedy.
+
 ## 2026-08-03 — Fixed: a corrupt config gets its remedy on screen, and the Windows paste does its own admin step
 
 - A corrupt `~/.sherman/config.json` used to kill the launcher inside its

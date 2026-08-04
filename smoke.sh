@@ -42,8 +42,9 @@
 #  27. The Agent Reach provisioner parses, is reachable from BOTH entry points,
 #      keeps the two constants that made the install work, and stays offline
 #      and claimless when fetches are disabled.
-#  28. A corrupt config gets the named remedy and a clean exit, never a raw
-#      jq parse error that leaves the person with no way forward.
+#  28. A corrupt config self-heals: quarantined intact, setup reruns, and the
+#      launch completes -- never a raw jq parse error and a dead end. Paths
+#      that cannot re-run setup keep the named remedy.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -2395,28 +2396,63 @@ fi
 # ----------------------------------------------------------------- check 28 --
 # A corrupt config used to kill the launcher inside its first jq read under
 # set -e: the person saw a bare "parse error: Invalid escape" and a Sherman
-# that would not start, while the remedy the script always contained never
-# printed. Seen on a real Windows machine. The remedy must reach the screen,
-# and the raw jq noise must not.
+# that would not start. Seen on a real Windows machine. The launch flow now
+# SELF-HEALS: the corrupt file is quarantined intact (it is evidence of a
+# writer this repo believes cannot exist), setup runs again, and the launch
+# completes. Paths that cannot re-run setup keep the named remedy.
 echo
-echo "28. a corrupt config gets the remedy, not a raw parse error"
+echo "28. a corrupt config self-heals: quarantined intact, setup reruns"
 
 BADHOME="$TMPHOME/corrupt-config-home"
 mkdir -p "$BADHOME/.sherman"
-printf '{"version":2,"engine":"codex","user":"\\smoke","vault_path":"/tmp/vault"}\n' \
-    > "$BADHOME/.sherman/config.json"
+BADCONTENT='{"version":2,"engine":"codex","user":"\smoke","vault_path":"/tmp/vault"}'
+printf '%s\n' "$BADCONTENT" > "$BADHOME/.sherman/config.json"
 
-bad_out=$(env HOME="$BADHOME" PATH="$STUBDIR:$PATH" ./bin/sherman --raw </dev/null 2>&1)
+bad_out=$(printf '1\nSmoke Tester\n' \
+    | env HOME="$BADHOME" PATH="$STUBDIR:$PATH" ./bin/sherman --raw 2>&1)
 bad_status=$?
 
 if [ "$bad_status" -eq 0 ]; then
-    fail "the launcher exited 0 on a corrupt config"
-elif ! printf '%s' "$bad_out" | grep -q "Delete it and run sherman again"; then
-    fail "no remedy printed for a corrupt config; got: $(printf '%s' "$bad_out" | tail -1)"
-elif printf '%s' "$bad_out" | grep -qi "parse error"; then
-    fail "raw parse-error noise still reaches the screen alongside the remedy"
+    pass "a corrupt config no longer stops the launch (healed through the wizard)"
 else
-    pass "corrupt config names the file and the remedy, exits $bad_status, no jq noise"
+    fail "the self-heal launch exited $bad_status: $(printf '%s' "$bad_out" | tail -2)"
+fi
+
+quarantined=$(ls "$BADHOME/.sherman"/config.json.bad.* 2>/dev/null | head -1)
+if [ -n "$quarantined" ] && [ "$(cat "$quarantined")" = "$BADCONTENT" ]; then
+    pass "the corrupt file was quarantined intact ($(basename "$quarantined"))"
+else
+    fail "the corrupt config was not preserved beside the new one"
+fi
+
+if /usr/bin/jq -e . "$BADHOME/.sherman/config.json" >/dev/null 2>&1; then
+    pass "setup wrote a fresh valid config in its place"
+else
+    fail "no valid config exists after the self-heal run"
+fi
+
+# `sherman update` must run the same repair: it is the button people press
+# when something is wrong, and both call sites are asserted so neither can
+# quietly lose the quarantine.
+if [ "$(grep -cE '^[[:space:]]*quarantine_corrupt_config([[:space:]]|$)' bin/sherman)" -ge 2 ]; then
+    pass "both the launch flow and sherman update run the quarantine repair"
+else
+    fail "the quarantine repair is not called from both launch and update"
+fi
+
+# The backstop for paths that cannot re-run setup (a scheduler saving a
+# token, say): the named remedy, never raw jq noise.
+REMHOME="$TMPHOME/corrupt-config-remedy-home"
+mkdir -p "$REMHOME/.sherman"
+printf '%s\n' "$BADCONTENT" > "$REMHOME/.sherman/config.json"
+rem_out=$(env HOME="$REMHOME" ./bin/sherman telegram --token 123:ABC </dev/null 2>&1)
+rem_status=$?
+if [ "$rem_status" -ne 0 ] \
+    && printf '%s' "$rem_out" | grep -q "Delete it and run sherman again" \
+    && ! printf '%s' "$rem_out" | grep -qi "parse error"; then
+    pass "config_set paths keep the named remedy, no raw jq noise (exit $rem_status)"
+else
+    fail "the config_set backstop lost its remedy; got: $(printf '%s' "$rem_out" | tail -1)"
 fi
 
 # The wizard's own read-back: answers that produce an unparseable config must
