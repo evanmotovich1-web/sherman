@@ -3,6 +3,29 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-03 — Fixed: a corrupt config gets its remedy on screen, and the Windows paste does its own admin step
+
+- A corrupt `~/.sherman/config.json` used to kill the launcher inside its
+  first jq read: under `set -e` the person saw a bare
+  `parse error: Invalid escape` and a Sherman that would not start, while the
+  "delete it and run sherman again" remedy the script always contained never
+  printed. Seen on a real Windows machine. Both config accessors now refuse
+  an unparseable config with the named file and the remedy — worded
+  identically to the shell's own message — and exit clean.
+- The wizard now reads back the config it just wrote, as JSON and as the
+  engine value. Answers that produce a config that does not parse are refused
+  at write time and the file deleted, with setup named as the fix — not kept
+  for the next launch to trip over. Smoke check 28 drives a corrupt config
+  through the launcher and asserts the remedy prints, the exit is nonzero,
+  and no raw jq noise reaches the screen.
+- `install.ps1` no longer stops to dictate the one administrator command for
+  the person to retype. When WSL is not enabled and the shell is not
+  elevated, the script asks Windows for elevation itself — a standard
+  permission prompt on exactly `wsl --install -d Ubuntu` — and verifies the
+  distro answers afterwards. Declining the prompt still gets the manual
+  instructions, and nothing is changed. That command, done by hand, was the
+  only part of the first real install the paste did not do.
+
 ## 2026-08-02 — Added: pressing update grows the capability, not just the catalog
 
 - `sherman update` now provisions Agent Reach, so a machine installed before

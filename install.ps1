@@ -28,7 +28,7 @@ $RepoUrl = 'https://github.com/evanmotovich1-web/sherman.git'
 # always be matched to the exact script that produced it -- GitHub's raw
 # CDN caches downloads for a few minutes, and a stale copy that LOOKS
 # current is exactly the confident-and-wrong this repo does not allow.
-$Build = '2026-07-30.16'
+$Build = '2026-08-03.17'
 
 function Say([string]$msg)  { Write-Host "  $msg" }
 function Note([string]$msg) { Write-Host "  NOTE: $msg" }
@@ -73,23 +73,48 @@ if ($LASTEXITCODE -ne 0) {
     $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
     if (-not $elevated) {
-        Note "WSL is not enabled yet, and enabling it needs an administrator shell."
-        Say  "In an administrator PowerShell, run:"
-        Say  ""
-        Say  "    wsl --install -d $Distro"
-        Say  ""
-        Say  "Reboot if asked, open $Distro once to create your Linux user,"
-        Say  "then re-run this script. Nothing was changed."
-        exit 1
-    }
-
-    Say "enabling WSL (wsl --install -d $Distro) -- a reboot may be required"
-    & wsl.exe --install -d $Distro
-    if (-not (Test-Distro)) {
-        Note "WSL was installed but $Distro does not answer yet."
-        Say  "Reboot if Windows asked for one, open $Distro once to create"
-        Say  "your Linux user, then re-run this script."
-        exit 1
+        # The paste does the admin step itself: ask Windows for elevation on
+        # exactly the one command that needs it, instead of dictating that
+        # command for the person to retype in a shell they had to know to
+        # open as administrator. Seen on a real machine: this step, done by
+        # hand, was the only part of the install the paste did not do.
+        Say "WSL is not enabled yet. Enabling it needs administrator approval,"
+        Say "so Windows will now show a permission prompt -- approve it and an"
+        Say "elevated window runs: wsl --install -d $Distro"
+        $enable = $null
+        try {
+            $enable = Start-Process -FilePath 'wsl.exe' `
+                -ArgumentList '--install', '-d', $Distro -Verb RunAs -Wait -PassThru
+        } catch {
+            # The person declined the prompt (or elevation is blocked here).
+        }
+        if ($null -eq $enable) {
+            Note "administrator approval was declined, so WSL was not enabled."
+            Say  "Re-run this script and approve the prompt, or in an"
+            Say  "administrator PowerShell run:"
+            Say  ""
+            Say  "    wsl --install -d $Distro"
+            Say  ""
+            Say  "Reboot if asked, open $Distro once to create your Linux user,"
+            Say  "then re-run this script. Nothing was changed."
+            exit 1
+        }
+        if (-not (Test-Distro)) {
+            Note "the enable step ran, but $Distro does not answer yet -- a"
+            Say  "reboot usually finishes WSL's enablement. Reboot, open"
+            Say  "$Distro once to create your Linux user, then re-run this"
+            Say  "script; it continues from here."
+            exit 1
+        }
+    } else {
+        Say "enabling WSL (wsl --install -d $Distro) -- a reboot may be required"
+        & wsl.exe --install -d $Distro
+        if (-not (Test-Distro)) {
+            Note "WSL was installed but $Distro does not answer yet."
+            Say  "Reboot if Windows asked for one, open $Distro once to create"
+            Say  "your Linux user, then re-run this script."
+            exit 1
+        }
     }
 }
 
