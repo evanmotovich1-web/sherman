@@ -339,6 +339,24 @@ run_wizard() {
     printf '{"version":2,"engine":"%s","user":"%s","vault_path":"%s"%s}\n' \
         "$engine" "$user" "$vault" "$extra" > "$CONFIG"
 
+    # Read back what was just written, both as JSON and as the engine value.
+    # A config that does not parse must die HERE, deleted, where redoing setup
+    # fixes it -- not on the next launch as a parse error nobody can connect
+    # to the answers they typed. A real Windows machine hit exactly that.
+    if command -v /usr/bin/jq >/dev/null 2>&1 \
+        && ! /usr/bin/jq empty "$CONFIG" >/dev/null 2>&1; then
+        rm -f "$CONFIG"
+        echo "Setup produced a config that does not parse, so it was not kept." >&2
+        echo "Run sherman again to redo setup." >&2
+        exit 1
+    fi
+    if [ "$(config_get engine)" != "$engine" ]; then
+        rm -f "$CONFIG"
+        echo "Setup wrote a config that did not read back, so it was not kept." >&2
+        echo "Run sherman again to redo setup." >&2
+        exit 1
+    fi
+
     echo
     echo "  engine: $engine"
     echo "  user:   $user"
@@ -492,7 +510,23 @@ run_setup_upgrade() {
 }
 
 # ------------------------------------------------------------ config access --
+# Both accessors refuse a corrupt config with the remedy, never a raw jq
+# parse error. Under set -e, one failed jq inside $( ) kills this script
+# with nothing but jq's own noise on screen -- seen on a real Windows
+# machine as a bare "parse error: Invalid escape" and a Sherman that would
+# not start, while the remedy below never got the chance to print. Worded
+# identically to shell/src/config.js on purpose: two different repair
+# instructions for one problem is how a person ends up trusting neither.
+require_parseable_config() {
+    [ -f "$CONFIG" ] || return 0
+    command -v /usr/bin/jq >/dev/null 2>&1 || return 0
+    /usr/bin/jq empty "$CONFIG" >/dev/null 2>&1 && return 0
+    echo "Config at $CONFIG is not valid JSON. Delete it and run sherman again." >&2
+    exit 1
+}
+
 config_get() {
+    require_parseable_config
     if command -v /usr/bin/jq >/dev/null 2>&1; then
         /usr/bin/jq -r --arg k "$1" '.[$k] // empty' "$CONFIG"
     else
@@ -510,6 +544,7 @@ config_set() {
         echo "No config yet. Run sherman once to set up this machine, then retry." >&2
         exit 1
     fi
+    require_parseable_config
     if command -v /usr/bin/jq >/dev/null 2>&1; then
         /usr/bin/jq --arg k "$1" --arg v "$2" '.[$k] = $v' "$CONFIG" > "$CONFIG.tmp" \
             && mv "$CONFIG.tmp" "$CONFIG"

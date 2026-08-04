@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — twenty-three checks, no framework.
+# smoke.sh — twenty-eight checks, no framework.
 #
 #   1. bin/sherman is executable.
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
@@ -42,6 +42,8 @@
 #  27. The Agent Reach provisioner parses, is reachable from BOTH entry points,
 #      keeps the two constants that made the install work, and stays offline
 #      and claimless when fetches are disabled.
+#  28. A corrupt config gets the named remedy and a clean exit, never a raw
+#      jq parse error that leaves the person with no way forward.
 #
 # Checks 2 and 3 drive `bin/sherman --raw` on purpose. The default handoff is now
 # the Sherman Shell, which is an interactive Ink app: driving it with piped stdin
@@ -61,7 +63,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=27
+TOTAL_CHECKS=28
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -2388,6 +2390,42 @@ else
     else
         pass "a skipped install leaves nothing behind"
     fi
+fi
+
+# ----------------------------------------------------------------- check 28 --
+# A corrupt config used to kill the launcher inside its first jq read under
+# set -e: the person saw a bare "parse error: Invalid escape" and a Sherman
+# that would not start, while the remedy the script always contained never
+# printed. Seen on a real Windows machine. The remedy must reach the screen,
+# and the raw jq noise must not.
+echo
+echo "28. a corrupt config gets the remedy, not a raw parse error"
+
+BADHOME="$TMPHOME/corrupt-config-home"
+mkdir -p "$BADHOME/.sherman"
+printf '{"version":2,"engine":"codex","user":"\\smoke","vault_path":"/tmp/vault"}\n' \
+    > "$BADHOME/.sherman/config.json"
+
+bad_out=$(env HOME="$BADHOME" PATH="$STUBDIR:$PATH" ./bin/sherman --raw </dev/null 2>&1)
+bad_status=$?
+
+if [ "$bad_status" -eq 0 ]; then
+    fail "the launcher exited 0 on a corrupt config"
+elif ! printf '%s' "$bad_out" | grep -q "Delete it and run sherman again"; then
+    fail "no remedy printed for a corrupt config; got: $(printf '%s' "$bad_out" | tail -1)"
+elif printf '%s' "$bad_out" | grep -qi "parse error"; then
+    fail "raw parse-error noise still reaches the screen alongside the remedy"
+else
+    pass "corrupt config names the file and the remedy, exits $bad_status, no jq noise"
+fi
+
+# The wizard's own read-back: answers that produce an unparseable config must
+# be refused at write time, deleted, with setup named as the fix -- not kept
+# for the next launch to trip over.
+if grep -q "Run sherman again to redo setup" bin/sherman; then
+    pass "the wizard refuses and deletes a config that does not read back"
+else
+    fail "the wizard write has no read-back refusal"
 fi
 
 # -------------------------------------------------------------------- result --
