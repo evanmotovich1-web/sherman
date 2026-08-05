@@ -23,11 +23,13 @@ const MAX_TRUSTED_SCAN_AGE_MS = 24 * 60 * 60 * 1000;
 const CREDENTIAL_FILE = /^(?:\.env(?:\..*)?|credentials?(?:\..*)?|secrets?(?:\..*)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:\..*)?|.*\.(?:pem|key|p12|pfx))$/i;
 const EXECUTABLE_FILE = /\.(?:sh|bash|zsh|fish|py|pyw|js|mjs|cjs|ts|tsx|jsx|exe|dll|dylib|so|bat|cmd|ps1|com|app|jar|wasm)$/i;
 
-export function artifactInstallConfirmation(id, digest) {
-    if (typeof id !== 'string' || !id || typeof digest !== 'string' || !/^[a-f0-9]{64}$/.test(digest)) {
+export function artifactInstallConfirmation(id, digest, reviewDigest) {
+    if (typeof id !== 'string' || !id
+        || typeof digest !== 'string' || !/^[a-f0-9]{64}$/.test(digest)
+        || typeof reviewDigest !== 'string' || !/^[a-f0-9]{64}$/.test(reviewDigest)) {
         throw new Error('Artifact installation confirmation could not be constructed.');
     }
-    return `INSTALL ${id} ${digest}`;
+    return `INSTALL ${id} ${digest} REVIEW ${reviewDigest}`;
 }
 
 function sha256(value) {
@@ -237,7 +239,7 @@ function validateStateRecord(record, type) {
     ];
     const allowed = type === 'publication'
         ? [...common, ...publicationFields]
-        : [...common, 'networkId', 'publisherKeyId', 'verification', 'diff', 'installedAt', 'receiptId'];
+        : [...common, 'networkId', 'publisherKeyId', 'verification', 'diff', 'reviewDigest', 'reviewedAt', 'installedAt', 'receiptId'];
     if (Object.keys(record).some((key) => !allowed.includes(key))) return false;
     if (typeof record.id !== 'string' || !validName(record.name) || !validVersion(record.version)) return false;
     if (!Number.isSafeInteger(record.createdAt) || !/^[a-f0-9]{64}$/.test(record.digest)) return false;
@@ -261,6 +263,8 @@ function validateStateRecord(record, type) {
         || !['add', 'modify', 'remove'].includes(item.change)
     ))) return false;
     if (!record.verification || Object.keys(record.verification).some((key) => !['checksum', 'digest', 'signature', 'scan'].includes(key))) return false;
+    const hasReview = Object.hasOwn(record, 'reviewDigest') || Object.hasOwn(record, 'reviewedAt');
+    if (hasReview && (!/^[a-f0-9]{64}$/.test(record.reviewDigest) || !Number.isSafeInteger(record.reviewedAt))) return false;
     if (record.status === 'installed' && (!Number.isSafeInteger(record.installedAt) || typeof record.receiptId !== 'string')) return false;
     return true;
 }
@@ -471,6 +475,69 @@ function manifestDiff(home, name, incoming) {
     });
 }
 
+const MAX_ARTIFACT_REVIEW_CHARS = 8_000;
+
+function safelyQuotedReviewText(bytes) {
+    return JSON.stringify(bytes.toString('utf8')).replace(
+        /[^\x20-\x7e]/g,
+        (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+    );
+}
+
+function artifactReviewSnapshot({ home, id }) {
+    const state = loadArtifactState(home);
+    const adoption = state.adoptions.find((record) => record.id === id);
+    if (!adoption || adoption.status !== 'quarantined') throw new Error('Quarantined artifact was not found.');
+    const quarantine = join(commonsRoot(home), 'quarantine', adoption.id, adoption.name);
+    const incoming = walkSkill(quarantine, adoption.name);
+    const incomingManifest = incoming.map((file) => ({
+        path: file.path, size: file.bytes.length, sha256: sha256(file.bytes),
+    }));
+    if (JSON.stringify(incomingManifest) !== JSON.stringify(adoption.manifest)) {
+        throw new Error('Quarantined artifact changed after verification.');
+    }
+    const currentDiff = manifestDiff(home, adoption.name, adoption.manifest);
+    if (JSON.stringify(currentDiff) !== JSON.stringify(adoption.diff)) {
+        throw new Error('Local skill changed after review; quarantine and review a fresh diff.');
+    }
+    const target = join(personalSkillsRoot(home), adoption.name);
+    const current = existsSync(target) ? walkSkill(target, adoption.name) : [];
+    const before = new Map(current.map((file) => [file.path, file.bytes]));
+    const after = new Map(incoming.map((file) => [file.path, file.bytes]));
+    const sections = adoption.diff.map(({ path, change }) => {
+        const beforeBytes = before.get(path);
+        const afterBytes = after.get(path);
+        return [
+            `${change} ${path}`,
+            `before_sha256 ${beforeBytes ? sha256(beforeBytes) : '(absent)'}`,
+            `after_sha256 ${afterBytes ? sha256(afterBytes) : '(absent)'}`,
+            `before_json ${beforeBytes ? safelyQuotedReviewText(beforeBytes) : '(absent)'}`,
+            `after_json ${afterBytes ? safelyQuotedReviewText(afterBytes) : '(absent)'}`,
+        ].join('\n');
+    });
+    const text = sections.length ? sections.join('\n\n') : '(no file changes)';
+    if (text.length > MAX_ARTIFACT_REVIEW_CHARS) {
+        throw new Error('Artifact diff is too large for complete terminal review and cannot be installed.');
+    }
+    const reviewDigest = sha256(Buffer.from(JSON.stringify({
+        artifactDigest: adoption.digest,
+        files: adoption.diff.map(({ path, change }) => ({
+            path, change,
+            before: before.has(path) ? sha256(before.get(path)) : null,
+            after: after.has(path) ? sha256(after.get(path)) : null,
+        })),
+    })));
+    return { state, adoption, text, reviewDigest };
+}
+
+export function reviewQuarantinedArtifact({ home = process.env.HOME, id, now = Date.now() }) {
+    const snapshot = artifactReviewSnapshot({ home, id });
+    snapshot.adoption.reviewDigest = snapshot.reviewDigest;
+    snapshot.adoption.reviewedAt = now;
+    saveArtifactState(home, snapshot.state);
+    return { adoption: structuredClone(snapshot.adoption), text: snapshot.text };
+}
+
 function trustedPublisherFor({ envelope, bundle, resolveTrustedPublisher, trustedScanVersion, now }) {
     if (typeof resolveTrustedPublisher !== 'function') throw new Error('Artifact verification requires a trusted publisher resolver.');
     const record = resolveTrustedPublisher(envelope.network_id, envelope.publisher_key_id);
@@ -610,8 +677,12 @@ export function installQuarantinedArtifact({
     const state = loadArtifactState(home);
     const adoption = state.adoptions.find((record) => record.id === id);
     if (!adoption || adoption.status !== 'quarantined') throw new Error('Quarantined artifact was not found.');
-    if (confirmation !== artifactInstallConfirmation(adoption.id, adoption.digest)) {
-        throw new Error(`Explicit local owner confirmation is required: ${artifactInstallConfirmation(adoption.id, adoption.digest)}`);
+    const currentReview = artifactReviewSnapshot({ home, id });
+    if (!adoption.reviewDigest || currentReview.reviewDigest !== adoption.reviewDigest) {
+        throw new Error('Artifact content changed after review; review the exact content again.');
+    }
+    if (confirmation !== artifactInstallConfirmation(adoption.id, adoption.digest, adoption.reviewDigest)) {
+        throw new Error(`Explicit local owner confirmation is required: ${artifactInstallConfirmation(adoption.id, adoption.digest, adoption.reviewDigest)}`);
     }
     if (adoption.verification.signature !== 'verified') throw new Error('A verified publisher signature is required before install.');
     assertCompatible(adoption.compatibility);
@@ -636,6 +707,7 @@ export function installQuarantinedArtifact({
     const receipt = {
         id: randomUUID(), type: 'commons-skill-install', name: adoption.name,
         version: adoption.version, digest: adoption.digest, publisherKeyId: adoption.publisherKeyId,
+        reviewDigest: adoption.reviewDigest,
         installedAt: now, verification: adoption.verification, diff: adoption.diff,
     };
     const expectedReceiptPath = join(commonsRoot(home), 'receipts', `${receipt.id}.json`);
@@ -660,6 +732,9 @@ export function installQuarantinedArtifact({
         // bytes, never by reopening/copying a mutable source path.
         if (JSON.stringify(toManifest(walkSkill(quarantine, adoption.name))) !== expectedManifest) {
             throw new Error('Quarantined artifact changed immediately before install.');
+        }
+        if (artifactReviewSnapshot({ home, id }).reviewDigest !== adoption.reviewDigest) {
+            throw new Error('Local skill changed immediately before install; review the exact content again.');
         }
         if (existsSync(target)) {
             renameSync(target, backup);

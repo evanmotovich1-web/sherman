@@ -17,6 +17,7 @@ import {
     loadArtifactState,
     prepareSkillPublication,
     quarantineSkillBundle,
+    reviewQuarantinedArtifact,
 } from '../src/commons/artifacts.js';
 import { runCommonsCommand } from '../src/commons/command.js';
 
@@ -35,11 +36,12 @@ function writeSkill(home, name = 'personal-skill') {
     return directory;
 }
 
-function signedBundle(name = 'adopted-skill') {
+function signedBundle(name = 'adopted-skill', guide = '# Guide\n\nBounded synthetic guidance.\n', extraFiles = []) {
     const { publicKey, privateKey } = generateKeyPairSync('ed25519');
     const files = [
         { path: 'SKILL.md', bytes: Buffer.from(skillText(name)) },
-        { path: 'references/guide.md', bytes: Buffer.from('# Guide\n\nBounded synthetic guidance.\n') },
+        { path: 'references/guide.md', bytes: Buffer.from(guide) },
+        ...extraFiles,
     ];
     const manifest = files.map((file) => ({
         path: file.path,
@@ -79,6 +81,11 @@ function trustedPublisher(bundle, publicKey, now = 1785900000000) {
             artifact_version: bundle.version, scanned_at: now - 1000,
         },
     };
+}
+
+function reviewedConfirmation(home, adoption) {
+    const reviewed = reviewQuarantinedArtifact({ home, id: adoption.id }).adoption;
+    return artifactInstallConfirmation(reviewed.id, reviewed.digest, reviewed.reviewDigest);
 }
 
 const resolverFor = (record) => (networkId, publisherKeyId) => (
@@ -218,6 +225,45 @@ test('quarantine verifies paths, checksums, digest, signature, scan, and determi
     }
 });
 
+test('review displays complete content or fails closed before offering installation', () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-artifact-review-'));
+    try {
+        const now = 1785900000000;
+        const visible = signedBundle('visible-review', '# Guide\n\nDirection \u202e marker.\n');
+        const visibleAdoption = quarantineSkillBundle({
+            home, bundle: visible.bundle, now,
+            resolveTrustedPublisher: () => trustedPublisher(visible.bundle, visible.publisherPublicKey, now),
+        });
+        const visibleReview = reviewQuarantinedArtifact({ home, id: visibleAdoption.id });
+        assert.match(visibleReview.text, /Direction \\u202e marker/);
+        assert.equal(visibleReview.text.includes('\u202e'), false);
+
+        const signed = signedBundle(
+            'large-review', `# Guide\n\n${'a'.repeat(3_001)}\n`,
+            [
+                { path: 'references/second.md', bytes: Buffer.from(`# Second\n\n${'b'.repeat(3_001)}\n`) },
+                { path: 'references/third.md', bytes: Buffer.from(`# Third\n\n${'c'.repeat(3_001)}\n`) },
+            ],
+        );
+        const adoption = quarantineSkillBundle({
+            home, bundle: signed.bundle, now,
+            resolveTrustedPublisher: () => trustedPublisher(signed.bundle, signed.publisherPublicKey, now),
+        });
+        assert.throws(
+            () => reviewQuarantinedArtifact({ home, id: adoption.id }),
+            /too large for complete terminal review and cannot be installed/i,
+        );
+        assert.throws(
+            () => installQuarantinedArtifact({
+                home, id: adoption.id,
+                confirmation: reviewedConfirmation(home, adoption),
+            }),
+            /too large for complete terminal review and cannot be installed/i,
+        );
+        assert.equal(loadArtifactState(home).adoptions.at(-1).status, 'quarantined');
+    } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
 test('quarantine requires a current digest-bound trusted publisher record, not a caller key', () => {
     const home = mkdtempSync(join(tmpdir(), 'sherman-commons-trust-'));
     try {
@@ -260,13 +306,14 @@ test('install requires local owner confirmation, preserves bundled collisions, i
         });
         assert.throws(() => installQuarantinedArtifact({
             home, id: adoption.id, bundledRoot, confirmation: true,
-        }), /local owner confirmation/i);
+        }), /review.*content/i);
         const receipt = installQuarantinedArtifact({
-            home, id: adoption.id, bundledRoot, confirmation: artifactInstallConfirmation(adoption.id, adoption.digest),
+            home, id: adoption.id, bundledRoot, confirmation: reviewedConfirmation(home, adoption),
             now: 1785900001000,
         });
         assert.equal(receipt.name, 'adopted-skill');
         assert.equal(receipt.digest, bundle.digest);
+        assert.match(receipt.reviewDigest, /^[a-f0-9]{64}$/);
         assert.match(readFileSync(join(home, '.sherman', 'skills', 'adopted-skill', 'SKILL.md'), 'utf8'), /adopted-skill/);
         assert.equal(statSync(receipt.receiptPath).mode & 0o777, 0o600);
         assert.equal(loadArtifactState(home).adoptions[0].status, 'installed');
@@ -279,8 +326,32 @@ test('install requires local owner confirmation, preserves bundled collisions, i
             bundledRoot, now: 1785900000000,
         });
         assert.throws(() => installQuarantinedArtifact({
-            home, id: collision.id, bundledRoot, confirmation: artifactInstallConfirmation(collision.id, collision.digest),
+            home, id: collision.id, bundledRoot, confirmation: reviewedConfirmation(home, collision),
         }), /bundled skill/i);
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+        rmSync(bundledRoot, { recursive: true, force: true });
+    }
+});
+
+test('install rejects a same-class local content change made after review', () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-commons-review-binding-'));
+    const bundledRoot = mkdtempSync(join(tmpdir(), 'sherman-commons-review-binding-bundled-'));
+    try {
+        const target = writeSkill(home, 'adopted-skill');
+        writeFileSync(join(target, 'references', 'guide.md'), '# Guide\n\nOriginal local guidance.\n');
+        const signed = signedBundle();
+        const adoption = quarantineSkillBundle({
+            home, bundle: signed.bundle,
+            resolveTrustedPublisher: resolverFor(trustedPublisher(signed.bundle, signed.publisherPublicKey)),
+            bundledRoot, now: 1785900000000,
+        });
+        const confirmation = reviewedConfirmation(home, adoption);
+        writeFileSync(join(target, 'references', 'guide.md'), '# Guide\n\nDifferent unreviewed local guidance.\n');
+        assert.throws(() => installQuarantinedArtifact({
+            home, id: adoption.id, bundledRoot, confirmation,
+        }), /content changed after review/i);
+        assert.equal(loadArtifactState(home).adoptions.at(-1).status, 'quarantined');
     } finally {
         rmSync(home, { recursive: true, force: true });
         rmSync(bundledRoot, { recursive: true, force: true });
@@ -304,7 +375,7 @@ test('install restores the prior target and quarantined state when receipt or st
                 ? { writeReceipt: () => { throw new Error('injected receipt failure'); } }
                 : { saveArtifactState: () => { throw new Error('injected state failure'); } };
             assert.throws(() => installQuarantinedArtifact({
-                home, id: adoption.id, bundledRoot, confirmation: artifactInstallConfirmation(adoption.id, adoption.digest),
+                home, id: adoption.id, bundledRoot, confirmation: reviewedConfirmation(home, adoption),
                 now: 1785900001000, persistence,
             }), new RegExp(`injected ${failure} failure`));
             assert.equal(
@@ -340,7 +411,7 @@ test('install rejects incompatible Node and Sherman versions without changing ta
                 now: 1785900000000,
             });
             assert.throws(() => installQuarantinedArtifact({
-                home, id: adoption.id, bundledRoot, confirmation: artifactInstallConfirmation(adoption.id, adoption.digest),
+                home, id: adoption.id, bundledRoot, confirmation: reviewedConfirmation(home, adoption),
             }), /compatib/i);
             assert.equal(readFileSync(join(home, '.sherman', 'skills', 'adopted-skill', 'SKILL.md'), 'utf8'), oldSkill);
             assert.equal(loadArtifactState(home).adoptions[0].status, 'quarantined');
@@ -436,7 +507,10 @@ test('artifact publish binds the enrolled key and download quarantines server-de
         assert.equal(unconfirmed.ok, false);
         assert.equal(loadArtifactState(home).adoptions.at(-1).status, 'quarantined');
         const review = await runCommonsCommand(`artifact review ${adoption.id}`, { home });
-        const confirmation = artifactInstallConfirmation(adoption.id, adoption.digest);
+        const confirmation = reviewedConfirmation(home, adoption);
+        assert.match(review.text, /Complete exact content diff:/);
+        assert.match(review.text, /after_json "---\\nname: downloaded-skill/);
+        assert.match(review.text, /after_json "# Guide\\n\\nBounded synthetic guidance\.\\n"/);
         assert.match(review.text, new RegExp(confirmation.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
         const installed = await runCommonsCommand(`artifact install ${adoption.id} ${confirmation}`, { home });
         assert.equal(installed.ok, true);

@@ -23,6 +23,7 @@ import {
     prepareSkillPublication,
     quarantineSkillBundle,
     recordSkillPublication,
+    reviewQuarantinedArtifact,
 } from './artifacts.js';
 import { safeTerminalText } from '../ui/sanitize.js';
 import { openUrl } from '../browser.js';
@@ -314,12 +315,8 @@ export async function runCommonsCommand(args = '', {
                 return result(true, `Commons artifacts: ${pending} pending publication manifest${pending === 1 ? '' : 's'} · ${published} published artifact${published === 1 ? '' : 's'} · ${quarantined} quarantined adoption${quarantined === 1 ? '' : 's'}.`);
             }
             if (action === 'review') {
-                const adoption = loadArtifactState(home).adoptions.find((item) => item.id === artifactArgs);
-                if (!adoption) return result(false, 'Quarantined artifact was not found.');
-                const diff = adoption.diff.length
-                    ? adoption.diff.map((item) => `${item.change} ${item.path}`).join('\n')
-                    : '(no file changes)';
-                return result(true, `Artifact ${adoption.name} ${adoption.version}\nDigest ${adoption.digest}\nSignature ${adoption.verification.signature}\n${diff}\nUntrusted instructions are never made safe by a signature. To install this exact reviewed digest, type: /commons artifact install ${adoption.id} ${artifactInstallConfirmation(adoption.id, adoption.digest)}`);
+                const { adoption, text: diff } = reviewQuarantinedArtifact({ home, id: artifactArgs });
+                return result(true, `Artifact ${adoption.name} ${adoption.version}\nDigest ${adoption.digest}\nSignature ${adoption.verification.signature}\nComplete exact content diff:\n${diff}\nUntrusted instructions are never made safe by a signature. To install this exact reviewed digest, type: /commons artifact install ${adoption.id} ${artifactInstallConfirmation(adoption.id, adoption.digest, adoption.reviewDigest)}`);
             }
             if (action === 'install') {
                 const [id, ...confirmationParts] = artifactArgs.split(/\s+/);
@@ -328,7 +325,7 @@ export async function runCommonsCommand(args = '', {
                 });
                 return result(true, `Installed owner-confirmed personal skill ${receipt.name} ${receipt.version}; receipt ${receipt.id}. Bundled skills still win collisions. Nothing was executed.`);
             }
-            return result(false, 'Usage: /commons artifact [status|prepare <name> <semver>|publish <id>|download <id>|review <id>|install <id> INSTALL <id> <digest>]');
+            return result(false, 'Usage: /commons artifact [status|prepare <name> <semver>|publish <id>|download <id>|review <id>|install <id> INSTALL <id> <digest> REVIEW <review-digest>]');
         }
         if (subcommand === 'revoke') {
             await clientFor({ home, fetchImpl, clientFactory }).revoke();
