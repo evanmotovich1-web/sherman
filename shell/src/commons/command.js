@@ -16,7 +16,6 @@ import {
     buildCommonsInventory, prepareInventoryDelta, recordInventorySync,
 } from './inventory.js';
 import {
-    artifactInstallConfirmation,
     buildSkillPublicationBundle,
     installQuarantinedArtifact,
     loadArtifactState,
@@ -315,8 +314,8 @@ export async function runCommonsCommand(args = '', {
                 return result(true, `Commons artifacts: ${pending} pending publication manifest${pending === 1 ? '' : 's'} · ${published} published artifact${published === 1 ? '' : 's'} · ${quarantined} quarantined adoption${quarantined === 1 ? '' : 's'}.`);
             }
             if (action === 'review') {
-                const { adoption, text: diff } = reviewQuarantinedArtifact({ home, id: artifactArgs });
-                return result(true, `Artifact ${adoption.name} ${adoption.version}\nDigest ${adoption.digest}\nSignature ${adoption.verification.signature}\nComplete exact content diff:\n${diff}\nUntrusted instructions are never made safe by a signature. To install this exact reviewed digest, type: /commons artifact install ${adoption.id} ${artifactInstallConfirmation(adoption.id, adoption.digest, adoption.reviewDigest)}`);
+                const review = reviewQuarantinedArtifact({ home, id: artifactArgs });
+                return result(true, review.text);
             }
             if (action === 'install') {
                 const [id, ...confirmationParts] = artifactArgs.split(/\s+/);

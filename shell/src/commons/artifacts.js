@@ -515,10 +515,7 @@ function artifactReviewSnapshot({ home, id }) {
             `after_json ${afterBytes ? safelyQuotedReviewText(afterBytes) : '(absent)'}`,
         ].join('\n');
     });
-    const text = sections.length ? sections.join('\n\n') : '(no file changes)';
-    if (text.length > MAX_ARTIFACT_REVIEW_CHARS) {
-        throw new Error('Artifact diff is too large for complete terminal review and cannot be installed.');
-    }
+    const diff = sections.length ? sections.join('\n\n') : '(no file changes)';
     const reviewDigest = sha256(Buffer.from(JSON.stringify({
         artifactDigest: adoption.digest,
         files: adoption.diff.map(({ path, change }) => ({
@@ -527,6 +524,10 @@ function artifactReviewSnapshot({ home, id }) {
             after: after.has(path) ? sha256(after.get(path)) : null,
         })),
     })));
+    const text = `Artifact ${adoption.name} ${adoption.version}\nDigest ${adoption.digest}\nSignature ${adoption.verification.signature}\nComplete exact content diff:\n${diff}\nUntrusted instructions are never made safe by a signature. To install this exact reviewed digest, type: /commons artifact install ${adoption.id} ${artifactInstallConfirmation(adoption.id, adoption.digest, reviewDigest)}`;
+    if (text.length > MAX_ARTIFACT_REVIEW_CHARS) {
+        throw new Error('Artifact review too_large: complete review output cannot fit safely and the artifact cannot be installed.');
+    }
     return { state, adoption, text, reviewDigest };
 }
 

@@ -251,16 +251,37 @@ test('review displays complete content or fails closed before offering installat
         });
         assert.throws(
             () => reviewQuarantinedArtifact({ home, id: adoption.id }),
-            /too large for complete terminal review and cannot be installed/i,
+            /too_large.*complete review/i,
         );
         assert.throws(
             () => installQuarantinedArtifact({
                 home, id: adoption.id,
                 confirmation: reviewedConfirmation(home, adoption),
             }),
-            /too large for complete terminal review and cannot be installed/i,
+            /too_large.*complete review/i,
         );
         assert.equal(loadArtifactState(home).adoptions.at(-1).status, 'quarantined');
+    } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+test('review size limit covers metadata and the complete typed installation boundary', () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-commons-full-review-bound-'));
+    try {
+        const signed = signedBundle(
+            'full-review-bound', `# Guide\n\n${'a'.repeat(2_600)}\n`, [
+                { path: 'references/second.md', bytes: Buffer.from(`# Second\n\n${'b'.repeat(2_200)}\n`) },
+                { path: 'references/third.md', bytes: Buffer.from(`# Third\n\n${'c'.repeat(2_200)}\n`) },
+            ],
+        );
+        const adoption = quarantineSkillBundle({
+            home, bundle: signed.bundle,
+            resolveTrustedPublisher: resolverFor(trustedPublisher(signed.bundle, signed.publisherPublicKey)),
+            now: 1785900000000,
+        });
+        assert.throws(
+            () => reviewQuarantinedArtifact({ home, id: adoption.id }),
+            /too_large.*complete review/i,
+        );
     } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
