@@ -4,7 +4,12 @@
 node_modules/
 graphify-out/
 .hermes/
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/teamlore/
+!.claude/skills/teamlore/**
 .env
 .env.*
 *.local
@@ -13,3 +18,6 @@ graphify-out/
 # is public: a person's private memory must be impossible to commit here.
 vault/memory/private/*
 !vault/memory/private/.keep
+
+# teamlore's per-session capture sentinel is runtime state.
+.claude/skills/teamlore/.needs-distill
