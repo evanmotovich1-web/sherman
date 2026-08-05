@@ -36,7 +36,7 @@ test('registry drives suggestions and help', () => {
     assert.deepEqual(
         suggestionsFor('/').map((c) => c.name),
         ['goal', 'plan', 'subagent', 'compact', 'eval', 'email', 'win', 'wiki',
-            'connectors', 'copy', 'clear', 'help', 'exit']
+            'connectors', 'copy', 'select', 'clear', 'help', 'exit']
     );
     // /compact, /connectors, /copy, and /clear share a prefix, so none may
     // swallow another — and /co now has three claimants, which is exactly the
@@ -68,6 +68,10 @@ test('help states default wheel scrolling, copy, selection bypass, and mouse opt
     // The command's own detail has to carry the honesty caveat: an operator
     // reading /help copy is the one deciding whether to trust the notice.
     assert.match(copy, /cannot be verified|cannot prove/i);
+    const select = helpText('select');
+    assert.match(select, /selection mode/i);
+    assert.match(select, /drag/i);
+    assert.match(select, /wheel/i);
 });
 
 test('goal, plan, and worker envelopes preserve policy boundaries', () => {

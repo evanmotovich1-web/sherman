@@ -316,7 +316,7 @@ export function App({
     // gesture disappears into an empty alternate-screen history. Shift+drag is
     // the terminal-selection bypass; SHERMAN_MOUSE=0 is the explicit escape
     // hatch for terminals that do not implement that bypass.
-    const mouseEnabled = process.env.SHERMAN_MOUSE !== '0';
+    const [mouseEnabled, setMouseEnabled] = useState(() => process.env.SHERMAN_MOUSE !== '0');
     useEffect(() => (mouseEnabled ? enableMouse(stdout) : undefined), [mouseEnabled, stdout]);
 
     useEffect(() => {
@@ -608,6 +608,14 @@ export function App({
                 }
                 if (command.name === 'copy') {
                     copyLastReply();
+                    return;
+                }
+                if (command.name === 'select') {
+                    const next = !mouseEnabled;
+                    setMouseEnabled(next);
+                    commit('notice', next
+                        ? 'wheel scrolling restored · Shift+drag selects text · /select releases the mouse again'
+                        : 'selection mode · drag to select and use your terminal copy shortcut · /select restores wheel scrolling');
                     return;
                 }
                 if (command.name === 'connectors') {
@@ -1060,7 +1068,7 @@ export function App({
                 await compactSession('');
             }
         },
-        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, runMetaEval, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills]
+        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, mouseEnabled, runMetaEval, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills]
     );
     submitRef.current = submit;
 

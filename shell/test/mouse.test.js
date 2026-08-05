@@ -162,6 +162,19 @@ test('enableMouse is inert without a TTY, so piped runs never change mode', () =
     assert.doesNotThrow(() => enableMouse(null)());
 });
 
+test('explicit mouse cleanup disables reporting through the live terminal stream', () => {
+    const writes = [];
+    const tty = {
+        isTTY: true,
+        fd: 1,
+        write: (chunk) => { writes.push(chunk); return true; },
+    };
+    const off = enableMouse(tty);
+    off();
+    off();
+    assert.deepEqual(writes, [MOUSE_ON, MOUSE_OFF]);
+});
+
 test('the shell places the caret from a click and scrolls from the wheel', async () => {
     const home = mkdtempSync(join(tmpdir(), 'sherman-mouse-app-'));
     const oldHome = process.env.HOME;
@@ -332,6 +345,18 @@ test('App enables terminal mouse reporting by default so the wheel scrolls histo
     try {
         await new Promise((resolve) => setTimeout(resolve, 30));
         assert.equal(raw.includes(MOUSE_ON), true);
+
+        raw = '';
+        stdin.write('/select');
+        await until(() => plain(raw).includes('❯ /select'));
+        stdin.write('\r');
+        await until(() => raw.includes(MOUSE_OFF) && plain(raw).includes('selection mode'));
+
+        raw = '';
+        stdin.write('/select');
+        await until(() => plain(raw).includes('❯ /select'));
+        stdin.write('\r');
+        await until(() => raw.includes(MOUSE_ON) && plain(raw).includes('wheel scrolling restored'));
     } finally {
         instance.unmount();
         if (oldMouse === undefined) delete process.env.SHERMAN_MOUSE;

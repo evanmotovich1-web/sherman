@@ -65,7 +65,13 @@ export const COMMANDS = Object.freeze([
         name: 'copy',
         usage: '/copy',
         summary: "copy the last Sherman reply to the clipboard",
-        detail: 'Copies the reply as plain text — no colour, no rule glyphs, no signature line. Also bound to ctrl+y. Where the clipboard write cannot be verified, the shell says so rather than reporting a copy it cannot prove. To copy anything else on screen, hold Shift while dragging: the shell captures the mouse for scrolling, and Shift hands selection back to the terminal.',
+        detail: 'Copies the reply as plain text — no colour, no rule glyphs, no signature line. Also bound to ctrl+y. Where the clipboard write cannot be verified, the shell says so rather than reporting a copy it cannot prove. To copy anything else, use Shift+drag or type /select to enter terminal selection mode.',
+    },
+    {
+        name: 'select',
+        usage: '/select',
+        summary: 'toggle terminal text selection mode',
+        detail: 'Selection mode temporarily releases Sherman mouse capture so ordinary drag and your terminal copy shortcut work. Wheel scrolling pauses while selection mode is active. Type /select again to restore Sherman wheel scrolling.',
     },
     {
         name: 'clear',
@@ -201,7 +207,7 @@ export function helpText(name = '') {
         ...COMMANDS.map((command) => `${command.usage.padEnd(23)} ${command.summary}`),
         '',
         'Up/down select · Tab completes · wheel scrolls history · ctrl+y copies the last reply · Shift+drag selects text · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
-        'Mouse capture is on because the fullscreen shell has no native terminal scrollback. Set SHERMAN_MOUSE=0 only if your terminal cannot use Shift+drag to bypass capture.',
+        'If Shift+drag does not select in your terminal, type /select, drag and copy normally, then type /select again to restore wheel scrolling. SHERMAN_MOUSE=0 disables capture from launch.',
     ].join('\n');
 }
 

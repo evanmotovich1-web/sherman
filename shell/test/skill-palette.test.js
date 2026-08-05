@@ -40,7 +40,7 @@ test('bare slash lists every command and then every skill', () => {
 });
 
 test('a prefix filters skills exactly as it filters commands', () => {
-    assert.deepEqual(suggestionsFor('/se', SKILLS).map((entry) => entry.name), ['seed']);
+    assert.deepEqual(suggestionsFor('/se', SKILLS).map((entry) => entry.name), ['select', 'seed']);
     assert.deepEqual(suggestionsFor('/v', SKILLS).map((entry) => entry.name), ['vault-search']);
     // /e matches commands only; no skill entry sneaks in.
     assert.deepEqual(

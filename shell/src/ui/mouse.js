@@ -49,23 +49,25 @@ export function enableMouse(stdout = process.stdout) {
     if (!stdout || !stdout.isTTY) return () => {};
 
     let armed = true;
-    const off = () => {
+    const off = (synchronous = false) => {
         if (!armed) return;
         armed = false;
         try {
-            // writeSync on the raw descriptor, not stdout.write: on the exit
-            // path the stream's queue is never drained, and a disable that does
-            // not reach the terminal is the exact bug this exists to prevent.
-            writeSync(stdout.fd ?? 1, MOUSE_OFF);
+            // Exit/signal paths cannot trust a queued stream write to drain.
+            // A live mode toggle can and must use the stream itself: that makes
+            // the disable part of the terminal's ordered output rather than
+            // bypassing Ink on descriptor 1 (which may not be this stdout).
+            if (synchronous) writeSync(stdout.fd ?? 1, MOUSE_OFF);
+            else stdout.write(MOUSE_OFF);
         } catch {
             // A closed or redirected descriptor at exit is not worth crashing
             // over; there is no terminal left to repair.
         }
     };
 
-    const onExit = () => { off(); };
+    const onExit = () => { off(true); };
     const onSignal = (signal) => {
-        off();
+        off(true);
         detach();
         process.kill(process.pid, signal);
     };
@@ -84,13 +86,13 @@ export function enableMouse(stdout = process.stdout) {
     try {
         stdout.write(MOUSE_ON);
     } catch {
-        off();
+        off(false);
         detach();
         return () => {};
     }
 
     return () => {
-        off();
+        off(false);
         detach();
     };
 }
