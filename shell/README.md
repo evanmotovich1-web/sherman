@@ -43,6 +43,13 @@ Type `/` to open the command palette. First-party commands:
   start a fresh engine thread carrying only that summary. The transcript keeps
   every line; the engine's context does not. The summary travels with the next
   request rather than as a turn of its own, and is spent exactly once.
+- `/commons <subcommand>` — use the opt-in local Commons client. Enrollment
+  tokens and proposal bodies are redacted before transcript/session logging;
+  model-reachable MCP can create only pending intents; publication and adopted
+  skill installation require separate local human commands. Metadata inventory
+  is off by default; signed artifact publication, scanner-gated download, local
+  quarantine/review, and owner-confirmed installation are separate stages. No
+  network content auto-installs or executes. See `docs/COMMONS.md`.
 - `/clear` — clear the transcript from the screen. The engine thread keeps its
   context (`/compact` is what resets it) and the session log keeps every line.
 - `/help [command]` — show command behavior and limits.

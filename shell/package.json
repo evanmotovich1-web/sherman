@@ -8,7 +8,8 @@
     "node": ">=22"
   },
   "bin": {
-    "sherman-shell": "./bin/sherman-shell.js"
+    "sherman-shell": "./bin/sherman-shell.js",
+    "sherman-commons-mcp": "./bin/sherman-commons-mcp.js"
   },
   "scripts": {
     "test": "node --test"

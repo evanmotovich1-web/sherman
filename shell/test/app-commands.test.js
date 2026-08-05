@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -57,6 +57,62 @@ function type(stdin, text, at) {
     setTimeout(() => stdin.write(text), at);
     setTimeout(() => stdin.write('\r'), at + 25);
 }
+
+test('Commons sensitive commands reach the local handler but never the transcript or session JSONL', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-commons-app-redaction-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+    const token = 'synthetic-one-time-enrollment-token';
+    const proposal = '{"kind":"idea","title":"Private draft","body":"API_KEY=synthetic-proposal-secret","authorship_mode":"agent_observed","visibility":"network"}';
+    const calls = [];
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+    const stdout = new PassThrough();
+    stdout.isTTY = true;
+    stdout.columns = 100;
+    stdout.rows = 30;
+    const writes = [];
+    stdout.on('data', (chunk) => { writes.push(chunk.toString()); });
+    const sessionId = '20260805_010000_commons_redaction';
+    const instance = render(
+        React.createElement(App, {
+            session: fakeSession([], 'commons-redaction'), sessionId,
+            commonsCommand: async (args) => {
+                calls.push(args);
+                return { ok: true, text: 'Commons command handled safely.' };
+            },
+        }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false, interactive: true, debug: true }
+    );
+
+    try {
+        type(stdin, `/commons EnRoLl ${token}`, 40);
+        await until(() => calls.length === 1);
+        type(stdin, `/commons PrOpOsE ${proposal}`, 40);
+        await until(() => calls.length === 2);
+        await until(() => latestFrame(writes).includes('/commons propose «payload redacted»'));
+
+        assert.deepEqual(calls, [`EnRoLl ${token}`, `PrOpOsE ${proposal}`]);
+        const frame = latestFrame(writes);
+        assert.match(frame, /\/commons enroll «redacted»/);
+        assert.match(frame, /\/commons propose «payload redacted»/);
+        assert.doesNotMatch(frame, new RegExp(token));
+        assert.doesNotMatch(frame, /synthetic-proposal-secret|Private draft/);
+
+        const log = readFileSync(join(home, '.sherman', 'sessions', `${sessionId}.jsonl`), 'utf8');
+        assert.doesNotMatch(log, new RegExp(token));
+        assert.doesNotMatch(log, /synthetic-proposal-secret|Private draft/);
+        assert.match(log, /\/commons enroll «redacted»/);
+        assert.match(log, /\/commons propose «payload redacted»/);
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
 
 test('App dispatches goals, read-only plans, and isolated workers', async () => {
     const home = mkdtempSync(join(tmpdir(), 'sherman-shell-test-'));

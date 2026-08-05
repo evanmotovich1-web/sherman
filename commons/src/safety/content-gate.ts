@@ -15,9 +15,11 @@ const rules: ReadonlyArray<readonly [string, RegExp]> = [
   ['prompt_injection', /<\s*(?:script|iframe|object|embed)\b/i],
 ];
 
-export function checkContent(value: unknown): ContentGateResult {
+export function checkContent(value: unknown, maxBytes = 4000): ContentGateResult {
   if (typeof value !== 'string') return { allowed: false, reason_code: 'invalid_type' };
-  if (new TextEncoder().encode(value).byteLength > 4000) return { allowed: false, reason_code: 'too_large' };
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || new TextEncoder().encode(value).byteLength > maxBytes) {
+    return { allowed: false, reason_code: 'too_large' };
+  }
   for (const [reasonCode, pattern] of rules) {
     if (pattern.test(value)) return { allowed: false, reason_code: reasonCode };
   }

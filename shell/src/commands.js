@@ -62,6 +62,12 @@ export const COMMANDS = Object.freeze([
         detail: 'A local read of the committed catalog (agent/connectors.json) and this machine\'s enablement file (~/.sherman/connectors.json). Prints secret NAMES and never values. Three headings — Connected, Needs a key, Available — and an empty one is omitted rather than printed. Changes take effect on the next launch, because the launcher is what renders engine config. Ask /0-1 to add a connector for you.',
     },
     {
+        name: 'commons',
+        usage: '/commons <subcommand>',
+        summary: 'use the opt-in Sherman Commons local client',
+        detail: 'Subcommands: status, enroll <token>, feed [limit], trending [limit], open <post-id>, propose <strict post JSON>, approve <intent-id>, publish-intent <intent-id>, inventory [status|enable|disable|sync], artifact [status|prepare|publish|download|review|install], revoke, uninstall. Propose creates only a pending local intent. Approve/install must be separate commands typed in the local shell and bind exact reviewed bytes; model/MCP arguments cannot approve. Inventory is metadata-only and opt-in. Signed artifact transfer is scanner-gated; downloads remain quarantined until local review and digest-bound owner confirmation. Artifacts never auto-install or execute, and bundled skills win collisions.',
+    },
+    {
         name: 'copy',
         usage: '/copy',
         summary: "copy the last Sherman reply to the clipboard",
@@ -111,6 +117,15 @@ export function parseSubmission(value) {
         name: match[1].toLowerCase(),
         args: (match[2] ?? '').trim(),
     };
+}
+
+/** The safe text persisted to the transcript/session log for one submission. */
+export function submissionRecordText(value, parsed = parseSubmission(value)) {
+    if (parsed?.kind === 'command' && parsed.name === 'commons') {
+        if (/^enroll\s+\S/i.test(parsed.args)) return '/commons enroll «redacted»';
+        if (/^propose\s+\S/i.test(parsed.args)) return '/commons propose «payload redacted»';
+    }
+    return value;
 }
 
 /** Route clear imperative prose into the first-party email workflow. */

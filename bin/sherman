@@ -903,8 +903,28 @@ BODY
     rm -rf "$WORKSPACE/.agents/skills" "$WORKSPACE/.claude/skills"
     if [ -d "$ROOT/skills" ]; then
         mkdir -p "$WORKSPACE/.agents" "$WORKSPACE/.claude"
-        cp -R "$ROOT/skills" "$WORKSPACE/.agents/skills"
-        cp -R "$ROOT/skills" "$WORKSPACE/.claude/skills"
+        if command -v node >/dev/null 2>&1; then
+            # One inert file copier owns both layouts. It validates personal
+            # frontmatter and every path, rejects links and bundled-name
+            # collisions, and never imports or executes skill content.
+            assembly_token="$(LC_ALL=C od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+            SHERMAN_SKILL_ASSEMBLY_TOKEN="$assembly_token" \
+                node "$ROOT/shell/bin/sherman-commons.js" --assemble-skills "$assembly_token" \
+                "$ROOT/skills" "$SHERMAN_HOME/skills" "$WORKSPACE/.agents/skills"
+            assembly_token="$(LC_ALL=C od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+            SHERMAN_SKILL_ASSEMBLY_TOKEN="$assembly_token" \
+                node "$ROOT/shell/bin/sherman-commons.js" --assemble-skills "$assembly_token" \
+                "$ROOT/skills" "$SHERMAN_HOME/skills" "$WORKSPACE/.claude/skills"
+            unset assembly_token
+        else
+            # Preserve raw-mode compatibility on a machine without Node. The
+            # bundled repo remains usable; personal skills are not copied
+            # without the validator that makes that boundary safe.
+            cp -R "$ROOT/skills" "$WORKSPACE/.agents/skills"
+            cp -R "$ROOT/skills" "$WORKSPACE/.claude/skills"
+            [ ! -d "$SHERMAN_HOME/skills" ] \
+                || echo "  NOTE: node not found; personal skills were not assembled this launch." >&2
+        fi
     fi
 
     # --------------------------------------------------------- connectors --
@@ -961,9 +981,33 @@ BODY
         fi
         rm -f "$WORKSPACE/.connectors.out"
     fi
+
+    # Commons is first-party but never enabled from local settings alone. The
+    # helper requires both a valid local device identity and a fresh signed,
+    # bounded heartbeat against the configured audience before it writes an
+    # engine entry. Failure is deliberately nonfatal; it also removes only
+    # entries carrying Sherman's ownership marker, leaving user MCP config alone.
+    # process.execPath inside the helper supplies an absolute Node command and
+    # the helper derives the absolute stdio server path from its own location.
+    if command -v node >/dev/null 2>&1; then
+        node "$ROOT/shell/bin/sherman-commons.js" --reconcile-mcp "$engine" "$WORKSPACE" || true
+    fi
 }
 
 # --------------------------------------------------------------------- main --
+# Commons is a standalone local client. It needs Node for bounded JSON, crypto,
+# and HTTP, but never an engine, Sherman config, or shell dependency install.
+# Dispatch before every engine/setup path so an unenrolled machine can inspect
+# status and enroll without being dropped into the first-run wizard.
+if [ "${1:-}" = "commons" ]; then
+    shift
+    if ! command -v node >/dev/null 2>&1; then
+        echo "Sherman Commons needs Node.js 22 or newer, and node is not on your PATH." >&2
+        exit 1
+    fi
+    exec node "$ROOT/shell/bin/sherman-commons.js" "$@"
+fi
+
 # `update` is a subcommand, recognised first: it needs no engine, no config and
 # no session, so it runs before any of them are checked or created.
 if [ "${1:-}" = "update" ]; then

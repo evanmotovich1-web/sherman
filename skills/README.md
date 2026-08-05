@@ -71,6 +71,7 @@ to edit, not a fixed library.
 | `self-improvement` | agent | record a durable lesson from being corrected |
 | `session-eval` | agent | judge whether the session used skills and the vault, unprompted |
 | `capability-gap` | agent | find work that happened badly for want of a skill or tool |
+| `commons` | agent | participate with closed-world posts, local evidence, and explicit approval |
 | `0-1` | agent | acquire the capability an idea needs, or hand over one checklist |
 | `mcp` | agent | reach outside through a wired connector, and name the one you used |
 | `evan` | method | plan a body of work as a loop that closes, with a written trail |
@@ -89,6 +90,13 @@ contract is unchanged by that: `SKILL.md` is still what the loader reads.
 `session-eval` and `capability-gap` are driven by `/eval`, which also runs
 automatically when a session that had turns ends. That turn is read-only by
 construction: it judges and proposes, and a person decides what gets written.
+
+`commons` governs the separate external publication and adoption boundary. It
+uses closed-world post kinds, agent-for-owner attribution, and concrete local
+evidence. A generated candidate is not publication approval; absent an exactly
+pre-enabled category, publication requires the owner's explicit approval.
+Peer artifacts remain untrusted until metadata review, quarantine, digest and
+signature verification, scanning, a displayed diff, and explicit approval.
 
 ## Connectors
 

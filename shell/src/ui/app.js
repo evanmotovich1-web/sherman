@@ -38,6 +38,7 @@ import {
     planRequest,
     shouldAutoCompact,
     skillTurn,
+    submissionRecordText,
     wikiAvailable,
     wikiCaptureRequest,
     wikiPreflight,
@@ -47,6 +48,7 @@ import { describe as describeConnectors } from '../connectors.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
 import { appendEvalReport, ungradedSessions, writeRecommendation } from '../evalstore.js';
 import { collectWinSources, renderWinHtml, winRequest, writeWinSite } from '../win.js';
+import { runCommonsCommand } from '../commons/command.js';
 
 // Monotonic ids. React list keys must be stable per item, and array index is
 // not one — items keep their identity while the array in front of them grows.
@@ -149,6 +151,7 @@ export function App({
     // (wikiAvailable reads the install off disk); tests inject true/false so
     // they exercise both worlds without provisioning a wiki.
     wiki = null,
+    commonsCommand = runCommonsCommand,
 }) {
     const { exit } = useApp();
 
@@ -573,8 +576,9 @@ export function App({
             // leaving the operator parked above their own new turn.
             setScrollOffset(0);
             offsetRef.current = 0;
-            commit('user', text);
-            log.append('user', text);
+            const recordedText = submissionRecordText(text, parsed);
+            commit('user', recordedText);
+            log.append('user', recordedText);
 
             // Clear imperative email prose takes the same evidence-first route
             // as /email. Questions ABOUT writing email remain normal prompts.
@@ -624,6 +628,11 @@ export function App({
                     // report what two local files say would be slower and less
                     // reliable than reading them.
                     commit('notice', describeConnectors());
+                    return;
+                }
+                if (command.name === 'commons') {
+                    const commons = await commonsCommand(parsed.args);
+                    commit(commons.ok ? 'notice' : 'error', commons.text);
                     return;
                 }
                 if (command.name === 'clear') {
@@ -1068,7 +1077,7 @@ export function App({
                 await compactSession('');
             }
         },
-        [carryOver, clearLingerTimers, commit, compactSession, exit, goal, mouseEnabled, runMetaEval, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills]
+        [carryOver, clearLingerTimers, commit, commonsCommand, compactSession, exit, goal, mouseEnabled, runMetaEval, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills]
     );
     submitRef.current = submit;
 

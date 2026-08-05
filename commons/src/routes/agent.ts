@@ -3,11 +3,8 @@ import { Hono } from 'hono';
 import { D1MutationExecutor, MutationGuardError } from '../auth/mutation-guard';
 import { requireDatabase } from '../db';
 import type { AppEnv } from '../env';
-import { agentAuth } from '../middleware/agent-auth';
 
 const routes = new Hono<AppEnv>();
-
-routes.use('/agent/v1/*', agentAuth);
 
 routes.post('/agent/v1/heartbeat', async (context) => {
   const database = requireDatabase(context.env.DB);

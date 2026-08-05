@@ -81,6 +81,7 @@ CREATE TABLE issue_clusters (
   id TEXT PRIMARY KEY,
   network_id TEXT NOT NULL REFERENCES networks(id),
   organization_id TEXT,
+  scope_key TEXT NOT NULL DEFAULT 'network',
   issue_key TEXT NOT NULL,
   title TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved', 'suppressed')),
@@ -88,7 +89,7 @@ CREATE TABLE issue_clusters (
   resolved_at INTEGER,
   suppressed_at INTEGER,
   UNIQUE(network_id, id),
-  UNIQUE(network_id, issue_key),
+  UNIQUE(network_id, scope_key, issue_key),
   FOREIGN KEY(network_id, organization_id) REFERENCES organizations(network_id, id)
 );
 

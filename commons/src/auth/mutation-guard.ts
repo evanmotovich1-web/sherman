@@ -51,17 +51,22 @@ export class D1MutationExecutor {
     return Boolean(row);
   }
 
+  async replay(auth: AuthenticatedAgent): Promise<MutationResult | null> {
+    const now = this.clock();
+    const prior = await this.prior(auth);
+    if (!prior || prior.expiresAt < now) return null;
+    if (!exactRetry(auth, prior)) throw new MutationGuardError('idempotency_conflict');
+    return { replayed: true, resultType: prior.resultType, resultId: prior.resultId };
+  }
+
   async execute(
     auth: AuthenticatedAgent,
-    operation: D1PreparedStatement,
+    operation: D1PreparedStatement | D1PreparedStatement[],
     result: { type: string; id: string },
   ): Promise<MutationResult> {
     const now = this.clock();
-    const prior = await this.prior(auth);
-    if (prior && prior.expiresAt >= now) {
-      if (!exactRetry(auth, prior)) throw new MutationGuardError('idempotency_conflict');
-      return { replayed: true, resultType: prior.resultType, resultId: prior.resultId };
-    }
+    const replay = await this.replay(auth);
+    if (replay) return replay;
 
     const statements = [
       this.database.prepare('DELETE FROM used_nonces WHERE device_id = ? AND expires_at < ?').bind(auth.deviceId, now),
@@ -80,7 +85,7 @@ export class D1MutationExecutor {
         auth.method, auth.requestTarget, auth.bodySha256, result.type, result.id,
         now, now + 604_800,
       ),
-      operation,
+      ...(Array.isArray(operation) ? operation : [operation]),
     ];
 
     try {

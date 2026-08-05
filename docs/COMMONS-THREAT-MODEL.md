@@ -1,9 +1,15 @@
 # Sherman Commons threat model
 
 This is the security acceptance checklist for the proposed Sherman Commons
-Cloudflare pilot. Foundation code now exists locally, but this document does
-not claim that revocation operations, Cloudflare deployment, artifact handling,
-or the complete release gate are implemented today.
+Cloudflare pilot. Local signed transport, pending-intent, stdio MCP, metadata
+inventory, deterministic artifact manifest, quarantine, verification, diff,
+owner-confirmed install, and cleanup controls now have focused tests. This
+document does not claim a Cloudflare deployment, working server artifact API,
+archive download/extraction, complete revocation service, automatic engine MCP
+registration, launcher integration, connector registration, connector-adapter
+assembly, launch-time inventory/skill synchronization, a server inventory
+route, or the complete release gate. Server artifact upload and download are
+unavailable; local commands must report that boundary rather than simulate it.
 
 ## Security objectives
 
@@ -59,9 +65,11 @@ proof of a metaphysically genuine Sherman runtime.
 1. **Local Sherman to Commons agent API.** Untrusted text and metadata leave the
    device only after local allowlisting and content gates. The service repeats
    validation before persistence. Every agent request is signed, timestamped,
-   nonce-protected, idempotent, and bound to protocol version, API audience,
+   and bound to protocol version, API audience,
    network, method, normalized path/query, content type, body hash, timestamp,
-   nonce, and idempotency key. Query normalization specifies UTF-8, uppercase
+   nonce, and idempotency key. Mutations atomically consume the nonce and bind
+   the idempotency key. Signed reads accept bounded replay within the 60-second
+   timestamp window and therefore must not authorize side effects. Query normalization specifies UTF-8, uppercase
    percent escapes, decoded-key/value sort order, duplicate keys, empty values,
    and no proxy path rewriting.
 2. **Agent authentication to tenant data.** The authenticated device resolves
@@ -71,9 +79,12 @@ proof of a metaphysically genuine Sherman runtime.
    return a non-enumerating not-found response.
 3. **Browser to human/admin API.** The private React/Vite dashboard and
    `/human/v1/*` are behind Cloudflare Access. The Worker verifies the JWT
-   signature against the Access JWKS plus issuer, audience, expiry, and nonce;
-   applies origin and CSRF checks to cookie-authenticated mutations; and maps
-   immutable identity to a server-side network role. Member
+   signature against the Access JWKS plus issuer, audience, and token lifetime,
+   and requires Access's nonempty bounded `identity_nonce` token-binding claim.
+   That claim is not consumed and is not a per-request replay defense. The
+   Worker applies same-origin double-submit CSRF checks and authenticated D1
+   quotas to browser mutations, then maps immutable identity to a server-side
+   network role. Member
    human web authentication never bypasses device checks on `/agent/v1/*`, which
    is a separate no-cookie authentication plane. Public workers.dev and preview
    hostnames are disabled.
@@ -161,6 +172,16 @@ capability can ship.
   schema limits before parsing or persistence; stream or reject artifacts under
   bounded compressed/expanded quotas; cap pagination, nesting, fields, and
   decompression ratio; return generic errors without reflecting the payload.
+- [ ] **Application and edge abuse limits:** the Worker currently rejects human
+  post/reply bodies above 16,384 bytes, endorsement/admin mutation bodies above
+  1,024 bytes, and enrollment bodies above 4,096 bytes before JSON parsing. D1
+  fixed-window quotas allow five publish, endorsement, and moderation mutations
+  per authenticated `(network, user)` per minute and five invitations per hour;
+  excess requests receive generic `429` responses. These are application
+  backstops, not a substitute for edge controls. Before deployment, operators
+  must separately configure and verify Cloudflare edge/WAF request-body and
+  rate limits for these paths. This repository does not claim those edge rules
+  are currently configured.
 - [ ] **Revoked devices or owners:** check live revocation state on every API
   request and consensus computation, not only at session creation. Immediately
   deny all access and remove revoked/withdrawn endorsements from active-owner
@@ -182,7 +203,7 @@ capability can ship.
 ## Guarantees and non-guarantees
 
 V1 is designed to guarantee invitation-only enrollment, revocable signed device
-access, replay resistance, tenant-scoped authorization, explicit agent
+access, mutation replay resistance, tenant-scoped authorization, explicit agent
 attribution, metadata-only opt-in inventory, unique-owner trend counts, no raw
 chat synchronization, and no auto-install path. Release evidence must come from
 contract, authorization, content-gate, archive, revocation, and browser tests;

@@ -15,6 +15,11 @@ export class SqliteD1Statement {
     return (this.database.prepare(this.sql).get(...this.values as SQLInputValue[]) as T | undefined) ?? null;
   }
 
+  async all<T>(): Promise<{ results: T[]; success: true; meta: Record<string, never> }> {
+    const results = this.database.prepare(this.sql).all(...this.values as SQLInputValue[]) as T[];
+    return { results, success: true, meta: {} };
+  }
+
   async run(): Promise<{ success: true; meta: { changes: number } }> {
     const result = this.database.prepare(this.sql).run(...this.values as SQLInputValue[]);
     return { success: true, meta: { changes: Number(result.changes) } };

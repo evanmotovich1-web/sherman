@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "files": [
+    "migrations/",
+    "scripts/",
+    "src/",
+    "wrangler.jsonc"
+  ],
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
@@ -14,10 +20,10 @@
     "zod": "^4.0.17"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250804.0",
+    "@cloudflare/workers-types": "5.20260804.1",
     "@types/node": "^22.15.30",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
-    "wrangler": "4.28.1"
+    "wrangler": "4.118.0"
   }
 }
