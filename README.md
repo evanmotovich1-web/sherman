@@ -3,9 +3,9 @@
 Sherman Abrams is the operations agent for **Sherman Abrams Labs**, a family
 medical diagnostics company. Type `sherman` in a terminal and the company
 agent appears: a branded shell, a set of company-work skills, and a shared
-company knowledge base (the vault), all layered over a coding CLI you already
-have. Sherman is not its own model or engine — today it runs on the OpenAI
-**Codex** CLI, driven headlessly underneath Sherman's own interface.
+company knowledge base (the vault), all layered over a coding CLI. Sherman is
+not its own model or engine — today it runs either OpenAI **Codex** or Z.AI
+**GLM-5.2** through OpenCode, driven headlessly underneath Sherman's interface.
 
 The skills and the vault are the product. The launcher, shell, and engine
 adapter are the chassis.
@@ -84,6 +84,9 @@ verified there.
 - **Signing in to Codex** — the engine's own browser login runs on first
   launch, on your OpenAI account. Sherman performs no OAuth of its own and
   no installer can do this for you.
+- **Signing in to Z.AI** — OpenCode's private credential prompt stores the API
+  key outside this repo. Run `opencode auth login` and select Z.AI; never put
+  the key in Sherman's config or vault.
 - **Claude Code is not required.** It works only through `sherman --raw`; the
   Claude backend for the Sherman Shell is not built yet.
 
@@ -91,12 +94,13 @@ verified there.
 
 With no `~/.sherman/config.json`, `sherman` runs setup:
 
-1. **Provider.** Codex (OpenAI) is the only working backend today, and the
-   only selectable one. Anthropic is listed as not yet available.
+1. **Provider.** Choose Codex (OpenAI) or Z.AI (GLM-5.2). Sherman installs
+   OpenCode on demand for Z.AI and opens OpenCode's own private sign-in flow.
+   Anthropic remains listed as not yet available.
 2. **Your name.** It becomes your private-memory directory in the vault.
-3. **Model** (optional). Enter keeps the codex default; a name you type is
-   written to codex's own config — the one place codex actually reads it —
-   with a backup, and verified by reading it back.
+3. **Model** (optional for Codex). Enter keeps the Codex default; a name you
+   type is written to Codex's own config, backed up, and verified by reading it
+   back. Z.AI is pinned to the verified `glm-5.2` model catalogue entry.
 4. **Telegram** (optional). Paste a bot token from @BotFather to use Sherman
    from your phone, or skip and connect later.
 
@@ -128,10 +132,14 @@ Sherman the habit: write the fact, sync, and report what actually happened.
 
 ## The safety model
 
-- **Default-deny sandbox.** The engine runs inside the macOS seatbelt
-  sandbox: file writes are confined to the vault and its workspace, and
-  network egress from the engine is denied. This was proven by a test that
-  tried to escape, not assumed.
+- **Default-deny engine boundary.** Codex runs inside its macOS seatbelt
+  sandbox. The Z.AI path disables OpenCode plugins, sharing, and arbitrary
+  shell execution; its path-aware tools may access only the disposable
+  workspace and the named vault, while validated Sherman connectors are
+  translated into a launch-digest-bound OpenCode MCP configuration. User/project
+  OpenCode configuration is isolated, vault symlinks are refused, and read-only
+  turns deny edits and do not start connector processes. This boundary is not
+  Codex's kernel sandbox.
 - **No PHI, ever.** Sherman never requests, accepts, stores, or repeats
   patient-identifying information, and the rule is restated verbatim in the
   assembled adapter on every launch. This is a hard compliance floor, not a

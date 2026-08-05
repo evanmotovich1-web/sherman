@@ -1764,12 +1764,16 @@ echo "20. the wizard cannot sell a dead backend"
 WIZHOME="$TMPHOME/wizard-home"
 mkdir -p "$WIZHOME"
 
-# Answer 2 first (Anthropic, registered unavailable), then 1 (codex). The run
-# must refuse 2 with the reason, re-prompt, and complete on 1 -- selecting the
+# Answer 3 first (Anthropic, registered unavailable), then 1 (codex). The run
+# must refuse 3 with the reason, re-prompt, and complete on 1 -- selecting the
 # unavailable provider may never proceed and may never error after selection.
-wiz_out=$(printf '2\n1\nWiz Tester\n' \
+wiz_out=$(printf '3\n1\nWiz Tester\n' \
     | env HOME="$WIZHOME" PATH="$STUBDIR:$PATH" ./bin/sherman --raw 2>&1)
 wiz_status=$?
+
+printf '%s' "$wiz_out" | grep -q "Z.AI (GLM-5.2)" \
+    && pass "Z.AI GLM-5.2 is listed as an available provider" \
+    || fail "menu does not list Z.AI GLM-5.2"
 
 printf '%s' "$wiz_out" | grep -q "Anthropic (Claude Code) — not available yet" \
     && pass "Anthropic is listed, visibly unavailable" \
@@ -1786,6 +1790,56 @@ else
     [ "$wiz_engine" = "codex" ] \
         && pass "run completed on the available provider (engine=codex)" \
         || fail "engine after refusal+retry is '$wiz_engine', expected 'codex'"
+fi
+
+# Exercise the available Z.AI choice end-to-end with a credential-safe stub:
+# selection, auth detection, adapter assembly, and the raw OpenCode handoff.
+ZAIHOME="$TMPHOME/zai-home"
+ZAI_MARKER="$TMPHOME/zai-opencode-ran"
+mkdir -p "$ZAIHOME" "$STUBDIR"
+cat > "$STUBDIR/opencode" <<ZAI_STUB
+#!/bin/sh
+if [ "\${1:-}" = "--version" ]; then echo 1.18.14; exit 0; fi
+if [ "\${1:-}" = "run" ] && [ "\${2:-}" = "--help" ]; then
+    echo '--pure --format --session --agent'
+    exit 0
+fi
+if [ "\${1:-}" = "auth" ] && [ "\${2:-}" = "list" ]; then
+    echo "\${SHERMAN_TEST_ZAI_AUTH:-Z.AI}"
+    exit 0
+fi
+printf '%s' "\${SHERMAN_MCP_CONFIG_SHA256:-}" > "$ZAI_MARKER"
+exit 0
+ZAI_STUB
+chmod +x "$STUBDIR/opencode"
+zai_out=$(printf '2\nZed Tester\n\n' \
+    | env HOME="$ZAIHOME" PATH="$STUBDIR:$PATH" SHERMAN_NO_FETCH=1 ./bin/sherman --raw 2>&1)
+zai_status=$?
+zai_engine=$(/usr/bin/jq -r '.engine // empty' "$ZAIHOME/.sherman/config.json" 2>/dev/null)
+zai_model_out=$(env HOME="$ZAIHOME" PATH="$STUBDIR:$PATH" ./bin/sherman model 2>&1)
+zai_connector_digest=$(cat "$ZAI_MARKER" 2>/dev/null)
+zai_connector_digest_ok=0
+case "$zai_connector_digest" in
+    ''|*[!0-9a-f]*) ;;
+    *) [ "${#zai_connector_digest}" -eq 64 ] && zai_connector_digest_ok=1 ;;
+esac
+if [ "$zai_status" -eq 0 ] && [ "$zai_engine" = "zai" ] \
+    && [ -f "$ZAI_MARKER" ] \
+    && [ "$zai_connector_digest_ok" -eq 1 ] \
+    && printf '%s' "$zai_model_out" | grep -q 'model: glm-5.2 (pinned by Sherman)' \
+    && grep -q "general OpenCode session" "$ZAIHOME/.sherman/workspace/AGENTS.md" 2>/dev/null; then
+    pass "Z.AI selection authenticates, reports its pinned model, assembles its adapter, and reaches OpenCode"
+else
+    fail "Z.AI wizard path failed (status=$zai_status engine=$zai_engine): $(printf '%s' "$zai_out" | tail -2)"
+fi
+coding_plan_out=$(env HOME="$ZAIHOME" PATH="$STUBDIR:$PATH" \
+    SHERMAN_TEST_ZAI_AUTH='Z.AI Coding Plan' ./bin/sherman model zai 2>&1)
+coding_plan_status=$?
+if [ "$coding_plan_status" -ne 0 ] \
+    && printf '%s' "$coding_plan_out" | grep -q 'Z.AI is not signed in'; then
+    pass "a Coding Plan-only credential is not misrepresented as standard Z.AI API auth"
+else
+    fail "Coding Plan-only auth crossed the standard Z.AI boundary (status=$coding_plan_status)"
 fi
 
 # ----------------------------------------------------------------- check 21 --

@@ -12,7 +12,7 @@
 #   sherman --raw     exec the engine directly, its own chrome, for debugging
 #   sherman update    fast-forward this checkout from its remote
 #   sherman sync      pull + publish the shared vault (wiki, shared memory, inbox)
-#   sherman model     read or set the codex model, verified by read-back
+#   sherman model     choose a provider/model; Codex changes verify by read-back
 #   sherman telegram  the Telegram bridge, same adapter and engine layer as the shell
 #   sherman brief     one headless morning-brief turn; delivers to Telegram when paired
 #
@@ -91,7 +91,8 @@ PLACEHOLDER
 # bash 3.2: plain string + line tools, no associative arrays. No `|` inside
 # any field.
 PROVIDERS='codex|OpenAI (Codex)|codex|available|
-claude|Anthropic (Claude Code)|claude|unavailable|the Claude Code backend is not wired into the Sherman Shell yet; Codex is the only working backend today'
+zai|Z.AI (GLM-5.2)|opencode|available|
+claude|Anthropic (Claude Code)|claude|unavailable|the Claude Code backend is not wired into the Sherman Shell yet; Codex and Z.AI GLM are the working backends today'
 
 provider_count() {
     printf '%s\n' "$PROVIDERS" | grep -c .
@@ -121,6 +122,11 @@ engine_install_hint() {
             echo "Codex is not installed. Install it with:"
             echo
             echo "    npm install -g @openai/codex"
+            ;;
+        zai)
+            echo "OpenCode is not installed. Z.AI GLM uses OpenCode as its agent runtime. Install it with:"
+            echo
+            echo "    npm install -g opencode-ai"
             ;;
     esac
 }
@@ -167,10 +173,76 @@ ensure_linux_codex() {
     return 1
 }
 
+# Z.AI's supported coding-agent path is OpenCode. Heal a missing or WSL-host
+# shim on demand and claim success only after the installed CLI exposes every
+# run flag Sherman's transport requires.
+opencode_is_compatible() {
+    opencode --version >/dev/null 2>&1 || return 1
+    # OpenCode writes help to stderr, so capture both streams for capability
+    # detection instead of treating a healthy install as stale every launch.
+    opencode_help=$(opencode run --help 2>&1) || return 1
+    case "$opencode_help" in *--pure*) ;; *) return 1 ;; esac
+    case "$opencode_help" in *--format*) ;; *) return 1 ;; esac
+    case "$opencode_help" in *--session*) ;; *) return 1 ;; esac
+    case "$opencode_help" in *--agent*) ;; *) return 1 ;; esac
+    return 0
+}
+
+ensure_opencode() {
+    found=$(command -v opencode 2>/dev/null || true)
+    case "$found" in
+        /mnt/*|'') ;;
+        *) opencode_is_compatible && return 0 ;;
+    esac
+    npm_bin=$(command -v npm 2>/dev/null || true)
+    case "$npm_bin" in /mnt/*) npm_bin="" ;; esac
+    if [ -z "$npm_bin" ]; then
+        engine_install_hint zai
+        return 1
+    fi
+    echo "  installing OpenCode for Z.AI GLM (npm install -g opencode-ai) ..."
+    "$npm_bin" install -g opencode-ai >/dev/null 2>&1 || true
+    hash -r 2>/dev/null || true
+    found=$(command -v opencode 2>/dev/null || true)
+    case "$found" in /mnt/*|'') found="" ;; esac
+    if [ -n "$found" ] && opencode_is_compatible; then
+        echo "  ...OpenCode $(opencode --version 2>/dev/null) installed at $found (verified: required run flags present)"
+        return 0
+    fi
+    echo "  OpenCode did not install successfully. Run: npm install -g opencode-ai" >&2
+    return 1
+}
+
+has_zai_auth() {
+    # Coding Plan is a different OpenCode provider/model namespace. This engine
+    # is deliberately the standard Z.AI API path, so do not accept a Coding
+    # Plan-only credential and then fail later at model resolution.
+    opencode auth list 2>/dev/null \
+        | grep -Ei 'Z\.AI|zai' \
+        | grep -Eiv 'Coding Plan|coding-plan' \
+        | grep -q .
+}
+
+ensure_zai_auth() {
+    has_zai_auth && return 0
+    if [ -t 0 ]; then
+        echo
+        echo "Z.AI needs your API key. OpenCode's private credential prompt will open now."
+        echo "Select Z.AI (the standard API provider, not Z.AI Coding Plan)."
+        opencode auth login || return 1
+        has_zai_auth && return 0
+    fi
+    echo "Z.AI is not signed in. Run: opencode auth login" >&2
+    echo "Select Z.AI, enter the key there, then run sherman again." >&2
+    return 1
+}
+
 require_engine() {
     bin=$(engine_binary "$1")
     if [ "$bin" = "codex" ]; then
         ensure_linux_codex || exit 1
+    elif [ "$bin" = "opencode" ]; then
+        ensure_opencode || exit 1
     fi
     if ! command -v "$bin" >/dev/null 2>&1; then
         echo >&2
@@ -797,6 +869,7 @@ assemble_adapter() {
     case "$engine" in
         claude) template="$ROOT/adapters/claude-code/CLAUDE.md"; out="$WORKSPACE/CLAUDE.md" ;;
         codex)  template="$ROOT/adapters/codex/AGENTS.md";        out="$WORKSPACE/AGENTS.md" ;;
+        zai)    template="$ROOT/adapters/opencode/AGENTS.md";     out="$WORKSPACE/AGENTS.md" ;;
         *)
             echo "Unknown engine in config: $engine" >&2
             exit 1
@@ -992,6 +1065,20 @@ BODY
     if command -v node >/dev/null 2>&1; then
         node "$ROOT/shell/bin/sherman-commons.js" --reconcile-mcp "$engine" "$WORKSPACE" || true
     fi
+
+    # Bind OpenCode to the connector bytes this launcher just rendered. The
+    # Shell snapshots only a matching file, so a later model edit cannot turn
+    # into an executable MCP server on the next turn.
+    unset SHERMAN_MCP_CONFIG_SHA256
+    if [ "$engine" = "zai" ] && [ -f "$WORKSPACE/.mcp.json" ] \
+        && command -v node >/dev/null 2>&1; then
+        SHERMAN_MCP_CONFIG_SHA256=$(node -e '
+const fs = require("node:fs");
+const crypto = require("node:crypto");
+process.stdout.write(crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"));
+' "$WORKSPACE/.mcp.json") || SHERMAN_MCP_CONFIG_SHA256=""
+        export SHERMAN_MCP_CONFIG_SHA256
+    fi
 }
 
 # --------------------------------------------------------------------- main --
@@ -1055,6 +1142,16 @@ run_model_picker() {
         picked=$(provider_field "$reply" 1)
     done
 
+    if [ "$picked" = "zai" ]; then
+        ensure_opencode || exit 1
+        ensure_zai_auth || exit 1
+        config_set engine zai
+        echo "  provider: Z.AI"
+        echo "  model: glm-5.2 (via OpenCode)"
+        echo "  saved and verified. Run sherman to start."
+        exit 0
+    fi
+
     ensure_linux_codex || exit 1
     if ! command -v codex >/dev/null 2>&1; then
         engine_install_hint codex
@@ -1075,6 +1172,7 @@ run_model_picker() {
         esac
     fi
 
+    config_set engine codex
     current=$(read_codex_model)
     echo
     if [ -n "$current" ]; then
@@ -1109,9 +1207,16 @@ run_model_picker() {
 
 if [ "${1:-}" = "model" ]; then
     shift
+    configured_engine=$(config_get engine)
     if [ -z "${1:-}" ]; then
         if [ -t 0 ]; then
             run_model_picker
+        fi
+        if [ "$configured_engine" = "zai" ]; then
+            echo "provider: Z.AI"
+            echo "model: glm-5.2 (pinned by Sherman)"
+            echo "change provider interactively with: sherman model"
+            exit 0
         fi
         current=$(read_codex_model)
         if [ -n "$current" ]; then
@@ -1121,6 +1226,27 @@ if [ "${1:-}" = "model" ]; then
         fi
         echo "change it with: sherman model <name>   (e.g. sherman model gpt-5.6-sol)"
         exit 0
+    fi
+    case "$1" in
+        zai)
+            ensure_opencode || exit 1
+            ensure_zai_auth || exit 1
+            config_set engine zai
+            echo "provider: Z.AI · model: glm-5.2 (verified: Sherman config)"
+            exit 0 ;;
+        codex)
+            ensure_linux_codex || exit 1
+            config_set engine codex
+            echo "provider: OpenAI (Codex) (verified: Sherman config)"
+            exit 0 ;;
+    esac
+    if [ "$configured_engine" = "zai" ]; then
+        if [ "$1" = "glm-5.2" ]; then
+            echo "model: glm-5.2 (already pinned by Sherman)"
+            exit 0
+        fi
+        echo "Z.AI is pinned to glm-5.2. Run 'sherman model' to switch providers." >&2
+        exit 1
     fi
     if write_codex_model "$1"; then exit 0; else exit 1; fi
 fi
@@ -1222,6 +1348,9 @@ case "$cfg_version" in
 esac
 
 require_engine "$ENGINE"
+if [ "$ENGINE" = "zai" ]; then
+    ensure_zai_auth || exit 1
+fi
 
 # Freshen the remote-tracking refs in the background, so the launch panel's
 # update notice can be a real measurement (HEAD..@{upstream} from local refs)

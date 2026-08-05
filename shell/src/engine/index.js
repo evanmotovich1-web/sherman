@@ -6,10 +6,12 @@
 
 import { CodexSession } from './codex.js';
 import { ClaudeSession } from './claude.js';
+import { OpenCodeSession } from './opencode.js';
 
 const BACKENDS = {
     codex: CodexSession,
     claude: ClaudeSession,
+    zai: OpenCodeSession,
 };
 
 /**
@@ -28,4 +30,4 @@ export function selectBackend(config) {
     return new Backend(config);
 }
 
-export { CodexSession, ClaudeSession };
+export { CodexSession, ClaudeSession, OpenCodeSession };

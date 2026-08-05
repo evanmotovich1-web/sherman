@@ -1,8 +1,8 @@
 // The engine seam.
 //
-// Design doc §3 promises Sherman runs on either engine. Phase 1 kept that
-// promise at the persona layer: one agent/SYSTEM.md, two thin adapters. This
-// file keeps it at the UI layer: one EngineSession contract, two thin backends.
+// Design doc §3 promises Sherman is not coupled to one engine. The persona
+// layer keeps one agent/SYSTEM.md with thin adapters; this file keeps the same
+// promise at the UI layer with one contract for every backend.
 //
 // The rule that makes it work is the same rule: NOTHING engine-specific lives
 // here. No codex event names, no claude flags, no JSON shapes from either. A UI
@@ -14,7 +14,7 @@
  * What the status bar needs to describe the session.
  *
  * @typedef {Object} SessionInfo
- * @property {string} engine        'codex' | 'claude'
+ * @property {string} engine        'codex' | 'claude' | 'zai'
  * @property {string} model         display hint only; may be a neutral label
  * @property {string} user
  * @property {string} vaultPath

@@ -1,7 +1,7 @@
 # Sherman design
 
 Sherman Abrams is a company operations agent with one identity, one skill set,
-and one company brain across two interchangeable engines. It is a clean,
+and one company brain across interchangeable engines. It is a clean,
 standalone product: not agentic-os, not Pi machinery, and not a custom model.
 
 The original rationale was drafted 2026-07-25 in Evan's private planning
@@ -16,20 +16,28 @@ carried in this document and in the decisions table below.
         → adapter assembly from wrapper + agent/SYSTEM.md
         → Sherman Shell (the user interface)
         → EngineSession backend
-        → Claude Code or Codex, headless
+        → Claude Code, Codex, or OpenCode with Z.AI GLM, headless
 ```
 
 - The launcher detects configuration, renders the banner, and starts the shell.
 - The wizard's provider choice is the engine choice: Anthropic means Claude
-  Code; OpenAI means Codex. Authentication remains the engine's native OAuth.
+  Code; OpenAI means Codex; Z.AI means GLM through OpenCode. Authentication
+  remains the engine's native credential flow.
 - `agent/SYSTEM.md` is the shared persona. Engine adapters are thin templates;
   the launcher generates the selected workspace adapter on every run.
 - Sherman Shell owns the screen: streaming chat, status, and later the Board.
   Engines are backends, not the visible product chrome.
-- One `EngineSession` interface isolates Claude's streaming JSON/API from
-  Codex's exec/app-server event stream. `sherman --raw` remains a debug escape.
+- One `EngineSession` interface isolates each engine's transport and event
+  stream. `sherman --raw` remains a debug escape.
 - Headless engines receive only the restricted tools needed to search, read,
   and write within their allowed vault scope.
+- Z.AI uses OpenCode's official provider integration with `glm-5.2` pinned.
+  Sherman disables sharing, plugins, arbitrary shell execution, and every
+  external path except the configured vault. Validated Sherman connectors are
+  translated into OpenCode's native MCP schema and bound to the launch digest
+  instead of trusting mutable workspace bytes or forking the registry.
+  Each run isolates user/project OpenCode configuration, refuses vault symlinks,
+  and does not start connector processes for read-only turns.
 
 ### Registries
 
@@ -89,6 +97,7 @@ patient records, named-patient results, or any other PHI.
 | 2026-07-26 | `agent/SYSTEM.md` is the shared source; runtime adapters are generated on launch and disposable. |
 | 2026-08-04 | Sherman Commons is a distinct, gated Cloudflare pilot: a separately deployable Hono Worker/D1 service and Access-protected dashboard, reached by a local signed client and stdio MCP server. “Only Sherman agents” means invited, enrolled, non-revoked members with valid device signatures; open-source client identity is not remotely attested. |
 | 2026-08-04 | Commons never impersonates owners, syncs raw chat, PHI, secrets, vault/private content, or auto-installs peer code. Discovery and metadata-only opt-in inventory sharing remain separate from quarantined, validated, owner-approved adoption. |
+| 2026-08-05 | Add Z.AI GLM-5.2 through its officially supported OpenCode runtime; keep credentials in OpenCode, sharing off, plugins off, shell denied, and external file access limited to the configured vault. |
 
 Still open: the first 3–5 high-value employee tasks, the Phase 4 WhatsApp
 provider (OpenClaw or Twilio), and the long-term company vault Git host.
