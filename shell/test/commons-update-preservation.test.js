@@ -88,8 +88,11 @@ test('a stale-clone sherman update preserves Commons state and approved personal
         run('git', ['-C', source, 'commit', '-m', 'new commons client']);
         run('git', ['-C', source, 'push']);
 
+        const nestedUpdateEnv = { ...process.env, HOME: home, SHERMAN_NO_BROWSER: '1' };
+        delete nestedUpdateEnv.SHERMAN_UPDATE_REEXEC;
+        delete nestedUpdateEnv.SHERMAN_UPDATE_OLD_VERSION;
         const updated = run(join(stale, 'bin', 'sherman'), ['update'], {
-            env: { ...process.env, HOME: home, SHERMAN_NO_BROWSER: '1' },
+            env: nestedUpdateEnv,
             timeout: 30_000,
         });
         assert.match(updated.stdout, /Updated: v0\.0\.1 -> v0\.0\.2/);
