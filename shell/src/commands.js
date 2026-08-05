@@ -200,8 +200,8 @@ export function helpText(name = '') {
         'Sherman commands',
         ...COMMANDS.map((command) => `${command.usage.padEnd(23)} ${command.summary}`),
         '',
-        'Up/down select · Tab completes · ctrl+y copies the last reply · drag selects text normally · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
-        'Mouse capture is off by default so terminal selection works. Launch with SHERMAN_MOUSE=1 to enable click-to-place and wheel scrolling; Shift+drag then selects text.',
+        'Up/down select · Tab completes · wheel scrolls history · ctrl+y copies the last reply · Shift+drag selects text · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
+        'Mouse capture is on because the fullscreen shell has no native terminal scrollback. Set SHERMAN_MOUSE=0 only if your terminal cannot use Shift+drag to bypass capture.',
     ].join('\n');
 }
 

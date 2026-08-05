@@ -3,6 +3,18 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-04 — Fixed: wheel and trackpad scrolling work in the fullscreen CLI
+
+- Sherman again captures mouse-wheel reports by default, so wheel and trackpad
+  gestures browse the shell's real in-session history. The alternate screen has
+  no native terminal scrollback; leaving capture off made those gestures do
+  nothing even though PageUp and Shift+Up still worked.
+- Shift+drag bypasses capture for terminal text selection. Operators whose
+  terminal lacks that standard bypass can launch with `SHERMAN_MOUSE=0`; PageUp,
+  PageDown, Shift+Up, and Shift+Down continue to browse history in that mode.
+- The shell release is now v0.2.5, so `sherman update` reports and installs this
+  hotfix rather than showing a same-version update.
+
 ## 2026-08-04 — Added: update delivers Chrome/computer use, design craft, evidence-first email, and selectable text
 
 - Normal Codex turns now force on the stable in-app browser, external Google

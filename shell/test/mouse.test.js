@@ -167,7 +167,7 @@ test('the shell places the caret from a click and scrolls from the wheel', async
     const oldHome = process.env.HOME;
     const oldMouse = process.env.SHERMAN_MOUSE;
     process.env.HOME = home;
-    process.env.SHERMAN_MOUSE = '1';
+    delete process.env.SHERMAN_MOUSE;
 
     const usage = { input: 0, cachedInput: 0, output: 0, reasoning: 0, total: 0 };
     const session = {
@@ -261,7 +261,47 @@ test('the shell places the caret from a click and scrolls from the wheel', async
     }
 });
 
-test('App leaves terminal mouse reporting off by default so plain drag selects text', async () => {
+test('SHERMAN_MOUSE=0 disables mouse reporting for terminals without a bypass modifier', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-mouse-opt-out-'));
+    const oldHome = process.env.HOME;
+    const oldMouse = process.env.SHERMAN_MOUSE;
+    process.env.HOME = home;
+    process.env.SHERMAN_MOUSE = '0';
+    const usage = { input: 0, cachedInput: 0, output: 0, reasoning: 0, total: 0 };
+    const session = {
+        info: { engine: 'fake', model: 'fake', user: 'test', vaultPath: join(home, 'vault'), contextWindow: 100000 },
+        usage,
+        async *send() { yield { kind: 'turn-end', usage }; },
+        interrupt() {},
+        dispose() {},
+    };
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+    const stdout = new PassThrough();
+    stdout.isTTY = true;
+    stdout.columns = 80;
+    stdout.rows = 24;
+    let raw = '';
+    stdout.on('data', (chunk) => { raw += chunk.toString(); });
+    const instance = render(React.createElement(App, { session, sessionId: 'mouse_opt_out' }), {
+        stdin, stdout, exitOnCtrlC: false, patchConsole: false, interactive: true,
+    });
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.equal(raw.includes(MOUSE_ON), false);
+    } finally {
+        instance.unmount();
+        if (oldMouse === undefined) delete process.env.SHERMAN_MOUSE;
+        else process.env.SHERMAN_MOUSE = oldMouse;
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('App enables terminal mouse reporting by default so the wheel scrolls history', async () => {
     const home = mkdtempSync(join(tmpdir(), 'sherman-mouse-default-'));
     const oldHome = process.env.HOME;
     const oldMouse = process.env.SHERMAN_MOUSE;
@@ -291,7 +331,7 @@ test('App leaves terminal mouse reporting off by default so plain drag selects t
     });
     try {
         await new Promise((resolve) => setTimeout(resolve, 30));
-        assert.equal(raw.includes(MOUSE_ON), false);
+        assert.equal(raw.includes(MOUSE_ON), true);
     } finally {
         instance.unmount();
         if (oldMouse === undefined) delete process.env.SHERMAN_MOUSE;

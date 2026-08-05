@@ -53,15 +53,15 @@ test('registry drives suggestions and help', () => {
     assert.match(helpText('missing'), /Unknown command/);
 });
 
-// Mouse reporting has been on since it shipped, and it takes drag-select away
-// from the terminal for the whole time Sherman is mounted. Shift+drag has
-// always been the way back and was never written down anywhere the operator
-// looks. /help is where they look.
-test('help states the ctrl+y binding and the shift+drag selection override', () => {
+// Fullscreen history has no native terminal scrollback. Sherman must capture
+// the wheel by default, while naming Shift+drag as the terminal-selection bypass
+// and SHERMAN_MOUSE=0 as the escape hatch for terminals that lack one.
+test('help states default wheel scrolling, copy, selection bypass, and mouse opt-out', () => {
     const help = helpText();
     assert.match(help, /ctrl\+y/, '/help does not mention the copy binding');
-    assert.match(help, /drag selects text/i, '/help does not state that normal drag selects text');
-    assert.match(help, /SHERMAN_MOUSE=1/, '/help does not state how to opt into mouse capture');
+    assert.match(help, /wheel scrolls/i, '/help does not state that the wheel scrolls history');
+    assert.match(help, /Shift\+drag selects text/i, '/help does not state the selection bypass');
+    assert.match(help, /SHERMAN_MOUSE=0/, '/help does not state how to opt out of mouse capture');
 
     const copy = helpText('copy');
     assert.match(copy, /ctrl\+y/);
