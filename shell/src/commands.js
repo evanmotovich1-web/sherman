@@ -71,13 +71,13 @@ export const COMMANDS = Object.freeze([
         name: 'copy',
         usage: '/copy',
         summary: "copy the last Sherman reply to the clipboard",
-        detail: 'Copies the reply as plain text — no colour, no rule glyphs, no signature line. Also bound to ctrl+y. Where the clipboard write cannot be verified, the shell says so rather than reporting a copy it cannot prove. To copy anything else, use Shift+drag or type /select to enter terminal selection mode.',
+        detail: 'Copies the reply as plain text — no colour, no rule glyphs, no signature line. Also bound to ctrl+y. Where the clipboard write cannot be verified, the shell says so rather than reporting a copy it cannot prove. Ordinary drag selection is available by default.',
     },
     {
         name: 'select',
         usage: '/select',
-        summary: 'toggle terminal text selection mode',
-        detail: 'Selection mode temporarily releases Sherman mouse capture so ordinary drag and your terminal copy shortcut work. Wheel scrolling pauses while selection mode is active. Type /select again to restore Sherman wheel scrolling.',
+        summary: 'toggle terminal selection and wheel capture',
+        detail: 'Sherman defaults to ordinary terminal text selection. /select toggles mouse capture for wheel scrolling; use it again to return to ordinary drag selection.',
     },
     {
         name: 'clear',
@@ -221,8 +221,8 @@ export function helpText(name = '') {
         'Sherman commands',
         ...COMMANDS.map((command) => `${command.usage.padEnd(23)} ${command.summary}`),
         '',
-        'Up/down select · Tab completes · wheel scrolls history · ctrl+y copies the last reply · Shift+drag selects text · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
-        'If Shift+drag does not select in your terminal, type /select, drag and copy normally, then type /select again to restore wheel scrolling. SHERMAN_MOUSE=0 disables capture from launch.',
+        'Up/down select · Tab completes · drag selects text (Shift+drag also works) · ctrl+y copies the last reply · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
+        'Type /select to toggle wheel capture; type it again to restore ordinary drag selection. SHERMAN_MOUSE=1 enables wheel capture from launch.',
     ].join('\n');
 }
 

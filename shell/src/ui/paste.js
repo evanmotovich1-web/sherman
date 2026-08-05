@@ -1,7 +1,7 @@
 // Bracketed paste, folded into plain text.
 //
-// With mode 2004 armed (see mouse.js — it rides the same terminal-mode
-// lifecycle), a terminal wraps every paste in ESC[200~ … ESC[201~. That wrap
+// With mode 2004 armed (see mouse.js — independently from mouse capture), a
+// terminal wraps every paste in ESC[200~ … ESC[201~. That wrap
 // is the only thing standing between a multi-line paste and a submitted
 // half-prompt: raw pastes arrive as keystrokes, and a chunk boundary landing
 // exactly on a carriage return is Enter as far as any key handler can tell.

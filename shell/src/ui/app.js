@@ -314,13 +314,21 @@ export function App({
     const [click, setClick] = useState(null);
     const clickSeq = useRef(0);
 
-    // A fullscreen alternate buffer has no native terminal scrollback. Mouse
-    // reporting therefore has to be ON by default or an ordinary wheel/trackpad
-    // gesture disappears into an empty alternate-screen history. Shift+drag is
-    // the terminal-selection bypass; SHERMAN_MOUSE=0 is the explicit escape
-    // hatch for terminals that do not implement that bypass.
-    const [mouseEnabled, setMouseEnabled] = useState(() => process.env.SHERMAN_MOUSE !== '0');
-    useEffect(() => (mouseEnabled ? enableMouse(stdout) : undefined), [mouseEnabled, stdout]);
+    // A fullscreen alternate buffer has no native terminal scrollback, but
+    // mouse capture also blocks ordinary text selection in some terminals.
+    // Native selection wins by default; operators can opt into wheel capture
+    // at launch or toggle it for the session with /select.
+    const [mouseEnabled, setMouseEnabled] = useState(() => process.env.SHERMAN_MOUSE === '1');
+    const terminalModes = useRef(null);
+    useEffect(() => {
+        const close = enableMouse(stdout, { mouse: mouseEnabled });
+        terminalModes.current = close;
+        return () => {
+            terminalModes.current = null;
+            close();
+        };
+    }, [stdout]);
+    useEffect(() => terminalModes.current?.setMouse(mouseEnabled), [mouseEnabled]);
 
     useEffect(() => {
         if (!mouseEnabled || !stdin || !isRawModeSupported) return undefined;

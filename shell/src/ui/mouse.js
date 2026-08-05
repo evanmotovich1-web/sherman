@@ -21,15 +21,12 @@ const ESC = '\x1b';
 // 1000: report button presses and releases, including the wheel, and nothing
 // else. Deliberately NOT 1002 or 1003 — motion reporting would deliver a packet
 // per cell the pointer crosses, and this shell has nothing that follows a
-// pointer. 1006: encode those reports as SGR. 2004: bracketed paste, so a
-// multi-line paste arrives wrapped in ESC[200~/201~ instead of as keystrokes
-// whose chunk boundaries can land on a carriage return and submit half a
-// prompt (see paste.js). It rides this module's lifecycle because arming a
-// terminal mode and guaranteeing it off again IS this module.
-export const MOUSE_ON = `${ESC}[?1000h${ESC}[?1006h${ESC}[?2004h`;
-// Disabled in the reverse order, so a terminal that only implements some of
-// the three is never left with another still armed.
-export const MOUSE_OFF = `${ESC}[?2004l${ESC}[?1006l${ESC}[?1000l`;
+// pointer. 1006: encode those reports as SGR. Bracketed paste is intentionally
+// separate: /select may turn mouse capture off, but paste safety must stay on.
+export const MOUSE_ON = `${ESC}[?1000h${ESC}[?1006h`;
+export const MOUSE_OFF = `${ESC}[?1006l${ESC}[?1000l`;
+export const PASTE_ON = `${ESC}[?2004h`;
+export const PASTE_OFF = `${ESC}[?2004l`;
 
 // The signals Ink's own screen restore covers. A handler is registered for each
 // so a mouse-mode reset happens before the process goes away, and each one
@@ -45,30 +42,54 @@ const SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
  * guards; calling it twice is safe, which matters because the normal path calls
  * it on unmount and the exit guard would otherwise call it again.
  */
-export function enableMouse(stdout = process.stdout) {
-    if (!stdout || !stdout.isTTY) return () => {};
+export function enableMouse(stdout = process.stdout, { mouse = true } = {}) {
+    if (!stdout || !stdout.isTTY) {
+        const noop = () => {};
+        noop.setMouse = () => {};
+        return noop;
+    }
 
-    let armed = true;
-    const off = (synchronous = false) => {
-        if (!armed) return;
-        armed = false;
+    let pasteArmed = true;
+    let mouseArmed = mouse;
+    let closed = false;
+    const write = (value, synchronous = false) => {
         try {
             // Exit/signal paths cannot trust a queued stream write to drain.
             // A live mode toggle can and must use the stream itself: that makes
             // the disable part of the terminal's ordered output rather than
             // bypassing Ink on descriptor 1 (which may not be this stdout).
-            if (synchronous) writeSync(stdout.fd ?? 1, MOUSE_OFF);
-            else stdout.write(MOUSE_OFF);
+            if (synchronous) writeSync(stdout.fd ?? 1, value);
+            else stdout.write(value);
         } catch {
             // A closed or redirected descriptor at exit is not worth crashing
             // over; there is no terminal left to repair.
         }
     };
 
-    const onExit = () => { off(true); };
-    const onSignal = (signal) => {
-        off(true);
+    const setMouse = (enabled) => {
+        if (closed || enabled === mouseArmed) return;
+        mouseArmed = enabled;
+        write(enabled ? MOUSE_ON : MOUSE_OFF);
+    };
+
+    const off = (options = {}) => {
+        if (closed) return;
+        if (options?.paste === false) {
+            setMouse(false);
+            return;
+        }
+        closed = true;
+        const value = `${mouseArmed ? MOUSE_OFF : ''}${pasteArmed ? PASTE_OFF : ''}`;
+        mouseArmed = false;
+        pasteArmed = false;
+        if (value) write(value, options === true || options?.synchronous === true);
         detach();
+    };
+    off.setMouse = setMouse;
+
+    const onExit = () => { off({ synchronous: true }); };
+    const onSignal = (signal) => {
+        off({ synchronous: true });
         process.kill(process.pid, signal);
     };
     const handlers = SIGNALS.map((signal) => [signal, () => onSignal(signal)]);
@@ -84,17 +105,15 @@ export function enableMouse(stdout = process.stdout) {
     for (const [signal, handler] of handlers) process.on(signal, handler);
 
     try {
-        stdout.write(MOUSE_ON);
+        stdout.write(`${PASTE_ON}${mouse ? MOUSE_ON : ''}`);
     } catch {
-        off(false);
-        detach();
-        return () => {};
+        off();
+        const noop = () => {};
+        noop.setMouse = () => {};
+        return noop;
     }
 
-    return () => {
-        off(false);
-        detach();
-    };
+    return off;
 }
 
 // `ESC [ < button ; column ; row (M|m)`, matched globally because a fast wheel

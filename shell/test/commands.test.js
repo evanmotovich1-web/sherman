@@ -54,15 +54,14 @@ test('registry drives suggestions and help', () => {
     assert.match(helpText('missing'), /Unknown command/);
 });
 
-// Fullscreen history has no native terminal scrollback. Sherman must capture
-// the wheel by default, while naming Shift+drag as the terminal-selection bypass
-// and SHERMAN_MOUSE=0 as the escape hatch for terminals that lack one.
-test('help states default wheel scrolling, copy, selection bypass, and mouse opt-out', () => {
+// Native terminal selection wins by default. Wheel capture remains an explicit
+// toggle for fullscreen history and an environment opt-in at launch.
+test('help states default selection, copy, wheel toggle, and mouse opt-in', () => {
     const help = helpText();
     assert.match(help, /ctrl\+y/, '/help does not mention the copy binding');
-    assert.match(help, /wheel scrolls/i, '/help does not state that the wheel scrolls history');
-    assert.match(help, /Shift\+drag selects text/i, '/help does not state the selection bypass');
-    assert.match(help, /SHERMAN_MOUSE=0/, '/help does not state how to opt out of mouse capture');
+    assert.match(help, /drag selects text/i, '/help does not state default terminal selection');
+    assert.match(help, /\/select to toggle wheel capture/i, '/help does not state how to enable wheel capture');
+    assert.match(help, /SHERMAN_MOUSE=1/, '/help does not state how to opt into mouse capture');
 
     const copy = helpText('copy');
     assert.match(copy, /ctrl\+y/);
@@ -70,7 +69,7 @@ test('help states default wheel scrolling, copy, selection bypass, and mouse opt
     // reading /help copy is the one deciding whether to trust the notice.
     assert.match(copy, /cannot be verified|cannot prove/i);
     const select = helpText('select');
-    assert.match(select, /selection mode/i);
+    assert.match(select, /ordinary terminal text selection/i);
     assert.match(select, /drag/i);
     assert.match(select, /wheel/i);
 });

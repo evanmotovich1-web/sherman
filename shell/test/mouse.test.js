@@ -30,6 +30,8 @@ import { App } from '../src/ui/app.js';
 import {
     MOUSE_OFF,
     MOUSE_ON,
+    PASTE_OFF,
+    PASTE_ON,
     caretForClick,
     enableMouse,
     isMouseSequence,
@@ -45,9 +47,10 @@ const plain = (value) => value.replace(ansi, '');
 // constant in this file any more.
 
 test('SGR 1006 reports parse into presses, releases and wheel notches', () => {
-    // 2004 (bracketed paste) rides the same arming lifecycle — see paste.js.
-    assert.equal(MOUSE_ON, '\x1b[?1000h\x1b[?1006h\x1b[?2004h');
-    assert.equal(MOUSE_OFF, '\x1b[?2004l\x1b[?1006l\x1b[?1000l');
+    assert.equal(MOUSE_ON, '\x1b[?1000h\x1b[?1006h');
+    assert.equal(MOUSE_OFF, '\x1b[?1006l\x1b[?1000l');
+    assert.equal(PASTE_ON, '\x1b[?2004h');
+    assert.equal(PASTE_OFF, '\x1b[?2004l');
 
     // A press and its release are two events, distinguished by the final byte.
     assert.deepEqual(parseMouse('\x1b[<0;12;34M'), [
@@ -139,8 +142,8 @@ setTimeout(() => {}, 5000);
             }
             const written = readFileSync(out, 'utf8');
             assert.ok(
-                written.includes(MOUSE_OFF),
-                `leaving via ${how} left mouse reporting enabled`
+                written.includes(`${MOUSE_OFF}${PASTE_OFF}`),
+                `leaving via ${how} left terminal modes enabled`
             );
         }
     } finally {
@@ -172,7 +175,21 @@ test('explicit mouse cleanup disables reporting through the live terminal stream
     const off = enableMouse(tty);
     off();
     off();
-    assert.deepEqual(writes, [MOUSE_ON, MOUSE_OFF]);
+    assert.deepEqual(writes, [`${PASTE_ON}${MOUSE_ON}`, `${MOUSE_OFF}${PASTE_OFF}`]);
+});
+
+test('selection-mode mouse cleanup leaves bracketed-paste protection armed', () => {
+    const writes = [];
+    const tty = {
+        isTTY: true,
+        fd: 1,
+        write: (chunk) => { writes.push(chunk); return true; },
+    };
+    const off = enableMouse(tty);
+    off({ paste: false });
+    assert.deepEqual(writes, [`${PASTE_ON}${MOUSE_ON}`, MOUSE_OFF]);
+    assert.equal(writes.some((chunk) => chunk.includes(PASTE_OFF)), false);
+    off();
 });
 
 test('the shell places the caret from a click and scrolls from the wheel', async () => {
@@ -180,7 +197,7 @@ test('the shell places the caret from a click and scrolls from the wheel', async
     const oldHome = process.env.HOME;
     const oldMouse = process.env.SHERMAN_MOUSE;
     process.env.HOME = home;
-    delete process.env.SHERMAN_MOUSE;
+    process.env.SHERMAN_MOUSE = '1';
 
     const usage = { input: 0, cachedInput: 0, output: 0, reasoning: 0, total: 0 };
     const session = {
@@ -305,6 +322,7 @@ test('SHERMAN_MOUSE=0 disables mouse reporting for terminals without a bypass mo
     try {
         await new Promise((resolve) => setTimeout(resolve, 30));
         assert.equal(raw.includes(MOUSE_ON), false);
+        assert.equal(raw.includes(PASTE_ON), true);
     } finally {
         instance.unmount();
         if (oldMouse === undefined) delete process.env.SHERMAN_MOUSE;
@@ -314,7 +332,7 @@ test('SHERMAN_MOUSE=0 disables mouse reporting for terminals without a bypass mo
     }
 });
 
-test('App enables terminal mouse reporting by default so the wheel scrolls history', async () => {
+test('App defaults to native terminal selection and /select explicitly toggles wheel capture', async () => {
     const home = mkdtempSync(join(tmpdir(), 'sherman-mouse-default-'));
     const oldHome = process.env.HOME;
     const oldMouse = process.env.SHERMAN_MOUSE;
@@ -344,19 +362,21 @@ test('App enables terminal mouse reporting by default so the wheel scrolls histo
     });
     try {
         await new Promise((resolve) => setTimeout(resolve, 30));
-        assert.equal(raw.includes(MOUSE_ON), true);
-
-        raw = '';
-        stdin.write('/select');
-        await until(() => plain(raw).includes('❯ /select'));
-        stdin.write('\r');
-        await until(() => raw.includes(MOUSE_OFF) && plain(raw).includes('selection mode'));
+        assert.equal(raw.includes(PASTE_ON), true);
+        assert.equal(raw.includes(MOUSE_ON), false);
 
         raw = '';
         stdin.write('/select');
         await until(() => plain(raw).includes('❯ /select'));
         stdin.write('\r');
         await until(() => raw.includes(MOUSE_ON) && plain(raw).includes('wheel scrolling restored'));
+
+        raw = '';
+        stdin.write('/select');
+        await until(() => plain(raw).includes('❯ /select'));
+        stdin.write('\r');
+        await until(() => raw.includes(MOUSE_OFF) && plain(raw).includes('selection mode'));
+        assert.equal(raw.includes(PASTE_OFF), false);
     } finally {
         instance.unmount();
         if (oldMouse === undefined) delete process.env.SHERMAN_MOUSE;

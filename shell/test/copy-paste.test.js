@@ -20,7 +20,7 @@ import { render } from 'ink';
 import chalk from 'chalk';
 
 import { copyText } from '../src/clipboard.js';
-import { MOUSE_ON, MOUSE_OFF } from '../src/ui/mouse.js';
+import { MOUSE_ON, MOUSE_OFF, PASTE_ON, PASTE_OFF } from '../src/ui/mouse.js';
 import { PASTE_BEGIN, PASTE_END, foldPasteChunk } from '../src/ui/paste.js';
 import { Composer } from '../src/ui/Composer.js';
 
@@ -74,9 +74,11 @@ test('a later writer succeeding stops the search', () => {
 
 // -------------------------------------------------------- bracketed paste --
 
-test('mouse arming also arms bracketed paste, and disarms it first', () => {
-    assert.equal(MOUSE_ON, '\x1b[?1000h\x1b[?1006h\x1b[?2004h');
-    assert.equal(MOUSE_OFF, '\x1b[?2004l\x1b[?1006l\x1b[?1000l');
+test('mouse capture and bracketed paste have independent terminal modes', () => {
+    assert.equal(MOUSE_ON, '\x1b[?1000h\x1b[?1006h');
+    assert.equal(MOUSE_OFF, '\x1b[?1006l\x1b[?1000l');
+    assert.equal(PASTE_ON, '\x1b[?2004h');
+    assert.equal(PASTE_OFF, '\x1b[?2004l');
 });
 
 test('foldPasteChunk strips markers and tracks the open paste across chunks', () => {
