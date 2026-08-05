@@ -46,7 +46,7 @@ carried in this document and in the decisions table below.
   as the shell), so setup offers its token and `sherman telegram` runs it.
   WhatsApp has no bridge — Meta's Business API has no honest overnight path —
   so setup does not mention it; a future bridge follows the same pattern
-  rather than growing a second wizard. The Phase 3 always-on hosted bridge
+  rather than growing a second wizard. The Phase 4 always-on hosted bridge
   remains future work; today's bridge runs only while the machine runs it.
 
 ## Memory and access model
@@ -60,7 +60,7 @@ device is visible to that employee, so the vault must never sync there.
 | Private user memory | `memory/private/<user>/` | Only that user's Sherman reads and writes its scope | Admins retain repository custody; agents still obey user scoping | No vault files; the service exposes only the authenticated user's scope |
 
 Phase 1 is an Evan-only local exception: `vault/` lives in this repo and the
-adapter uses a local path. Phase 3 replaces that backend with a network vault
+adapter uses a local path. Phase 4 replaces that backend with a network vault
 service; the agent contract stays the same and server-side credentials enforce
 privacy.
 
@@ -72,8 +72,9 @@ patient records, named-patient results, or any other PHI.
 | Phase | Outcome | State |
 | --- | --- | --- |
 | 1 — Evan-only local prototype | Launcher, wizard, persona, adapter assembly, banner, starter vault, Sherman Shell, and first company skills prove “type `sherman`; the agent appears and knows the business” on one Mac | Shell v7 landed 2026-07-27; launch/chrome rewrite landed 2026-07-28; the first company skills shipped (the set lives in `skills/README.md`) |
-| 2 — Second admin device | Full installer/onboarding, admin vault sync, and the Codex path proven on another admin machine | Not started |
-| 3 — Employees and always-on service | Always-on vault host, scoped vault service, per-user credentials, WhatsApp bridge, and employee onboarding | Not started |
+| 2 — Sherman Commons Cloudflare pilot | Before deployment: approve the invitation-only identity, signed-device, tenant-isolation, PHI/secret risk-reduction, non-impersonation, moderation, and quarantined-adoption gates. Then pilot a separately deployable Hono Worker and D1 API, private React/Vite dashboard behind Cloudflare Access, and local Commons client/stdio MCP server. No raw chat sync and no auto-install. | Architecture and threat model documented 2026-08-04; local implementation is in progress; deployment, enrollment, and pilot evidence do not exist |
+| 3 — Second admin device | Full installer/onboarding, admin vault sync, and the Codex path proven on another admin machine | Not started |
+| 4 — Employees and always-on service | Always-on vault host, scoped vault service, per-user credentials, WhatsApp bridge, and employee onboarding | Not started; Commons enrollment is not employee identity and does not complete the server-scoped vault |
 
 ## Decisions on record
 
@@ -86,6 +87,8 @@ patient records, named-patient results, or any other PHI.
 | 2026-07-26 | For the local prototype, keep the vault at `<repo>/vault` behind a configurable path instead of creating a second repo immediately. |
 | 2026-07-26 | Sherman owns the UI. The shell drives both engines headlessly through one backend interface. |
 | 2026-07-26 | `agent/SYSTEM.md` is the shared source; runtime adapters are generated on launch and disposable. |
+| 2026-08-04 | Sherman Commons is a distinct, gated Cloudflare pilot: a separately deployable Hono Worker/D1 service and Access-protected dashboard, reached by a local signed client and stdio MCP server. “Only Sherman agents” means invited, enrolled, non-revoked members with valid device signatures; open-source client identity is not remotely attested. |
+| 2026-08-04 | Commons never impersonates owners, syncs raw chat, PHI, secrets, vault/private content, or auto-installs peer code. Discovery and metadata-only opt-in inventory sharing remain separate from quarantined, validated, owner-approved adoption. |
 
-Still open: the first 3–5 high-value employee tasks, the Phase 3 WhatsApp
+Still open: the first 3–5 high-value employee tasks, the Phase 4 WhatsApp
 provider (OpenClaw or Twilio), and the long-term company vault Git host.

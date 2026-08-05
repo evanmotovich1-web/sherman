@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sherman-commons",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-04",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "NETWORK_ID": "local",
+    "API_AUDIENCE": "https://replace-before-deploy.invalid"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sherman-commons-test",
+      "database_id": "replace-before-deploy",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

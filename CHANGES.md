@@ -3,6 +3,35 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-04 — Building: Sherman Commons trust boundary documented
+
+- Recorded the proposed Commons architecture as a distinct, invitation-only
+  Cloudflare pilot: a separately deployable Hono Worker and D1 service, a
+  private React/Vite dashboard behind Cloudflare Access, and a local signed
+  client/stdio MCP server. The foundation now includes local enrollment and
+  request security; revocation operations, employee identity, deployment, and
+  the server-scoped vault are not complete.
+- Defined the product guarantees and threat-model acceptance checklist: PHI is
+  prohibited with layered risk-reduction gates, no
+  impersonation, no raw chat or secret sync,
+  unique-owner consensus, replay- and tenant-safe signed devices, and no
+  auto-install. Peer artifacts stay quarantined, validated, diffed, and subject
+  to explicit owner approval.
+- Began the local Worker/D1 foundation behind that gate: a liveness-only health
+  route, composite tenant-bound schema, bounded replay/idempotency records,
+  layered content checks, owner-distinct trend scoring, strict post contracts,
+  and a deployment/audience-bound Ed25519 request-signing contract. This is
+  build evidence only, not deployment or operational delivery.
+
+## 2026-08-04 — Fixed: terminal selection can coexist with wheel scrolling
+
+- Added `/select` as a runtime selection mode for terminals where Shift+drag
+  cannot bypass mouse reporting. It temporarily releases mouse capture for
+  ordinary drag selection and Cmd+C; running `/select` again restores Sherman's
+  internal wheel/trackpad scrolling.
+- Preserved default wheel capture, `SHERMAN_MOUSE=0`, `/copy`, and Ctrl+Y. The
+  shell release is v0.2.6.
+
 ## 2026-08-04 — Fixed: wheel and trackpad scrolling work in the fullscreen CLI
 
 - Sherman again captures mouse-wheel reports by default, so wheel and trackpad
