@@ -32,6 +32,9 @@ test('read-only requests change real sandbox posture without writable roots', ()
     assert.equal(args.some((arg) => arg.includes('writable_roots')), false);
     assert.equal(args.includes('plan safely'), true);
     assert.equal(args.some((arg) => arg.includes('dangerously')), false);
+    assert.ok(args.includes('features.computer_use=true'));
+    assert.ok(args.includes('features.browser_use=true'));
+    assert.ok(args.includes('features.browser_use_external=true'));
 
     const isolated = instance._argsFor({
         text: 'plan without host tools', mode: 'isolated-read-only', source: 'plan',
@@ -65,6 +68,11 @@ test('read-only requests change real sandbox posture without writable roots', ()
     const normal = instance._argsFor('answer normally');
     assert.ok(normal.includes('sandbox_mode="workspace-write"'));
     assert.ok(normal.some((arg) => arg.includes('writable_roots')));
+    assert.ok(normal.includes('features.browser_use=true'));
+    assert.ok(normal.includes('features.browser_use_external=true'));
+    assert.ok(normal.includes('features.computer_use=true'));
+    assert.equal(isolated.includes('features.browser_use=true'), false);
+    assert.equal(isolated.includes('features.computer_use=true'), false);
 });
 
 test('extracts configured MCP names without reading values', () => {

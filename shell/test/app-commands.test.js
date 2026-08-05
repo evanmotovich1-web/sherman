@@ -750,7 +750,7 @@ test('/email drafts through the engine and reports the open honestly', async () 
         { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
     );
 
-    type(stdin, '/email tell the lab the analyzers are back up', 40);
+    type(stdin, 'write the lab an email saying the analyzers are back up', 40);
 
     try {
         // Off a TTY Ink defers frames until unmount, so the wait watches disk:
@@ -961,6 +961,61 @@ test('App dispatches slash-skill invocations and still rejects unknown commands'
         assert.match(plain(captured), /Unknown command \/nosuchskill/);
     } finally {
         instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('/email shows a multiple-choice box for a new recipient and resumes with the selection', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-shell-email-choice-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+    process.env.SHERMAN_NO_BROWSER = '1';
+    const requests = [];
+    const replies = [
+        JSON.stringify({
+            question: 'How should this email sound for this new recipient?',
+            choices: ['Concise professional', 'Warm professional', 'Formal'],
+        }),
+        JSON.stringify({ to: 'new@example.com', subject: 'Hello', body: 'Warm draft.' }),
+    ];
+    const session = {
+        info: { engine: 'fake', model: 'mail', user: 'test', vaultPath: join(home, 'vault'), threadId: null, contextWindow: 100000 },
+        usage: zeroUsage(),
+        async *send(request) {
+            requests.push(request);
+            yield { kind: 'turn-start' };
+            yield { kind: 'message', text: replies.shift() };
+            yield { kind: 'turn-end', usage: zeroUsage() };
+        },
+        interrupt() {}, dispose() {},
+    };
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+    const stdout = new PassThrough();
+    stdout.isTTY = true;
+    stdout.columns = 100;
+    stdout.rows = 30;
+    let captured = '';
+    stdout.on('data', (chunk) => { captured += chunk.toString(); });
+    const instance = render(React.createElement(App, { session, sessionId: 'email_choice' }), {
+        stdin, stdout, exitOnCtrlC: false, patchConsole: false, interactive: true,
+    });
+    try {
+        type(stdin, '/email introduce me to the new vendor', 40);
+        await until(() => plain(captured).includes('How should this email sound'));
+        stdin.write('\x1b[B');
+        stdin.write('\r');
+        await until(() => requests.length === 2);
+        assert.match(requests[1].text, /Warm professional/);
+        assert.match(requests[1].text, /New-recipient tone choice/);
+        await until(() => plain(captured).includes('Warm draft.'));
+    } finally {
+        instance.unmount();
+        delete process.env.SHERMAN_NO_BROWSER;
         process.env.HOME = oldHome;
         rmSync(home, { recursive: true, force: true });
     }

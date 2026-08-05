@@ -9,6 +9,7 @@ import chalk from 'chalk';
 import { COMMANDS } from '../src/commands.js';
 import { CommandMenu } from '../src/ui/CommandMenu.js';
 import { Composer } from '../src/ui/Composer.js';
+import { ChoiceBox } from '../src/ui/ChoiceBox.js';
 import { LaunchScreen, markScaleFor } from '../src/ui/LaunchScreen.js';
 import { markSize } from '../src/ui/Mark.js';
 import { StatusBar } from '../src/ui/StatusBar.js';
@@ -32,6 +33,19 @@ const plain = (value) => value.replace(ansi, '');
 const rawRows = (value) => plain(value).split('\n');
 const contentRows = (value) => rawRows(value).filter(Boolean);
 const maxWidth = (value) => Math.max(0, ...rawRows(value).map((line) => stringWidth(line)));
+
+test('ChoiceBox renders a bounded question with one visibly selected option', () => {
+    const output = plain(renderToString(React.createElement(ChoiceBox, {
+        question: 'How should this sound?',
+        choices: ['Concise professional', 'Warm professional', 'Formal'],
+        selected: 1,
+        width: 60,
+    })));
+    assert.match(output, /How should this sound\?/);
+    assert.match(output, /› Warm professional/);
+    assert.match(output, /↑↓ choose · Enter continue/);
+    assert.ok(maxWidth(output) <= 60);
+});
 
 const pause = (ms = 25) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -140,10 +154,10 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         }
     }
 
-    // 41, not 40: the rim and ground shadow made the wordmark two rows taller,
-    // and at 40 rows the list budget now (honestly) caps a category row, so 40
-    // and 43 are no longer the same frame. Hug-invariance is asserted between
-    // two heights where no cap applies.
+    // With the expanded built-in skill/tool set, the list budget now spends
+    // each additional available row revealing another real category. The
+    // below-threshold panel therefore grows from 41 to 43 rather than freezing
+    // its registry at the smaller viewport's cap.
     const at41 = plain(renderToString(
         React.createElement(LaunchScreen, {
             info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 41,
@@ -163,9 +177,10 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         }),
         { columns: 120 }
     ));
-    // Below the tall threshold the panel still hugs its content, unchanged: 41
-    // and 43 rows must render the identical frame.
-    assert.equal(at43, at41, 'below the tall threshold the launch panel must still hug content');
+    assert.ok(
+        at43.split('\n').length > at41.split('\n').length,
+        'extra pre-stretch rows should reveal more of the real registry'
+    );
     // At and above it the panel claims a share of the height, so a 60-row
     // terminal gets a taller frame than a 40-row one — and still leaves room
     // for the status rule and composer.
@@ -415,14 +430,13 @@ test('the mark scales with the tall panel and stays compact below it', () => {
         'the compact card renders no mark'
     );
     // A hugging panel and the first stretched sizes keep the 12-column mark;
-    // only a panel with 22 inner rows to spare doubles it.
+    // only a panel with 22 inner rows to spare doubles it. The larger built-in
+    // registry consumes the first two stretch rows, moving that point to 46.
     assert.equal(markRun(frame(40)), 10, 'a hugging panel must keep the compact mark');
-    // 44 is the first stretched size, and it now arrives with room to double.
-    // The panel's budget stopped being a share of the terminal (0.75) and became
-    // "the transcript's height minus the chrome", which hands the body every row
-    // the old fraction was leaving on the floor — five blank rows at 120x44.
     assert.equal(markRun(frame(43)), 10, 'below the threshold the panel must hug and stay compact');
-    assert.equal(markRun(frame(44)), 20, 'the first stretched size now has room to double');
+    assert.equal(markRun(frame(44)), 10, 'the first stretched size still spends its rows on registry truth');
+    assert.equal(markRun(frame(45)), 10, 'one row short must not clip a doubled mark');
+    assert.equal(markRun(frame(46)), 20, 'the first body with enough room doubles the mark');
     assert.equal(markRun(frame(60)), 20, 'a tall panel must render the doubled mark');
 
     // Doubled means magnified, not redrawn: twice the rows as well as twice the
@@ -438,21 +452,15 @@ test('the mark scales with the tall panel and stays compact below it', () => {
     assert.match(plain(frame(60)), /████ {16}████/);
     assert.match(plain(frame(60)), /██████ {12}██████/);
 
-    // The scale now flips at the tall threshold itself, 43 -> 44: below it the
-    // panel hugs its content, and the first stretched size already has the 22
-    // rows the doubled art needs. This flip has moved twice and both moves are
-    // recorded rather than quietly absorbed — 45/46 originally, 49/50 once the
-    // Available Tools and Skills lists made the knowledge column taller, and
-    // 43/44 now that the panel claims the chrome-adjusted height instead of a
-    // fraction of the terminal.
-    //
-    // The frame grows by four rows across this flip, which is the slack the old
-    // 0.75 share was leaving unspent, not the mark pushing the panel open: the
-    // budget is still settled before the mark is sized.
-    assert.equal(markRun(frame(43)), 10);
-    assert.equal(markRun(frame(44)), 20);
+    // The mark scale now flips at 45 -> 46. The frame itself begins stretching
+    // at 44; the next two rows are legitimately occupied by the larger
+    // capability registry before the doubled art can fit without clipping.
+    // The frame grows only by the row the viewport actually added; the mark
+    // changes scale inside a budget settled before the art is sized.
+    assert.equal(markRun(frame(45)), 10);
+    assert.equal(markRun(frame(46)), 20);
     assert.ok(
-        rawRows(frame(44)).length > rawRows(frame(43)).length,
+        rawRows(frame(46)).length > rawRows(frame(45)).length,
         'the stretched panel should be taller than the hugging one'
     );
 });

@@ -6,7 +6,9 @@ import {
     emailRequest,
     goalEnvelope,
     helpText,
+    naturalEmailInstruction,
     parseEmailDraft,
+    parseEmailResult,
     parseSubmission,
     planRequest,
     suggestionsFor,
@@ -58,7 +60,8 @@ test('registry drives suggestions and help', () => {
 test('help states the ctrl+y binding and the shift+drag selection override', () => {
     const help = helpText();
     assert.match(help, /ctrl\+y/, '/help does not mention the copy binding');
-    assert.match(help, /Shift\+drag/, '/help does not mention how to select text under mouse mode');
+    assert.match(help, /drag selects text/i, '/help does not state that normal drag selects text');
+    assert.match(help, /SHERMAN_MOUSE=1/, '/help does not state how to opt into mouse capture');
 
     const copy = helpText('copy');
     assert.match(copy, /ctrl\+y/);
@@ -88,6 +91,10 @@ test('goal, plan, and worker envelopes preserve policy boundaries', () => {
 // read-only with the boundary stated, and the parser must be tolerant of a
 // model that ignored "no fence" while staying strict about what a draft IS.
 test('email drafting turn is read-only and its parser refuses non-drafts', () => {
+    assert.equal(naturalEmailInstruction('write Alex an email saying the report is ready'), 'write Alex an email saying the report is ready');
+    assert.equal(naturalEmailInstruction('Please draft an e-mail to the vendor'), 'Please draft an e-mail to the vendor');
+    assert.equal(naturalEmailInstruction('How do I write a good email?'), null);
+    assert.equal(naturalEmailInstruction('write a parser for email headers'), null);
     assert.equal(emailRequest('', 'goal'), null);
 
     const request = emailRequest('tell the lab the analyzers are back up', 'ship safely');
@@ -95,6 +102,12 @@ test('email drafting turn is read-only and its parser refuses non-drafts', () =>
     assert.equal(request.source, 'email');
     assert.match(request.text, /no-PHI rule/);
     assert.match(request.text, /Never invent a recipient/);
+    assert.match(request.text, /Sent mail/i);
+    assert.match(request.text, /correspondence/i);
+    assert.match(request.text, /browser|Chrome/i);
+    assert.match(request.text, /question/i);
+    assert.match(request.text, /New-recipient tone choice/);
+    assert.match(request.text, /never ask the same question again/i);
     assert.match(request.text, /Standing session goal: ship safely/);
 
     const draft = parseEmailDraft('{"to": "lab@example.com", "subject": "Analyzers", "body": "They are back up."}');
@@ -109,4 +122,19 @@ test('email drafting turn is read-only and its parser refuses non-drafts', () =>
     assert.equal(parseEmailDraft('{"to": broken'), null);
     assert.equal(parseEmailDraft('{"to": "a@b.c", "subject": "S", "body": ""}'), null);
     assert.equal(parseEmailDraft(null), null);
+
+    const question = parseEmailResult(JSON.stringify({
+        question: 'How should this sound?',
+        choices: ['Concise professional', 'Warm professional', 'Casual and direct'],
+    }));
+    assert.deepEqual(question, {
+        kind: 'question',
+        question: 'How should this sound?',
+        choices: ['Concise professional', 'Warm professional', 'Casual and direct'],
+    });
+    assert.deepEqual(
+        parseEmailResult('{"to":"a@b.c","subject":"S","body":"B"}'),
+        { kind: 'draft', draft: { to: 'a@b.c', subject: 'S', body: 'B' } }
+    );
+    assert.equal(parseEmailResult('{"question":"Q","choices":[]}'), null);
 });

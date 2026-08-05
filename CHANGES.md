@@ -3,6 +3,27 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-04 — Added: update delivers Chrome/computer use, design craft, evidence-first email, and selectable text
+
+- Normal Codex turns now force on the stable in-app browser, external Google
+  Chrome, and computer-use feature gates; isolated read-only workers still
+  force them off. Browser openings prefer Google Chrome on macOS and fall back
+  to the system default only when Chrome cannot open the target.
+- Eleven bundled skills add motion vocabulary, Apple and design-engineering
+  principles, animation discovery/improvement/review, UI-library selection,
+  popular web-design patterns, computer use, evidence-first email writing, and
+  disciplined tool execution. Because update replaces the repo and the launcher
+  copies every bundled skill into the engine workspace, one `sherman update`
+  makes the whole set discoverable on the next launch.
+- “Write Alex an email” now enters the same first-party flow as `/email`: inspect
+  Sent mail for the operator's voice, inspect all accessible correspondence with
+  the recipient, and draft from that evidence. A recipient with no prior thread
+  produces one bounded tone question in an arrow-key multiple-choice box, then
+  resumes the draft. Gmail compose is opened in Chrome but never sent.
+- Terminal mouse capture is now opt-in with `SHERMAN_MOUSE=1`, so ordinary drag
+  selection and terminal copy work by default. `/copy` and ctrl+y remain the
+  one-step way to copy the last reply.
+
 ## 2026-08-03 — Changed: a corrupt config self-heals; `sherman update` repairs it too
 
 - The launch flow no longer tells a person to delete a file the script can

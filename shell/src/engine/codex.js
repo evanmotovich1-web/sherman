@@ -234,6 +234,15 @@ const ISOLATED_TOOL_OVERRIDES = Object.freeze([
     'features.tool_suggest=false',
 ]);
 
+// Codex 0.146.0 exposes these as stable host tools. Force them on for Sherman
+// turns so a machine gains Chrome and computer use from `sherman update`
+// without a separate config edit. Isolated workers still force them off.
+const NORMAL_HOST_TOOL_OVERRIDES = Object.freeze([
+    'features.browser_use=true',
+    'features.browser_use_external=true',
+    'features.computer_use=true',
+]);
+
 export class CodexSession extends EngineSession {
     /** @param {import('../config.js').ShermanConfig} config */
     constructor(config) {
@@ -342,6 +351,11 @@ export class CodexSession extends EngineSession {
                 '-c',
                 `sandbox_workspace_write.writable_roots=["${this._config.vaultPath}"]`
             );
+        }
+        if (mode !== 'isolated-read-only') {
+            for (const override of NORMAL_HOST_TOOL_OVERRIDES) {
+                args.push('-c', override);
+            }
         }
         if (mode === 'isolated-read-only') {
             for (const override of ISOLATED_TOOL_OVERRIDES) {

@@ -75,7 +75,16 @@
       "summary": "reach outside the company",
       "tools": [
         { "name": "web_search", "verify": "engine" },
+        { "name": "browser", "verify": "engine" },
+        { "name": "google_chrome", "verify": "engine" },
         { "name": "connectors", "verify": "command" }
+      ]
+    },
+    {
+      "name": "desktop",
+      "summary": "see and operate browser and desktop interfaces",
+      "tools": [
+        { "name": "computer_use", "verify": "engine" }
       ]
     },
     {

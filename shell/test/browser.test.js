@@ -51,10 +51,16 @@ test('openUrl walks the platform ladder and reports what actually ran', () => {
         return { status: next };
     };
 
-    // macOS: `open` exits 0 and that is the whole story.
+    // macOS: Google Chrome is preferred explicitly, then the default browser.
     calls.length = 0;
     const mac = openUrl('https://mail.google.com/x', { run: runner([0]), platform: 'darwin' });
-    assert.deepEqual(mac, { ok: true, method: 'open', reason: null });
+    assert.deepEqual(mac, { ok: true, method: 'open -a Google Chrome', reason: null });
+    assert.deepEqual(calls[0], ['open', '-a']);
+
+    calls.length = 0;
+    const macFallback = openUrl('https://mail.google.com/x', { run: runner([1, 0]), platform: 'darwin' });
+    assert.deepEqual(macFallback, { ok: true, method: 'open', reason: null });
+    assert.equal(calls.length, 2);
 
     // WSL: wslview is absent, powershell.exe carries it.
     calls.length = 0;
@@ -114,7 +120,7 @@ test('openPath translates for WSL and refuses non-paths', () => {
     };
 
     const mac = openPath('/Users/e/.sherman/win/win-1.html', { run: runner([0]), platform: 'darwin' });
-    assert.deepEqual(mac, { ok: true, method: 'open', reason: null });
+    assert.deepEqual(mac, { ok: true, method: 'open -a Google Chrome', reason: null });
 
     calls.length = 0;
     const err = new Error('spawn wslview ENOENT');

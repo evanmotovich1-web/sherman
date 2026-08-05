@@ -14,6 +14,7 @@ import { enableMouse, parseMouse } from './mouse.js';
 import { color, ACTIVITY_GLYPH } from './theme.js';
 import { StatusBar } from './StatusBar.js';
 import { Composer } from './Composer.js';
+import { ChoiceBox } from './ChoiceBox.js';
 import { Thinking, activityBudget } from './Thinking.js';
 import { ActivityLine } from './ActivityLine.js';
 import { copyNotice, copyText, lastReplyText } from '../clipboard.js';
@@ -31,7 +32,8 @@ import {
     goalEnvelope,
     helpText,
     metaEvalRequest,
-    parseEmailDraft,
+    naturalEmailInstruction,
+    parseEmailResult,
     parseSubmission,
     planRequest,
     shouldAutoCompact,
@@ -240,6 +242,8 @@ export function App({
     const [activities, setActivities] = useState([]);
     const [lifecycle, setLifecycle] = useState(null);
     const [goal, setGoal] = useState('');
+    const [pendingEmail, setPendingEmail] = useState(null);
+    const [emailChoice, setEmailChoice] = useState(0);
 
     // ------------------------------------------------------------ scrollback --
     // How many rows above the live tail the transcript is parked. 0 follows the
@@ -307,10 +311,11 @@ export function App({
     const [click, setClick] = useState(null);
     const clickSeq = useRef(0);
 
-    useEffect(() => enableMouse(stdout), [stdout]);
+    const mouseEnabled = process.env.SHERMAN_MOUSE === '1';
+    useEffect(() => (mouseEnabled ? enableMouse(stdout) : undefined), [mouseEnabled, stdout]);
 
     useEffect(() => {
-        if (!stdin || !isRawModeSupported) return undefined;
+        if (!mouseEnabled || !stdin || !isRawModeSupported) return undefined;
         const onData = (chunk) => {
             const events = parseMouse(String(chunk));
             if (events.length === 0) return;
@@ -328,7 +333,7 @@ export function App({
         };
         stdin.on('data', onData);
         return () => { stdin.off('data', onData); };
-    }, [stdin, isRawModeSupported, scroll]);
+    }, [mouseEnabled, stdin, isRawModeSupported, scroll]);
 
     const [usage, setUsage] = useState(() => session.usage ?? emptyUsage());
     // The engine's latest measured live-context size, from 'context' events —
@@ -566,6 +571,13 @@ export function App({
             commit('user', text);
             log.append('user', text);
 
+            // Clear imperative email prose takes the same evidence-first route
+            // as /email. Questions ABOUT writing email remain normal prompts.
+            if (parsed.kind === 'prompt') {
+                const instruction = naturalEmailInstruction(parsed.text);
+                if (instruction) parsed = { kind: 'command', name: 'email', args: instruction };
+            }
+
             // A slash that names a SKILL is an invocation, not a typo. It
             // becomes a normal prompt turn — the goal envelope and sandbox
             // apply exactly as if the operator had typed prose — whose text
@@ -665,6 +677,7 @@ export function App({
             // what commits is the readable draft, after the turn.
             let isEmail = false;
             let emailReply = '';
+            let emailInstruction = '';
             // Eval verdicts commit to the transcript like any reply AND
             // accumulate here, so the verdict outlives the session in
             // ~/.sherman/evals/ where /win and the operator can find trends.
@@ -691,6 +704,7 @@ export function App({
                     return;
                 }
                 isEmail = true;
+                emailInstruction = parsed.args;
                 commit('notice', 'drafting turn · read-only · the compose window opens when the draft is ready');
             }
 
@@ -1012,13 +1026,18 @@ export function App({
             }
 
             if (isEmail) {
-                const draft = parseEmailDraft(emailReply);
-                if (!draft) {
+                const result = parseEmailResult(emailReply);
+                if (!result) {
                     // The reply, whatever it was, still belongs to the record —
                     // and no compose window opens on a reply that did not parse.
                     if (emailReply.trim()) commit('message', emailReply);
                     commit('error', 'The draft did not come back in an openable shape, so no compose window was opened.');
+                } else if (result.kind === 'question') {
+                    setEmailChoice(0);
+                    setPendingEmail({ ...result, instruction: emailInstruction });
+                    commit('notice', 'No prior recipient correspondence found · choose a tone to continue.');
                 } else {
+                    const { draft } = result;
                     commit('message', [
                         `To: ${draft.to || '(add the recipient in the compose window)'}`,
                         `Subject: ${draft.subject || '(none)'}`,
@@ -1184,6 +1203,25 @@ export function App({
     // composer already ignores all four, so nothing here steals a keystroke
     // from it.
     useInput((input, key) => {
+        if (pendingEmail) {
+            if (key.upArrow) {
+                setEmailChoice((value) => (value - 1 + pendingEmail.choices.length) % pendingEmail.choices.length);
+                return;
+            }
+            if (key.downArrow) {
+                setEmailChoice((value) => (value + 1) % pendingEmail.choices.length);
+                return;
+            }
+            if (key.return) {
+                const selected = pendingEmail.choices[emailChoice];
+                const instruction = pendingEmail.instruction;
+                setPendingEmail(null);
+                setEmailChoice(0);
+                void submitRef.current(`/email ${instruction}\nNew-recipient tone choice: ${selected}`);
+                return;
+            }
+            return;
+        }
         if (key.pageUp) return scroll(Math.max(1, scrollState.viewport - 1));
         if (key.pageDown) return scroll(-Math.max(1, scrollState.viewport - 1));
         if (key.shift && key.upArrow) return scroll(1);
@@ -1318,9 +1356,17 @@ export function App({
                   vaultOk: vaultStats.ok,
               })
             : null,
+        pendingEmail
+            ? React.createElement(ChoiceBox, {
+                  question: pendingEmail.question,
+                  choices: pendingEmail.choices,
+                  selected: emailChoice,
+                  width: columns,
+              })
+            : null,
         React.createElement(Composer, {
             onSubmit: submit,
-            busy,
+            busy: busy || Boolean(pendingEmail),
             click,
             skills: slashSkills,
         })

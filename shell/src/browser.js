@@ -72,7 +72,10 @@ export function openUrl(url, {
     }
 
     const attempts =
-        platform === 'darwin' ? [['open', [url]]]
+        platform === 'darwin' ? [
+              ['open', ['-a', 'Google Chrome', url], 'open -a Google Chrome'],
+              ['open', [url]],
+          ]
         : (wsl ?? isWsl({ platform })) ? [
               ['wslview', [url]],
               ['powershell.exe', ['-NoProfile', '-Command', `Start-Process '${url}'`]],
@@ -110,7 +113,10 @@ export function openPath(path, {
         ? `\\\\wsl.localhost\\${env.WSL_DISTRO_NAME}${path.replace(/\//g, '\\')}`
         : null;
     const attempts =
-        platform === 'darwin' ? [['open', [path]]]
+        platform === 'darwin' ? [
+              ['open', ['-a', 'Google Chrome', path], 'open -a Google Chrome'],
+              ['open', [path]],
+          ]
         : onWsl ? [
               ['wslview', [path]],
               ...(unc ? [['powershell.exe', ['-NoProfile', '-Command', `Start-Process '${unc.replace(/'/g, "''")}'`]]] : []),
@@ -128,11 +134,11 @@ function attempt(attempts, platform, run) {
     }
 
     const failures = [];
-    for (const [command, args] of attempts) {
+    for (const [command, args, label = command] of attempts) {
         try {
             const result = run(command, args, { stdio: 'ignore', timeout: 15000 });
             if (result && !result.error && result.status === 0) {
-                return { ok: true, method: command, reason: null };
+                return { ok: true, method: label, reason: null };
             }
             failures.push(
                 result?.error

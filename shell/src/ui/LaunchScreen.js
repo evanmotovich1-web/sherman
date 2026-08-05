@@ -173,7 +173,7 @@ function knowledgeRows(stats, registry, caps = null) {
  *
  * Derived from the frame that will actually be drawn rather than from a
  * threshold constant: the launch frame must leave the status rule and the
- * composer their two rows, and the lists are the only part of the panel that
+ * composer's three rows, and the lists are the only part of the panel that
  * can give rows back. Below the point where a section could show a title and
  * even one group, BOTH lists are dropped and the closing tally carries the
  * counts alone — `15 tools · 5 skills` is still the whole truth, and a section
@@ -184,8 +184,11 @@ function knowledgeRows(stats, registry, caps = null) {
 export function listBudget({ height, wordmark, stack, stats, registry }) {
     const full = { tools: null, skills: null };
 
-    // Two rows for the status strip and the composer beneath the frame.
-    const allowedInner = height - 2 - wordmark - LAUNCH_FIXED_ROWS - (stack ? LEFT_ROWS + 1 : 0);
+    // The status strip plus the composer's top border, prompt, and bottom
+    // border. This used to subtract only two and silently borrowed two rows
+    // from persistent chrome; extra registry groups finally exposed the
+    // collision. Use the same CHROME_ROWS contract as tallPanelRows.
+    const allowedInner = height - CHROME_ROWS - wordmark - LAUNCH_FIXED_ROWS - (stack ? LEFT_ROWS + 1 : 0);
     const natural = knowledgeRows(stats, registry, null);
     if (allowedInner >= natural) return full;
 

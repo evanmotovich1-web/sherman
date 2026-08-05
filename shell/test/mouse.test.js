@@ -165,7 +165,9 @@ test('enableMouse is inert without a TTY, so piped runs never change mode', () =
 test('the shell places the caret from a click and scrolls from the wheel', async () => {
     const home = mkdtempSync(join(tmpdir(), 'sherman-mouse-app-'));
     const oldHome = process.env.HOME;
+    const oldMouse = process.env.SHERMAN_MOUSE;
     process.env.HOME = home;
+    process.env.SHERMAN_MOUSE = '1';
 
     const usage = { input: 0, cachedInput: 0, output: 0, reasoning: 0, total: 0 };
     const session = {
@@ -252,6 +254,48 @@ test('the shell places the caret from a click and scrolls from the wheel', async
         });
     } finally {
         instance.unmount();
+        if (oldMouse === undefined) delete process.env.SHERMAN_MOUSE;
+        else process.env.SHERMAN_MOUSE = oldMouse;
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('App leaves terminal mouse reporting off by default so plain drag selects text', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-mouse-default-'));
+    const oldHome = process.env.HOME;
+    const oldMouse = process.env.SHERMAN_MOUSE;
+    process.env.HOME = home;
+    delete process.env.SHERMAN_MOUSE;
+    const usage = { input: 0, cachedInput: 0, output: 0, reasoning: 0, total: 0 };
+    const session = {
+        info: { engine: 'fake', model: 'fake', user: 'test', vaultPath: join(home, 'vault'), contextWindow: 100000 },
+        usage,
+        async *send() { yield { kind: 'turn-end', usage }; },
+        interrupt() {},
+        dispose() {},
+    };
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+    const stdout = new PassThrough();
+    stdout.isTTY = true;
+    stdout.columns = 80;
+    stdout.rows = 24;
+    let raw = '';
+    stdout.on('data', (chunk) => { raw += chunk.toString(); });
+    const instance = render(React.createElement(App, { session, sessionId: 'mouse_default' }), {
+        stdin, stdout, exitOnCtrlC: false, patchConsole: false, interactive: true,
+    });
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.equal(raw.includes(MOUSE_ON), false);
+    } finally {
+        instance.unmount();
+        if (oldMouse === undefined) delete process.env.SHERMAN_MOUSE;
+        else process.env.SHERMAN_MOUSE = oldMouse;
         process.env.HOME = oldHome;
         rmSync(home, { recursive: true, force: true });
     }

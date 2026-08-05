@@ -40,8 +40,8 @@ export const COMMANDS = Object.freeze([
     {
         name: 'email',
         usage: '/email <who to write and what to say>',
-        summary: 'draft an email and open it in your browser, ready to send',
-        detail: 'Runs one read-only turn that drafts the email from your request and company knowledge, then opens a Gmail compose window in your browser with recipient, subject, and body already filled in. Sherman never sends mail — you review the draft and press Send. The no-PHI rule applies to drafts like everything else.',
+        summary: 'learn your email voice, draft, and open it in Chrome ready to send',
+        detail: 'Uses read-only browser/computer tools to inspect your Sent mail for writing patterns, then inspects all available correspondence with the recipient. If there is no prior thread, Sherman asks one tone question in a multiple-choice box. It opens Gmail in Google Chrome with recipient, subject, and body filled in. Sherman never sends mail — you review and press Send. The no-PHI rule applies to drafts and mailbox reading.',
     },
     {
         name: 'win',
@@ -105,6 +105,15 @@ export function parseSubmission(value) {
         name: match[1].toLowerCase(),
         args: (match[2] ?? '').trim(),
     };
+}
+
+/** Route clear imperative prose into the first-party email workflow. */
+export function naturalEmailInstruction(value) {
+    if (typeof value !== 'string') return null;
+    const text = value.trim();
+    if (!/^(?:please\s+)?(?:write|draft|compose)\b/i.test(text)) return null;
+    if (!/\b(?:an?|the)\s+e-?mail\b/i.test(text)) return null;
+    return text;
 }
 
 export function commandFor(name) {
@@ -185,15 +194,8 @@ export function helpText(name = '') {
         'Sherman commands',
         ...COMMANDS.map((command) => `${command.usage.padEnd(23)} ${command.summary}`),
         '',
-        'Up/down select · Tab completes · ctrl+y copies the last reply · Shift+drag selects text (the shell holds the mouse for scrolling) · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
-        // Mouse reporting is on for the whole time the shell is mounted, which
-        // is what lets a click place the caret and the wheel scroll the
-        // transcript -- and it takes drag-select away from the terminal, since
-        // the terminal never sees the drag. Shift+drag is the standard override
-        // and it has worked the entire time; nobody was told. One line here is
-        // the difference between "selection is broken" and "selection has a
-        // modifier".
-        'Shift+drag to select text with the mouse — Sherman uses plain drag for its own clicks.',
+        'Up/down select · Tab completes · ctrl+y copies the last reply · drag selects text normally · ctrl+c interrupts, again to exit · // sends a literal slash prompt',
+        'Mouse capture is off by default so terminal selection works. Launch with SHERMAN_MOUSE=1 to enable click-to-place and wheel scrolling; Shift+drag then selects text.',
     ].join('\n');
 }
 
@@ -549,7 +551,12 @@ export function emailRequest(instruction, goal) {
             `Request: ${instruction}`,
             goal ? `Standing session goal: ${goal}` : null,
             '',
-            'Draft the email this request asks for, using company knowledge from the vault where it helps.',
+            'Use the available Google Chrome/browser/computer-use tools before drafting. In Gmail, inspect Sent mail exhaustively enough to infer the sender\'s stable voice: greetings, sign-offs, sentence length, formality, directness, and recurring wording. Continue through every available page or thread; never claim complete coverage if the mailbox or tool blocked part of it.',
+            'Identify the recipient without guessing an address. Search Gmail for all available correspondence with that person and read the complete accessible history before drafting. Treat mailbox content as private read-only evidence: do not quote it into logs or store it in the vault.',
+            'If there is no prior correspondence with this recipient and the Request does not already include a New-recipient tone choice, do not guess the relationship or tone. Return ONLY this JSON shape so the shell can ask one question in a multiple-choice box:',
+            '{"question":"How should this email sound for this new recipient?","choices":["Concise professional","Warm professional","Casual and direct","Formal"]}',
+            'A New-recipient tone choice in the Request is the operator answering that box. Apply it and draft now; never ask the same question again.',
+            'Otherwise draft the email using company knowledge from the vault where it helps and the sender/recipient evidence above.',
             'Return ONLY a JSON object — no code fence, no prose before or after it:',
             '{"to": "<recipient address, or empty string if the request names none>", "subject": "<subject line>", "body": "<the full email body, plain text>"}',
             'Write the body ready to send: greeting, content, sign-off. Never invent a recipient address — an empty "to" is better than a guessed one.',
@@ -586,6 +593,31 @@ export function parseEmailDraft(text) {
         body: field(parsed.body),
     };
     return draft.body ? draft : null;
+}
+
+/** Parse either a finished draft or the bounded question the email flow needs. */
+export function parseEmailResult(text) {
+    if (typeof text !== 'string') return null;
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+    let parsed;
+    try {
+        parsed = JSON.parse(text.slice(start, end + 1));
+    } catch {
+        return null;
+    }
+    const question = typeof parsed?.question === 'string' ? parsed.question.trim() : '';
+    const choices = Array.isArray(parsed?.choices)
+        ? parsed.choices
+            .filter((choice) => typeof choice === 'string')
+            .map((choice) => choice.trim())
+            .filter(Boolean)
+            .slice(0, 4)
+        : [];
+    if (question && choices.length >= 2) return { kind: 'question', question, choices };
+    const draft = parseEmailDraft(text);
+    return draft ? { kind: 'draft', draft } : null;
 }
 
 export function workerRequest(task, goal) {
