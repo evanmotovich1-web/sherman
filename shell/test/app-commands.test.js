@@ -767,7 +767,7 @@ test('/email drafts through the engine and reports the open honestly', async () 
         await new Promise((resolve) => setTimeout(resolve, 50));
         instance.unmount();
 
-        assert.equal(requests[0].mode, 'read-only');
+        assert.equal(requests[0].mode, 'browser-read-only');
         assert.equal(requests[0].source, 'email');
         assert.match(requests[0].text, /analyzers are back up/);
 

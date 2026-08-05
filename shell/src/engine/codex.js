@@ -234,13 +234,20 @@ const ISOLATED_TOOL_OVERRIDES = Object.freeze([
     'features.tool_suggest=false',
 ]);
 
-// Codex 0.146.0 exposes these as stable host tools. Force them on for Sherman
-// turns so a machine gains Chrome and computer use from `sherman update`
-// without a separate config edit. Isolated workers still force them off.
+// Codex 0.146.0 exposes these as stable host tools. Force them on for normal
+// turns and the email flow's browser-enabled/filesystem-read-only posture so a
+// machine gains Chrome and computer use from `sherman update` without a config
+// edit. Ordinary read-only and isolated turns keep them off.
 const NORMAL_HOST_TOOL_OVERRIDES = Object.freeze([
     'features.browser_use=true',
     'features.browser_use_external=true',
     'features.computer_use=true',
+]);
+
+const DISABLED_HOST_TOOL_OVERRIDES = Object.freeze([
+    'features.browser_use=false',
+    'features.browser_use_external=false',
+    'features.computer_use=false',
 ]);
 
 export class CodexSession extends EngineSession {
@@ -334,7 +341,9 @@ export class CodexSession extends EngineSession {
      * --dangerously-bypass-hook-trust. They defeat the entire posture.
      */
     _postureArgs(mode = 'normal') {
-        const readOnly = mode === 'read-only' || mode === 'isolated-read-only';
+        const readOnly = mode === 'read-only'
+            || mode === 'isolated-read-only'
+            || mode === 'browser-read-only';
         const args = [
             '--json',
             // The workspace is not a git repo and does not need to be.
@@ -352,12 +361,11 @@ export class CodexSession extends EngineSession {
                 `sandbox_workspace_write.writable_roots=["${this._config.vaultPath}"]`
             );
         }
-        if (mode !== 'isolated-read-only') {
+        if (mode === 'normal' || mode === 'browser-read-only') {
             for (const override of NORMAL_HOST_TOOL_OVERRIDES) {
                 args.push('-c', override);
             }
-        }
-        if (mode === 'isolated-read-only') {
+        } else if (mode === 'isolated-read-only') {
             for (const override of ISOLATED_TOOL_OVERRIDES) {
                 args.push('-c', override);
             }
@@ -367,6 +375,10 @@ export class CodexSession extends EngineSession {
             // configuration and its displayed state agree fail-closed.
             for (const key of this._configuredMcpServerKeys) {
                 args.push('-c', `mcp_servers.${key}.enabled=false`);
+            }
+        } else {
+            for (const override of DISABLED_HOST_TOOL_OVERRIDES) {
+                args.push('-c', override);
             }
         }
         return args;
@@ -708,13 +720,14 @@ function normalizeRequest(request) {
     if (!request || typeof request.text !== 'string' || request.text.trim() === '') {
         throw new Error('Engine request needs non-empty text.');
     }
-    return {
-        text: request.text,
-        mode: request.mode === 'read-only' || request.mode === 'isolated-read-only'
-            ? request.mode
-            : 'normal',
-        source: typeof request.source === 'string' ? request.source : 'chat',
-    };
+    const source = typeof request.source === 'string' ? request.source : 'chat';
+    let mode = request.mode === 'read-only'
+        || request.mode === 'isolated-read-only'
+        || request.mode === 'browser-read-only'
+        ? request.mode
+        : 'normal';
+    if (mode === 'browser-read-only' && source !== 'email') mode = 'read-only';
+    return { text: request.text, mode, source };
 }
 
 function toolOutcome(status, phase) {

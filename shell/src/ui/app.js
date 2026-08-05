@@ -1032,6 +1032,8 @@ export function App({
                     // and no compose window opens on a reply that did not parse.
                     if (emailReply.trim()) commit('message', emailReply);
                     commit('error', 'The draft did not come back in an openable shape, so no compose window was opened.');
+                } else if (result.kind === 'error') {
+                    commit('error', result.error);
                 } else if (result.kind === 'question') {
                     setEmailChoice(0);
                     setPendingEmail({ ...result, instruction: emailInstruction });

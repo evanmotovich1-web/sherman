@@ -4,7 +4,7 @@ import { Box, Text } from 'ink';
 import { color } from './theme.js';
 
 export function ChoiceBox({ question, choices, selected = 0, width = 80 }) {
-    const safeWidth = Math.max(16, width);
+    const safeWidth = Math.max(1, width);
     const selectedIndex = Math.max(0, Math.min(selected, choices.length - 1));
     return React.createElement(
         Box,

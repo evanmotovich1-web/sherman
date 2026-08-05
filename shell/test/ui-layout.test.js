@@ -45,6 +45,11 @@ test('ChoiceBox renders a bounded question with one visibly selected option', ()
     assert.match(output, /› Warm professional/);
     assert.match(output, /↑↓ choose · Enter continue/);
     assert.ok(maxWidth(output) <= 60);
+
+    const narrow = renderToString(React.createElement(ChoiceBox, {
+        question: 'Q?', choices: ['One', 'Two'], selected: 0, width: 10,
+    }));
+    assert.ok(maxWidth(narrow) <= 10);
 });
 
 const pause = (ms = 25) => new Promise((resolve) => setTimeout(resolve, ms));

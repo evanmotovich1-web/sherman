@@ -15,11 +15,13 @@ shipped, verified release.
   disciplined tool execution. Because update replaces the repo and the launcher
   copies every bundled skill into the engine workspace, one `sherman update`
   makes the whole set discoverable on the next launch.
-- “Write Alex an email” now enters the same first-party flow as `/email`: inspect
-  Sent mail for the operator's voice, inspect all accessible correspondence with
-  the recipient, and draft from that evidence. A recipient with no prior thread
-  produces one bounded tone question in an arrow-key multiple-choice box, then
-  resumes the draft. Gmail compose is opened in Chrome but never sent.
+- “Write Alex an email” now enters the same first-party flow as `/email`: after
+  a no-PHI preflight, inspect safe non-PHI Sent mail for the operator's voice,
+  inspect safe correspondence with the recipient, and draft from that evidence.
+  Ordinary read-only turns keep host browser/desktop tools disabled. A
+  recipient with no prior thread produces one bounded tone question in an
+  arrow-key multiple-choice box, then resumes the draft. Gmail compose is
+  opened in Chrome but never sent.
 - Terminal mouse capture is now opt-in with `SHERMAN_MOUSE=1`, so ordinary drag
   selection and terminal copy work by default. `/copy` and ctrl+y remain the
   one-step way to copy the last reply.

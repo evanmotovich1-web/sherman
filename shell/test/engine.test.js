@@ -32,9 +32,27 @@ test('read-only requests change real sandbox posture without writable roots', ()
     assert.equal(args.some((arg) => arg.includes('writable_roots')), false);
     assert.equal(args.includes('plan safely'), true);
     assert.equal(args.some((arg) => arg.includes('dangerously')), false);
-    assert.ok(args.includes('features.computer_use=true'));
-    assert.ok(args.includes('features.browser_use=true'));
-    assert.ok(args.includes('features.browser_use_external=true'));
+    assert.equal(args.includes('features.computer_use=true'), false);
+    assert.equal(args.includes('features.browser_use=true'), false);
+    assert.equal(args.includes('features.browser_use_external=true'), false);
+    assert.ok(args.includes('features.computer_use=false'));
+    assert.ok(args.includes('features.browser_use=false'));
+    assert.ok(args.includes('features.browser_use_external=false'));
+
+    const browserReadOnly = instance._argsFor({
+        text: 'inspect non-PHI mail', mode: 'browser-read-only', source: 'email',
+    });
+    assert.ok(browserReadOnly.includes('sandbox_mode="read-only"'));
+    assert.ok(browserReadOnly.includes('features.computer_use=true'));
+    assert.ok(browserReadOnly.includes('features.browser_use=true'));
+    assert.equal(browserReadOnly.some((arg) => arg.includes('writable_roots')), false);
+
+    const forgedBrowserReadOnly = instance._argsFor({
+        text: 'browse from chat', mode: 'browser-read-only', source: 'chat',
+    });
+    assert.ok(forgedBrowserReadOnly.includes('sandbox_mode="read-only"'));
+    assert.ok(forgedBrowserReadOnly.includes('features.browser_use=false'));
+    assert.equal(forgedBrowserReadOnly.includes('features.browser_use=true'), false);
 
     const isolated = instance._argsFor({
         text: 'plan without host tools', mode: 'isolated-read-only', source: 'plan',

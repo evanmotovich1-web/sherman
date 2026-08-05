@@ -111,9 +111,15 @@ export function parseSubmission(value) {
 export function naturalEmailInstruction(value) {
     if (typeof value !== 'string') return null;
     const text = value.trim();
-    if (!/^(?:please\s+)?(?:write|draft|compose)\b/i.test(text)) return null;
-    if (!/\b(?:an?|the)\s+e-?mail\b/i.test(text)) return null;
-    return text;
+    const match = text.match(/^(?:please\s+)?(?:write|draft|compose)\s+(.+)$/i);
+    if (!match) return null;
+    const target = match[1];
+    const artifact = /\b(?:parser|template|component|validation|regex|function|script|code|client|sender|service|class|method|test|schema)\b/i;
+    const direct = target.match(/^(?:an?|the)\s+e-?mail(?:\s+([\s\S]+))?$/i);
+    if (direct) return artifact.test(direct[1] ?? '') ? null : text;
+
+    const personFirst = target.match(/^(.+)\s+(?:an?|the)\s+e-?mail(?:$|\s+(?:to|for|saying|about|asking|requesting|that|thanking|confirming|reminding|letting|telling|following|congratulating|inviting|notifying)\b)/i);
+    return personFirst && !artifact.test(personFirst[1]) ? text : null;
 }
 
 export function commandFor(name) {
@@ -551,8 +557,10 @@ export function emailRequest(instruction, goal) {
             `Request: ${instruction}`,
             goal ? `Standing session goal: ${goal}` : null,
             '',
-            'Use the available Google Chrome/browser/computer-use tools before drafting. In Gmail, inspect Sent mail exhaustively enough to infer the sender\'s stable voice: greetings, sign-offs, sentence length, formality, directness, and recurring wording. Continue through every available page or thread; never claim complete coverage if the mailbox or tool blocked part of it.',
-            'Identify the recipient without guessing an address. Search Gmail for all available correspondence with that person and read the complete accessible history before drafting. Treat mailbox content as private read-only evidence: do not quote it into logs or store it in the vault.',
+            'PHI PREFLIGHT — before opening any message, determine from the account context and non-content metadata whether this mailbox and requested correspondence are clearly non-clinical and non-PHI. Never open a message that may contain patient-identifying information. If the mailbox or thread cannot be screened as non-PHI without reading message content, stop and return ONLY {"error":"Mailbox history cannot be inspected without risking PHI."}. The no-PHI rule cannot be waived.',
+            'Only after that preflight passes, use the available Google Chrome/browser/computer-use tools. In Gmail, inspect non-PHI Sent mail exhaustively enough to infer the sender\'s stable voice: greetings, sign-offs, sentence length, formality, directness, and recurring wording. Continue through every available safe page or thread; never claim complete coverage if the mailbox or tool blocked or excluded part of it.',
+            'Identify the recipient without guessing an address. Search Gmail for all available safe non-PHI correspondence with that person and read that accessible history before drafting. Treat mailbox content as private evidence: do not quote it into logs or store it in the vault.',
+            'Never use browser tools to create or mutate mail: do not send, delete, archive, label, edit, or open a compose window. Return JSON only. After this turn, the Sherman shell may open one prefilled Gmail compose URL, which can cause Gmail to autosave one draft; that single draft is the requested and only permitted mailbox side effect.',
             'If there is no prior correspondence with this recipient and the Request does not already include a New-recipient tone choice, do not guess the relationship or tone. Return ONLY this JSON shape so the shell can ask one question in a multiple-choice box:',
             '{"question":"How should this email sound for this new recipient?","choices":["Concise professional","Warm professional","Casual and direct","Formal"]}',
             'A New-recipient tone choice in the Request is the operator answering that box. Apply it and draft now; never ask the same question again.',
@@ -562,7 +570,7 @@ export function emailRequest(instruction, goal) {
             'Write the body ready to send: greeting, content, sign-off. Never invent a recipient address — an empty "to" is better than a guessed one.',
             'Never put patient-identifying information in an email draft. The Sherman operating contract and no-PHI rule remain authoritative.',
         ].filter(Boolean).join('\n'),
-        mode: 'read-only',
+        mode: 'browser-read-only',
         source: 'email',
     };
 }
@@ -607,6 +615,8 @@ export function parseEmailResult(text) {
     } catch {
         return null;
     }
+    const error = typeof parsed?.error === 'string' ? parsed.error.trim().slice(0, 240) : '';
+    if (error) return { kind: 'error', error };
     const question = typeof parsed?.question === 'string' ? parsed.question.trim() : '';
     const choices = Array.isArray(parsed?.choices)
         ? parsed.choices

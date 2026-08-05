@@ -95,10 +95,17 @@ test('email drafting turn is read-only and its parser refuses non-drafts', () =>
     assert.equal(naturalEmailInstruction('Please draft an e-mail to the vendor'), 'Please draft an e-mail to the vendor');
     assert.equal(naturalEmailInstruction('How do I write a good email?'), null);
     assert.equal(naturalEmailInstruction('write a parser for email headers'), null);
+    assert.equal(naturalEmailInstruction('write an email parser'), null);
+    assert.equal(naturalEmailInstruction('draft an email template component'), null);
+    assert.equal(naturalEmailInstruction('compose an email validation regex'), null);
+    assert.equal(naturalEmailInstruction('write a function to send an email'), null);
+    assert.equal(naturalEmailInstruction('write an email thanking Alex for the report'), 'write an email thanking Alex for the report');
+    assert.equal(naturalEmailInstruction('draft Bob an email that confirms receipt'), 'draft Bob an email that confirms receipt');
+    assert.equal(naturalEmailInstruction('compose an email reminding the team about Friday'), 'compose an email reminding the team about Friday');
     assert.equal(emailRequest('', 'goal'), null);
 
     const request = emailRequest('tell the lab the analyzers are back up', 'ship safely');
-    assert.equal(request.mode, 'read-only');
+    assert.equal(request.mode, 'browser-read-only');
     assert.equal(request.source, 'email');
     assert.match(request.text, /no-PHI rule/);
     assert.match(request.text, /Never invent a recipient/);
@@ -106,6 +113,8 @@ test('email drafting turn is read-only and its parser refuses non-drafts', () =>
     assert.match(request.text, /correspondence/i);
     assert.match(request.text, /browser|Chrome/i);
     assert.match(request.text, /question/i);
+    assert.match(request.text, /Never use browser tools to create or mutate mail/);
+    assert.match(request.text, /autosave one draft/);
     assert.match(request.text, /New-recipient tone choice/);
     assert.match(request.text, /never ask the same question again/i);
     assert.match(request.text, /Standing session goal: ship safely/);
@@ -137,4 +146,8 @@ test('email drafting turn is read-only and its parser refuses non-drafts', () =>
         { kind: 'draft', draft: { to: 'a@b.c', subject: 'S', body: 'B' } }
     );
     assert.equal(parseEmailResult('{"question":"Q","choices":[]}'), null);
+    assert.deepEqual(
+        parseEmailResult('{"error":"Mailbox history cannot be inspected without risking PHI."}'),
+        { kind: 'error', error: 'Mailbox history cannot be inspected without risking PHI.' }
+    );
 });
