@@ -84,9 +84,11 @@ verified there.
 - **Signing in to Codex** — the engine's own browser login runs on first
   launch, on your OpenAI account. Sherman performs no OAuth of its own and
   no installer can do this for you.
-- **Signing in to Z.AI** — OpenCode's private credential prompt stores the API
-  key outside this repo. Run `opencode auth login` and select Z.AI; never put
-  the key in Sherman's config or vault.
+- **Signing in to Z.AI** — choosing Z.AI in Sherman opens a Z.AI-only API-key
+  prompt through OpenCode, the local coding runtime. Paste your standard Z.AI
+  key—not an OpenRouter or Coding Plan key. The credential stays outside this
+  repo. The direct command is `opencode auth login --pure --provider zai`;
+  never put the key in Sherman's config or vault.
 - **Claude Code is not required.** It works only through `sherman --raw`; the
   Claude backend for the Sherman Shell is not built yet.
 

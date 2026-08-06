@@ -185,6 +185,9 @@ opencode_is_compatible() {
     case "$opencode_help" in *--format*) ;; *) return 1 ;; esac
     case "$opencode_help" in *--session*) ;; *) return 1 ;; esac
     case "$opencode_help" in *--agent*) ;; *) return 1 ;; esac
+    auth_help=$(opencode auth login --help 2>&1) || return 1
+    case "$auth_help" in *--provider*) ;; *) return 1 ;; esac
+    case "$auth_help" in *--pure*) ;; *) return 1 ;; esac
     return 0
 }
 
@@ -227,13 +230,14 @@ ensure_zai_auth() {
     has_zai_auth && return 0
     if [ -t 0 ]; then
         echo
-        echo "Z.AI needs your API key. OpenCode's private credential prompt will open now."
-        echo "Select Z.AI (the standard API provider, not Z.AI Coding Plan)."
-        opencode auth login || return 1
+        echo "Z.AI GLM needs your standard Z.AI API key."
+        echo "Paste that key in the prompt below — not an OpenRouter key and not a Coding Plan key."
+        echo "OpenCode is only the local coding runtime; Sherman is opening its Z.AI-only key prompt."
+        opencode auth login --pure --provider zai || return 1
         has_zai_auth && return 0
     fi
-    echo "Z.AI is not signed in. Run: opencode auth login" >&2
-    echo "Select Z.AI, enter the key there, then run sherman again." >&2
+    echo "Z.AI is not signed in. Run: opencode auth login --pure --provider zai" >&2
+    echo "Paste your standard Z.AI API key there, then run sherman again." >&2
     return 1
 }
 

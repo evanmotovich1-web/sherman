@@ -1812,6 +1812,10 @@ if [ "\${1:-}" = "run" ] && [ "\${2:-}" = "--help" ]; then
     echo '--pure --format --session --agent'
     exit 0
 fi
+if [ "\${1:-}" = "auth" ] && [ "\${2:-}" = "login" ] && [ "\${3:-}" = "--help" ]; then
+    echo '--pure --provider'
+    exit 0
+fi
 if [ "\${1:-}" = "auth" ] && [ "\${2:-}" = "list" ]; then
     echo "\${SHERMAN_TEST_ZAI_AUTH:-Z.AI}"
     exit 0
@@ -1835,8 +1839,9 @@ if [ "$zai_status" -eq 0 ] && [ "$zai_engine" = "zai" ] \
     && [ -f "$ZAI_MARKER" ] \
     && [ "$zai_connector_digest_ok" -eq 1 ] \
     && printf '%s' "$zai_model_out" | grep -q 'model: glm-5.2 (pinned by Sherman)' \
+    && grep -q 'opencode auth login --pure --provider zai' bin/sherman \
     && grep -q "general OpenCode session" "$ZAIHOME/.sherman/workspace/AGENTS.md" 2>/dev/null; then
-    pass "Z.AI selection authenticates, reports its pinned model, assembles its adapter, and reaches OpenCode"
+    pass "Z.AI selection targets its direct key prompt, reports its pinned model, assembles its adapter, and reaches OpenCode"
 else
     fail "Z.AI wizard path failed (status=$zai_status engine=$zai_engine): $(printf '%s' "$zai_out" | tail -2)"
 fi
