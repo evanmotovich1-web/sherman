@@ -1794,6 +1794,14 @@ fi
 
 # Exercise the available Z.AI choice end-to-end with a credential-safe stub:
 # selection, auth detection, adapter assembly, and the raw OpenCode handoff.
+if [ "${SHERMAN_UPDATE_RUNNING:-}" = "1" ]; then
+    # `sherman update` is already a launcher process running this release gate.
+    # Starting another provider launcher here can block forever on platform CLI
+    # resolution (observed twice on the Windows/WSL route). Standalone smoke —
+    # the release/commit gate — still runs both end-to-end probes below.
+    pass "self-update does not recursively launch the Z.AI raw handoff"
+    pass "self-update does not recursively run the Z.AI auth namespace probe"
+else
 ZAIHOME="$TMPHOME/zai-home"
 ZAI_MARKER="$TMPHOME/zai-opencode-ran"
 mkdir -p "$ZAIHOME" "$STUBDIR"
@@ -1840,6 +1848,7 @@ if [ "$coding_plan_status" -ne 0 ] \
     pass "a Coding Plan-only credential is not misrepresented as standard Z.AI API auth"
 else
     fail "Coding Plan-only auth crossed the standard Z.AI boundary (status=$coding_plan_status)"
+fi
 fi
 
 # ----------------------------------------------------------------- check 21 --
