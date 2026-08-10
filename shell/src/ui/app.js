@@ -7,6 +7,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdin, useStdout, useWindowSize } from 'ink';
+import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { Transcript } from './Transcript.js';
 import { historyLabel, scrollBy } from './scrollback.js';
@@ -24,6 +27,7 @@ import { readVaultStats } from '../vault.js';
 import { loadRegistry } from '../registry.js';
 import { createSessionLog } from '../sessionlog.js';
 import {
+    agentRequest,
     carryOverEnvelope,
     commandFor,
     compactRequest,
@@ -33,6 +37,7 @@ import {
     helpText,
     metaEvalRequest,
     naturalEmailInstruction,
+    parseAgentMention,
     parseEmailResult,
     parseSubmission,
     planRequest,
@@ -54,6 +59,11 @@ import { runCommonsCommand } from '../commons/command.js';
 // not one — items keep their identity while the array in front of them grows.
 let seq = 0;
 const nextId = () => `i${seq++}`;
+
+// Resolved from THIS file, never process.cwd() — at runtime the cwd is the
+// engine's workspace, not the repo. Same reasoning as LaunchScreen.js. /update
+// launches the repo's own launcher, which owns the whole update flow.
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 // Rows a single wheel notch moves the transcript. Three is the conventional
 // terminal notch; it is fed through the same clamped scroll the keys use, so it
@@ -188,6 +198,9 @@ export function App({
     // no skill rows — the palette must not advertise what the loader could not
     // verify exists.
     const slashSkills = registry.skills.ok ? registry.skills.list : [];
+    // The roster an @-mention resolves against, under the same contract: an
+    // unreadable agent registry means no @-routing, never a guessed harness.
+    const atAgents = registry.agents?.ok ? registry.agents.list : [];
     const [items, setItems] = useState(() => [
         {
             id: nextId(),
@@ -421,6 +434,53 @@ export function App({
         commit(result.ok ? 'notice' : 'error', copyNotice(result, text.split('\n').length));
     }, [clipboard, commit, stdout]);
 
+    // /update runs the launcher's own update flow in a background child, so
+    // the shell stays usable while the pull, npm ci, provisioner repairs, and
+    // smoke suite run. One at a time, and the result is committed only from
+    // what the child actually printed — the same honesty rule as everywhere
+    // else: "updated" is claimed by the flow that verified it, never here.
+    const updateRunningRef = useRef(false);
+    const runUpdate = useCallback(() => {
+        if (updateRunningRef.current) {
+            commit('notice', 'an update is already running — its result prints here when it lands');
+            return;
+        }
+        updateRunningRef.current = true;
+        commit('notice', 'updating · pulling this checkout forward, reconciling dependencies, and running the smoke suite · the shell stays usable meanwhile');
+        let child;
+        try {
+            child = spawn(join(REPO_ROOT, 'bin', 'sherman'), ['update'], {
+                stdio: ['ignore', 'pipe', 'pipe'],
+                env: process.env,
+            });
+        } catch (err) {
+            updateRunningRef.current = false;
+            commit('error', `update could not start: ${err?.message ?? String(err)}`);
+            return;
+        }
+        let output = '';
+        const collect = (chunk) => {
+            output += String(chunk);
+            // Smoke output is long; keep a bounded tail rather than the session's memory.
+            if (output.length > 200_000) output = output.slice(-100_000);
+        };
+        child.stdout?.on('data', collect);
+        child.stderr?.on('data', collect);
+        child.on('error', (err) => {
+            updateRunningRef.current = false;
+            commit('error', `update could not start: ${err?.message ?? String(err)}`);
+        });
+        child.on('close', (code) => {
+            updateRunningRef.current = false;
+            const tail = output.trim().split('\n').slice(-12).join('\n');
+            if (code === 0) {
+                commit('notice', `${tail}\n\nrestart sherman to run the updated code`);
+            } else {
+                commit('error', `update failed (exit ${code}):\n${tail}`);
+            }
+        });
+    }, [commit]);
+
     /** Add engine output to this turn's running character count. */
     const addStreamed = useCallback((text) => {
         if (typeof text !== 'string' || text.length === 0) return;
@@ -595,6 +655,24 @@ export function App({
                 if (instruction) parsed = { kind: 'command', name: 'email', args: instruction };
             }
 
+            // A leading @name is an agent call, resolved against the loaded
+            // roster. A name the roster does not carry is answered with the
+            // roster, not silently sent to the engine as a typo-shaped prompt.
+            let agentCall = null;
+            if (parsed.kind === 'prompt') {
+                const mention = parseAgentMention(parsed.text, atAgents);
+                if (mention && !mention.agent) {
+                    const roster = atAgents.map((a) => `@${a.name}`).join(', ');
+                    commit('error', `No agent named @${mention.name}.${roster ? ` Agents: ${roster}.` : ' No agents are loaded.'}`);
+                    return;
+                }
+                if (mention && !mention.task) {
+                    commit('error', `Usage: @${mention.name} <task> — ${mention.agent.specialty}.`);
+                    return;
+                }
+                if (mention) agentCall = mention;
+            }
+
             // A slash that names a SKILL is an invocation, not a typo. It
             // becomes a normal prompt turn — the goal envelope and sandbox
             // apply exactly as if the operator had typed prose — whose text
@@ -628,6 +706,10 @@ export function App({
                     commit('notice', next
                         ? 'wheel scrolling restored · Shift+drag selects text · /select releases the mouse again'
                         : 'selection mode · drag to select and use your terminal copy shortcut · /select restores wheel scrolling');
+                    return;
+                }
+                if (command.name === 'update') {
+                    runUpdate();
                     return;
                 }
                 if (command.name === 'connectors') {
@@ -825,6 +907,21 @@ export function App({
                 messageKind = 'worker-message';
                 isWorker = true;
                 commit('notice', 'worker 01 · isolated · read-only');
+            }
+
+            // An @-mentioned agent is the /subagent contract with a specialty:
+            // same isolation, same read-only sandbox, plus the roster harness
+            // in front of the task.
+            if (agentCall?.agent) {
+                if (!sessionFactory) {
+                    commit('error', 'This shell cannot create an isolated worker session.');
+                    return;
+                }
+                engine = sessionFactory();
+                request = agentRequest(agentCall.agent, agentCall.task, goal);
+                messageKind = 'worker-message';
+                isWorker = true;
+                commit('notice', `@${agentCall.agent.name} · isolated · read-only · ${agentCall.agent.specialty}`);
             }
 
             // The handoff rides the first request the reset thread receives,
@@ -1085,7 +1182,7 @@ export function App({
                 await compactSession('');
             }
         },
-        [carryOver, clearLingerTimers, commit, commonsCommand, compactSession, exit, goal, mouseEnabled, runMetaEval, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills]
+        [carryOver, clearLingerTimers, commit, commonsCommand, compactSession, exit, goal, mouseEnabled, runMetaEval, runUpdate, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills, atAgents]
     );
     submitRef.current = submit;
 

@@ -1571,7 +1571,7 @@ REGISTRY_JS=$(cat <<'JS'
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { COMMANDS } from './src/commands.js';
-import { loadSkills, loadTools } from './src/registry.js';
+import { loadAgents, loadSkills, loadTools } from './src/registry.js';
 
 const root = new URL('..', import.meta.url).pathname;
 
@@ -1605,7 +1605,14 @@ assert.equal(skills.ok, true, `skills did not load: ${skills.reason}`);
 assert.ok(skills.count > 0, 'no skills found');
 assert.deepEqual(skills.malformed, [], `malformed skills: ${skills.malformed.join(', ')}`);
 
-process.stdout.write(`${tools.count} tools (${engineBacked} engine-backed) · ${skills.count} skills`);
+// The agent roster is hand-maintained like capabilities.json and carries the
+// same rule: every bundled entry must be complete (name, specialty, harness),
+// because an @-mention launches exactly what this file declares.
+const agents = loadAgents(root);
+assert.equal(agents.ok, true, `agent roster did not load: ${agents.reason}`);
+assert.ok(agents.count > 0, 'agent roster declares no agents');
+
+process.stdout.write(`${tools.count} tools (${engineBacked} engine-backed) · ${skills.count} skills · ${agents.count} agents`);
 JS
 )
 

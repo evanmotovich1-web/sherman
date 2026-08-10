@@ -40,7 +40,9 @@ Do not write it:
    - `vault/wiki/` — shared reference, the default for procedures and formats
    - `vault/memory/shared/` — a durable fact not yet worth a full page
    - `vault/memory/private/<user>/` — only the current user's own scope
-5. **Say what you wrote and where.** The person should be able to go read it.
+5. **Link it.** Follow `memory-link`: connect the new fact to the files it
+   touches with `[[wikilinks]]`, both ways, within scope.
+6. **Say what you wrote and where.** The person should be able to go read it.
 
 ## The boundary
 

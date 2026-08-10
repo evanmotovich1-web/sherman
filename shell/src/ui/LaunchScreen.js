@@ -161,9 +161,18 @@ function knowledgeRows(stats, registry, caps = null) {
     const base = (1 + vaultLines) + 1 + 1;
     if (caps && caps.tools === 0 && caps.skills === 0) return base;
 
+    // MCP servers and agents are newer, optional registries: absent from an
+    // injected registry they cost nothing, and under a capped budget they are
+    // dropped whole (cap 0) rather than truncated — each is usually one or two
+    // rows, and half of one would say less than the tally already does.
+    const optionalRows = (result, cap) =>
+        (!result || cap === 0 ? 0 : 1 + registryRows(result, cap));
+
     return (
         registryRows(registry.tools, caps?.tools)
+        + optionalRows(registry.mcp, caps?.mcp)
         + 1 + registryRows(registry.skills, caps?.skills)
+        + optionalRows(registry.agents, caps?.agents)
         + 1 + base
     );
 }
@@ -182,7 +191,7 @@ function knowledgeRows(stats, registry, caps = null) {
  * Returns `{tools, skills}` row caps, or nulls meaning "no limit".
  */
 export function listBudget({ height, wordmark, stack, stats, registry }) {
-    const full = { tools: null, skills: null };
+    const full = { tools: null, skills: null, mcp: null, agents: null };
 
     // The status strip plus the composer's top border, prompt, and bottom
     // border. This used to subtract only two and silently borrowed two rows
@@ -193,14 +202,17 @@ export function listBudget({ height, wordmark, stack, stats, registry }) {
     if (allowedInner >= natural) return full;
 
     const base = knowledgeRows(stats, registry, { tools: 0, skills: 0 });
-    // Each section costs a blank row and a title before its first group.
+    // Each section costs a blank row and a title before its first group. Under
+    // a cap the optional MCP and agent sections are dropped whole (see
+    // knowledgeRows), so only tools and skills bid for the remaining rows —
+    // the tally still carries every count, so nothing is concealed.
     const listRoom = allowedInner - base - 4;
-    if (listRoom < 2) return { tools: 0, skills: 0 };
+    if (listRoom < 2) return { tools: 0, skills: 0, mcp: 0, agents: 0 };
 
     // Split what is left, giving the odd row to tools: it is the longer list,
     // so it is the one that loses most from a cap.
     const skills = Math.floor(listRoom / 2);
-    return { tools: listRoom - skills, skills };
+    return { tools: listRoom - skills, skills, mcp: 0, agents: 0 };
 }
 
 /**
@@ -516,10 +528,15 @@ function Registry({ title, result, width, maxRows = Infinity }) {
  * omitted, exactly as VersionBorder omits a missing sha rather than printing a
  * placeholder. The `/help` hint is unconditional because it is true regardless.
  */
-function Totals({ tools, skills }) {
+function Totals({ tools, skills, mcp = null, agents = null }) {
     const segments = [];
     if (tools.ok) segments.push(plural(tools.count, 'tool'));
+    // "mcp" uninflected on purpose: the tally shares one truncated line with
+    // /help, and "MCP servers" spent the columns that kept /help visible at
+    // 100-column full panels. The section title above carries the full name.
+    if (mcp?.ok) segments.push(`${mcp.count} mcp`);
     if (skills.ok) segments.push(plural(skills.count, 'skill'));
+    if (agents?.ok) segments.push(plural(agents.count, 'agent'));
     segments.push('/help for commands');
 
     return React.createElement(
@@ -609,7 +626,24 @@ function Knowledge({ stats, registry, caps, info, sessionId, width, stretch = fa
                 result: registry.tools,
                 width,
                 maxRows: caps.tools ?? Infinity,
-            }),
+            })
+        );
+        // MCP servers sit between the tools and the skills: what the engine
+        // can reach, then how the work gets done. Optional registries — an
+        // injected registry without them renders exactly as before, and a
+        // capped budget drops them whole (see knowledgeRows).
+        if (registry.mcp && caps.mcp !== 0) {
+            sections.push(
+                React.createElement(Registry, {
+                    key: 'mcp',
+                    title: 'MCP Servers',
+                    result: registry.mcp,
+                    width,
+                    maxRows: caps.mcp ?? Infinity,
+                })
+            );
+        }
+        sections.push(
             React.createElement(Registry, {
                 key: 'skills',
                 title: 'Available Skills',
@@ -618,6 +652,17 @@ function Knowledge({ stats, registry, caps, info, sessionId, width, stretch = fa
                 maxRows: caps.skills ?? Infinity,
             })
         );
+        if (registry.agents && caps.agents !== 0) {
+            sections.push(
+                React.createElement(Registry, {
+                    key: 'agents',
+                    title: 'Agents',
+                    result: registry.agents,
+                    width,
+                    maxRows: caps.agents ?? Infinity,
+                })
+            );
+        }
     }
 
     // The vault line survives the Keys section's removal because it is the one
@@ -641,6 +686,8 @@ function Knowledge({ stats, registry, caps, info, sessionId, width, stretch = fa
             key: 'totals',
             tools: registry.tools,
             skills: registry.skills,
+            mcp: registry.mcp,
+            agents: registry.agents,
         })
     );
 
@@ -800,6 +847,9 @@ function MidPanel({ panel, inner, info, stats, sessionId, registry, tall = false
                     React.createElement(Text, { color: color.accent, bold: true, wrap: 'truncate' }, 'Vault'),
                     React.createElement(Text, { color: color.muted, wrap: 'truncate' }, `  ${vaultLine}`)
                 ),
+                // Tools and skills only, matching the sections this abridged
+                // frame actually shows: its right column is ~36 cells, and the
+                // extra counts would truncate the /help hint off the tally.
                 React.createElement(Totals, { tools: registry.tools, skills: registry.skills })
             )
         )

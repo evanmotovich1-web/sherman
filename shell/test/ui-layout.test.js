@@ -153,9 +153,11 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         } else {
             assert.match(plain(output), /\bVault\b/);
             // The closing tally is unconditional above the compact cutoff: the
-            // Available Tools and Available Skills lists give up rows on a
-            // short terminal, but the counts they summarize never do.
-            assert.match(plain(output), /\d+ tools · \d+ skills · \/help for commands/);
+            // registry lists give up rows on a short terminal, but the counts
+            // they summarize never do. The mcp and agent registries are part
+            // of the tally now, and /help may lose its "for commands" tail to
+            // truncation on a 100-column panel — never the hint itself.
+            assert.match(plain(output), /\d+ tools · \d+ mcp · \d+ skills · \d+ agents · \/help/);
         }
     }
 

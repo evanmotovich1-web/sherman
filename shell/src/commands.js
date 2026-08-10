@@ -80,6 +80,12 @@ export const COMMANDS = Object.freeze([
         detail: 'Sherman defaults to ordinary terminal text selection. /select toggles mouse capture for wheel scrolling; use it again to return to ordinary drag selection.',
     },
     {
+        name: 'update',
+        usage: '/update',
+        summary: 'update Sherman to the latest version and verify it',
+        detail: 'Runs the same flow as `sherman update` in a background process: fast-forward this checkout from its remote, reconcile shell dependencies to the lockfile, repair provisioned tooling (LLM Wiki, Agent Reach), and run the full smoke suite before calling the update healthy. The shell stays usable while it runs and prints the verified result when it lands; restart sherman to run the updated code.',
+    },
+    {
         name: 'clear',
         usage: '/clear',
         summary: 'clear the transcript from the screen',
@@ -359,6 +365,13 @@ export function evalRequest(logPath, { gaps = true, closed = false } = {}) {
             gaps
                 ? 'Then follow the capability-gap skill and propose at most two missing '
                   + 'skills, or none if nothing is supported by the evidence.'
+                : null,
+            gaps
+                ? 'Then follow the agent-eval skill: judge whether any recurring work in '
+                  + 'this session deserves a named @-agent, against the roster in '
+                  + 'agent/agents.json and ~/.sherman/agents/, and propose at most one — '
+                  + 'or none. Propose only; forging is the agent-forge skill\'s job, in '
+                  + 'its own deliberate turn.'
                 : null,
             '',
             'This turn is READ-ONLY. Do not write to the vault, to skills/, or to',
@@ -649,6 +662,48 @@ export function parseEmailResult(text) {
     if (question && choices.length >= 2) return { kind: 'question', question, choices };
     const draft = parseEmailDraft(text);
     return draft ? { kind: 'draft', draft } : null;
+}
+
+/**
+ * An @-mentioned agent submission, or null.
+ *
+ * `@researcher find our COVID panel turnaround SOPs` names the agent and its
+ * task. Only a leading @ counts — an @ in prose is prose — and the name must
+ * match a loaded agent exactly; a near-miss returns the name so the caller can
+ * say which roster it checked, rather than silently sending "@resercher …" to
+ * the engine as a typo-shaped prompt.
+ */
+export function parseAgentMention(value, agents) {
+    const text = String(value ?? '').trimStart();
+    const match = text.match(/^@([a-z0-9][\w-]*)(?:\s+([\s\S]+))?$/i);
+    if (!match) return null;
+    const name = match[1].toLowerCase();
+    const agent = (agents ?? []).find((entry) => entry.name === name) ?? null;
+    return { name, task: (match[2] ?? '').trim(), agent };
+}
+
+/**
+ * The turn for a named agent: the isolated worker contract with the agent's
+ * own harness in front of the task. Same sandbox and same boundaries as
+ * /subagent — a specialty is a lens, never an authority upgrade.
+ */
+export function agentRequest(agent, task, goal) {
+    return {
+        text: [
+            `ISOLATED SHERMAN AGENT — @${agent.name}`,
+            `Specialty: ${agent.specialty}`,
+            '',
+            agent.harness,
+            '',
+            `Task: ${task}`,
+            goal ? `Standing session goal: ${goal}` : null,
+            '',
+            'You are a fresh read-only worker. You do not have the parent conversation. Complete the task within your specialty and return a concise result for the parent operator. Do not edit files or write to the vault.',
+            'The Sherman operating contract, no-PHI rule, and sandbox remain authoritative.',
+        ].filter(Boolean).join('\n'),
+        mode: 'isolated-read-only',
+        source: 'subagent',
+    };
 }
 
 export function workerRequest(task, goal) {

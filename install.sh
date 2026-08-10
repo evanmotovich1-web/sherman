@@ -226,6 +226,51 @@ else
     fi
 fi
 
+# ------------------------------------------------------------ OpenCode CLI --
+# The Z.AI GLM provider runs through OpenCode, so a fresh install should leave
+# BOTH engines launchable — otherwise picking Z.AI in the wizard turns into an
+# install step the wizard has to run mid-question. Same contract as the codex
+# block: install with a non-/mnt npm, link if npm's global bin is off PATH,
+# and claim "installed" only after the CLI answers --version. Optional like
+# the wiki: a machine that cannot have it still deserves a working Sherman.
+linux_opencode() {
+    for c in "$RUNTIME"/node-*/bin/opencode "$TARGET_DIR/opencode"; do
+        [ -x "$c" ] && { printf '%s' "$c"; return 0; }
+    done
+    c=$(command -v opencode 2>/dev/null || true)
+    case "$c" in ''|/mnt/*) return 1 ;; esac
+    printf '%s' "$c"
+}
+
+if opencode_bin=$(linux_opencode) && "$opencode_bin" --version >/dev/null 2>&1; then
+    echo "  opencode CLI found (Z.AI GLM engine; sign-in stays its own)"
+elif [ -n "${SHERMAN_INSTALL_NO_FETCH:-}" ]; then
+    echo "  NOTE: the opencode CLI is missing and network fetches are disabled"
+    echo "        (SHERMAN_INSTALL_NO_FETCH). Nothing was installed."
+    echo "        Install it yourself:  npm install -g opencode-ai"
+elif [ -z "$npm_bin" ]; then
+    echo "  NOTE: the opencode CLI is missing and there is no npm to install it"
+    echo "        with. Once Node 22+ is present, re-run ./install.sh"
+else
+    echo "  installing the opencode CLI for Z.AI GLM (npm install -g opencode-ai)"
+    "$npm_bin" install -g opencode-ai --silent >/dev/null 2>&1 || true
+
+    if ! linux_opencode >/dev/null; then
+        npm_prefix=$("$npm_bin" prefix -g 2>/dev/null || true)
+        if [ -n "$npm_prefix" ] && [ -x "$npm_prefix/bin/opencode" ]; then
+            ln -sfn "$npm_prefix/bin/opencode" "$TARGET_DIR/opencode"
+        fi
+    fi
+
+    if opencode_bin=$(linux_opencode) && "$opencode_bin" --version >/dev/null 2>&1; then
+        echo "  opencode CLI installed (verified: opencode --version)"
+    else
+        echo "  NOTE: npm ran but no working opencode CLI was found afterward."
+        echo "        Install it by hand:  npm install -g opencode-ai"
+        echo "        Codex remains fully usable without it."
+    fi
+fi
+
 # --------------------------------------------------------- shell dependencies --
 # The Sherman Shell is a Node app (Ink). `npm ci` installs the lockfile
 # EXACTLY -- it wipes node_modules first, so re-running install.sh repairs a

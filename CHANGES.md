@@ -3,6 +3,35 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Added: /update, named @-agents, MCP and Agents launch sections, harness upgrade
+
+- `/update` runs the launcher's full update flow from inside the shell — pull,
+  dependency reconcile, provisioner repairs, and the smoke suite — in a
+  background child, so the shell stays usable and prints the verified result;
+  restarting sherman runs the updated code.
+- Named agents: `@name <task>` routes to an isolated read-only worker carrying
+  that agent's harness. The bundled roster lives in `agent/agents.json`
+  (researcher, reviewer, scout, ml-researcher) and Sherman can forge personal
+  agents into `~/.sherman/agents/` via the new `agent-forge` skill; smoke
+  check 17 verifies the roster the way it verifies capabilities.
+- The launch panel gains an MCP Servers section (between Available Tools and
+  Available Skills — wired vs. catalogued, from the workspace's rendered
+  `.mcp.json`) and an Agents section listing the @-roster; the closing tally
+  carries all four counts. Constrained frames drop the new sections whole and
+  keep their prior geometry.
+- The operating contract gains an explicit harness section: finish the task,
+  batch independent tool calls, fan work out to parallel workers and sequence
+  dependent stages, learn across sessions, and link memory as it is written.
+- Five new skills: `ml-research` (structured ML research harness), `agent-eval`
+  (runs inside the end-of-session eval; proposes at most one new agent from
+  recurring-work evidence), `agent-forge`, `memory-link` (`[[wikilinks]]`
+  between vault facts, both ways, scope-respecting; `vault-write` now invokes
+  it), and `pet` (a persistent private-memory companion on `/pet`, in the
+  Codex/Hermes pets lineage — cosmetic by contract).
+- install.sh now provisions the OpenCode CLI alongside Codex, so both engines
+  are launchable from a fresh install; verified by `opencode --version` and
+  degraded to an honest NOTE where it cannot install.
+
 ## 2026-08-04 — Building: Sherman Commons trust boundary documented
 
 - Recorded the proposed Commons architecture as a distinct, invitation-only

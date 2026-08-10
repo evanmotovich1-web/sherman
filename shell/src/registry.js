@@ -23,6 +23,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
 
 // Resolved from THIS file, never process.cwd() — at runtime the cwd is the
 // engine's workspace, not the repo. Same reasoning as LaunchScreen.js.
@@ -147,9 +148,135 @@ export function loadTools(root = REPO_ROOT) {
     return { ok: true, categories, count };
 }
 
-/** Both registries, as the launch screen consumes them. */
-export function loadRegistry(root = REPO_ROOT) {
-    return { tools: loadTools(root), skills: loadSkills(root) };
+/**
+ * A valid agent entry, or null. One place, because the bundled registry and
+ * the personal directory must be held to the same bar: a name that is not a
+ * slug, or a missing specialty or harness, is an agent the @-routing cannot
+ * honestly launch, and it must never be counted as one it can.
+ */
+function validAgent(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    const { name, category, specialty, harness } = entry;
+    if (typeof name !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(name)) return null;
+    if (typeof specialty !== 'string' || !specialty.trim()) return null;
+    if (typeof harness !== 'string' || !harness.trim()) return null;
+    return {
+        name,
+        category: typeof category === 'string' && category.trim() ? category.trim() : 'agent',
+        specialty: specialty.trim(),
+        harness: harness.trim(),
+    };
+}
+
+/**
+ * The named agents the shell can @-route to: the committed roster in
+ * agent/agents.json plus any personal agents Sherman has forged into
+ * ~/.sherman/agents/ (one JSON file per agent, same fields). A bundled name
+ * wins a collision — the same rule workspace skill assembly follows — and a
+ * malformed personal file is named in `malformed` rather than half-loaded.
+ *
+ * @returns {{ok: true, categories: Array<{name: string, items: string[]}>, count: number,
+ *            list: Array<{name: string, category: string, specialty: string, harness: string, personal: boolean}>,
+ *            malformed: string[]}
+ *          | {ok: false, reason: string}}
+ */
+export function loadAgents(root = REPO_ROOT, home = join(homedir(), '.sherman')) {
+    let parsed;
+    try {
+        parsed = JSON.parse(readFileSync(join(root, 'agent', 'agents.json'), 'utf8'));
+    } catch (error) {
+        return { ok: false, reason: error?.code === 'ENOENT' ? 'no agent registry' : 'unreadable' };
+    }
+    if (!Array.isArray(parsed?.agents)) return { ok: false, reason: 'malformed registry' };
+
+    const list = [];
+    const malformed = [];
+    for (const entry of parsed.agents) {
+        const agent = validAgent(entry);
+        if (!agent) return { ok: false, reason: 'malformed registry' };
+        list.push({ ...agent, personal: false });
+    }
+
+    // Personal agents are additive and never authoritative: an unreadable
+    // directory means "no personal agents", not a broken registry, and a
+    // personal file may not shadow a bundled name.
+    let personalFiles = [];
+    try {
+        personalFiles = readdirSync(join(home, 'agents'), { withFileTypes: true })
+            .filter((e) => e.isFile() && e.name.endsWith('.json'))
+            .map((e) => e.name)
+            .sort();
+    } catch { personalFiles = []; }
+    const taken = new Set(list.map((agent) => agent.name));
+    for (const file of personalFiles) {
+        let agent = null;
+        try {
+            agent = validAgent(JSON.parse(readFileSync(join(home, 'agents', file), 'utf8')));
+        } catch { agent = null; }
+        if (!agent || agent.name !== file.replace(/\.json$/, '') || taken.has(agent.name)) {
+            malformed.push(file);
+            continue;
+        }
+        taken.add(agent.name);
+        list.push({ ...agent, personal: true });
+    }
+
+    const byCategory = new Map();
+    for (const agent of list) {
+        if (!byCategory.has(agent.category)) byCategory.set(agent.category, []);
+        byCategory.get(agent.category).push(`@${agent.name}`);
+    }
+    const categories = [...byCategory.entries()]
+        .map(([name, items]) => ({ name, items }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    return { ok: true, categories, count: list.length, list, malformed: malformed.sort() };
+}
+
+/**
+ * The MCP servers Sherman can reach, for the launch screen: the connector
+ * catalog split into what THIS launch actually wired (the workspace's rendered
+ * .mcp.json — the file the engine reads, not a recomputation of it) and what
+ * is catalogued but not wired. No probes and no secrets: this is a launch
+ * render, and connectors.js `describe()` remains the detailed, named view.
+ *
+ * @returns {{ok: true, categories: Array<{name: string, items: string[]}>, count: number}
+ *          | {ok: false, reason: string}}
+ */
+export function loadConnectors(root = REPO_ROOT, home = join(homedir(), '.sherman')) {
+    let parsed;
+    try {
+        parsed = JSON.parse(readFileSync(join(root, 'agent', 'connectors.json'), 'utf8'));
+    } catch (error) {
+        return { ok: false, reason: error?.code === 'ENOENT' ? 'no connector catalog' : 'unreadable' };
+    }
+    if (!Array.isArray(parsed?.connectors)) return { ok: false, reason: 'malformed catalog' };
+    const catalogued = parsed.connectors
+        .map((entry) => entry?.name)
+        .filter((name) => typeof name === 'string' && name);
+
+    let wired = [];
+    try {
+        const rendered = JSON.parse(readFileSync(join(home, 'workspace', '.mcp.json'), 'utf8'));
+        wired = Object.keys(rendered?.mcpServers ?? {}).sort();
+    } catch { wired = []; }
+
+    const available = catalogued.filter((name) => !wired.includes(name)).sort();
+    const categories = [];
+    if (wired.length > 0) categories.push({ name: 'wired', items: wired });
+    if (available.length > 0) categories.push({ name: 'available', items: available });
+
+    return { ok: true, categories, count: wired.length + available.length };
+}
+
+/** Every registry, as the launch screen consumes them. */
+export function loadRegistry(root = REPO_ROOT, home = join(homedir(), '.sherman')) {
+    return {
+        tools: loadTools(root),
+        skills: loadSkills(root),
+        mcp: loadConnectors(root, home),
+        agents: loadAgents(root, home),
+    };
 }
 
 /**
