@@ -31,6 +31,12 @@ shipped, verified release.
 - install.sh now provisions the OpenCode CLI alongside Codex, so both engines
   are launchable from a fresh install; verified by `opencode --version` and
   degraded to an honest NOTE where it cannot install.
+- The committed tool trace now reads as the reference's table: a wider tag
+  column with the detail column starting at one fixed offset, the tag inked to
+  recede and the engine's label carrying the light, durations muted and
+  failure marks red. Slash-invoked skills commit a `📚 skill` trace row of
+  their own instead of a prose notice. Plain-text content of every row is
+  unchanged.
 
 ## 2026-08-04 — Building: Sherman Commons trust boundary documented
 

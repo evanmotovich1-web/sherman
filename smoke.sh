@@ -1062,7 +1062,7 @@ const poll = setInterval(() => {
             // final screen, where a permanent row must still be. No ✓ on a
             // successful row: in a trace where nearly everything succeeds, the
             // absence of a mark is what carries information.
-            if (!plain.includes('📝 patch   patch smoke.sh  0.9s')) {
+            if (!plain.includes('📝 patch     patch smoke.sh  0.9s')) {
                 missing.push('committed trace row with glyph, tag and duration');
             }
 

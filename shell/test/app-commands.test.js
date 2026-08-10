@@ -517,15 +517,15 @@ test('a finished task commits to the trace; only the running copy leaves', async
 
         // The completed row commits into the trace, in the reference shape:
         // glyph, padded category tag, the engine's label, measured duration.
-        await until(() => latestFrame(writes).includes('📖 read    read scanner.js  0.9s'));
+        await until(() => latestFrame(writes).includes('📖 read      read scanner.js  0.9s'));
         const frame = latestFrame(writes);
-        assert.match(frame, /│ 📖 read {4}read scanner\.js {2}0\.9s/, 'the committed row lost its trace shape');
+        assert.match(frame, /│ 📖 read {6}read scanner\.js {2}0\.9s/, 'the committed row lost its trace shape');
 
         // Success carries NO outcome mark — in a trace where nearly every row
         // succeeds, the absence is what carries information...
         assert.doesNotMatch(frame, /✓/, 'a successful row printed a redundant ✓');
         // ...and a failure keeps its mark.
-        assert.match(frame, /💻 \$ {7}npm test ×  2\.1s/, 'the failed row lost its outcome mark');
+        assert.match(frame, /💻 \$ {9}npm test ×  2\.1s/, 'the failed row lost its outcome mark');
 
         // Committed means committed: the rows persist while the turn runs on,
         // with no live duplicate beneath them — one event, one row on screen.
@@ -536,7 +536,7 @@ test('a finished task commits to the trace; only the running copy leaves', async
         await until(() => latestFrame(writes).includes('❯ Ask about company operations…'));
         assert.match(
             latestFrame(writes),
-            /│ 📖 read {4}read scanner\.js {2}0\.9s/,
+            /│ 📖 read {6}read scanner\.js {2}0\.9s/,
             'the committed trace row did not survive the turn ending'
         );
     } finally {

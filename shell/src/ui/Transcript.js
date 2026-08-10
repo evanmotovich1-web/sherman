@@ -252,11 +252,36 @@ function Item({ item, width, rows }) {
                 `  │ ⋯ summary: ${safeTerminalText(item.text)}`
             );
 
-        // The committed activity trace. Dim italic, indented under the bullet,
-        // and sourced only from normalized engine events. Tool glyphs, labels,
-        // and measured durations are formatted by App; none are simulated here.
+        // The committed activity trace, sourced only from normalized engine
+        // events. Tool glyphs, labels, and measured durations are formatted by
+        // App; none are simulated here. A structured row (item.trace) renders
+        // the reference's table register — receding tag column, detail
+        // carrying the light, muted duration — as colour on the SAME plain
+        // text `item.text` holds, so the row reads identically wherever the
+        // string form survives. A row without parts keeps the old single-ink
+        // rendering, byte for byte.
         case 'reasoning':
         case 'tool':
+            if (item.trace) {
+                const { glyph, tag, label, outcome, duration } = item.trace;
+                return React.createElement(
+                    Text,
+                    { wrap: 'truncate' },
+                    React.createElement(Text, { color: color.tertiary }, '  │ '),
+                    React.createElement(
+                        Text,
+                        { color: color.secondary },
+                        `${glyph ? `${glyph} ` : ''}${safeTerminalText(tag)}  `
+                    ),
+                    React.createElement(Text, { color: color.value }, safeTerminalText(label)),
+                    outcome
+                        ? React.createElement(Text, { color: color.error }, safeTerminalText(outcome))
+                        : null,
+                    duration
+                        ? React.createElement(Text, { color: color.muted }, safeTerminalText(duration))
+                        : null
+                );
+            }
             return React.createElement(
                 Text,
                 { color: color.tertiary, wrap: 'truncate' },

@@ -90,7 +90,10 @@ const TRACE_TAG = Object.freeze({
     plan: 'plan',
     tool: 'tool',
 });
-const TRACE_TAG_WIDTH = Math.max(...Object.values(TRACE_TAG).map((t) => t.length));
+// Padded past the longest tag on purpose: the reference trace gives its tag
+// column air, and the detail column starting at one fixed offset down the
+// whole trace is what makes a burst of tool calls readable as a table.
+const TRACE_TAG_WIDTH = Math.max(8, ...Object.values(TRACE_TAG).map((t) => t.length));
 
 /**
  * One committed trace row: glyph, padded tag, the engine's own label, and the
@@ -98,7 +101,7 @@ const TRACE_TAG_WIDTH = Math.max(...Object.values(TRACE_TAG).map((t) => t.length
  * every row succeeds, the mark is noise and its ABSENCE is what must carry
  * information, so only failures and declines keep their outcome mark.
  */
-function traceLine(event) {
+function traceParts(event) {
     const glyph = ACTIVITY_GLYPH[event.category] ?? '';
     const tag = (TRACE_TAG[event.category] ?? String(event.category ?? 'tool')).padEnd(TRACE_TAG_WIDTH);
     // Only a REPORTED success goes unmarked. The engine always sets an
@@ -108,7 +111,12 @@ function traceLine(event) {
     const duration = typeof event.durationMs === 'number'
         ? `  ${(event.durationMs / 1000).toFixed(1)}s`
         : '';
-    return `${glyph ? `${glyph} ` : ''}${tag}  ${event.label}${outcome}${duration}`;
+    return { glyph, tag, label: event.label, outcome, duration };
+}
+
+function traceLine(event) {
+    const { glyph, tag, label, outcome, duration } = traceParts(event);
+    return `${glyph ? `${glyph} ` : ''}${tag}  ${label}${outcome}${duration}`;
 }
 
 /** Outcome marks, shared so a row's glyph and its text cannot disagree. */
@@ -681,7 +689,19 @@ export function App({
             if (parsed.kind === 'command' && !commandFor(parsed.name)) {
                 const skill = slashSkills.find((entry) => entry.name === parsed.name);
                 if (skill) {
-                    commit('notice', `skill turn · following skills/${skill.name}/SKILL.md`);
+                    // A trace row, not a notice: invoking a skill is an act the
+                    // shell itself performed, and the trace is where acts live.
+                    // The reference renders its skill loads exactly this way.
+                    const skillTag = 'skill'.padEnd(TRACE_TAG_WIDTH);
+                    commit('tool', `📚 ${skillTag}  skills/${skill.name}/SKILL.md`, {
+                        trace: {
+                            glyph: '📚',
+                            tag: skillTag,
+                            label: `skills/${skill.name}/SKILL.md`,
+                            outcome: '',
+                            duration: '',
+                        },
+                    });
                     parsed = { kind: 'prompt', text: skillTurn(skill.name, parsed.args) };
                 }
             }
@@ -1033,7 +1053,11 @@ export function App({
                                 return next;
                             });
                             if (done) {
-                                commit('tool', traceLine(event));
+                                // The text is the row's canonical plain form;
+                                // the parts ride along so the transcript can
+                                // ink the tag and detail columns separately
+                                // without re-parsing its own output.
+                                commit('tool', traceLine(event), { trace: traceParts(event) });
                                 // Committed is the record; the live slot's copy
                                 // would be the same row twice on one screen.
                                 setActivities((current) =>
