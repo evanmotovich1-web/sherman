@@ -3,6 +3,19 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Added: automatic skill loads show in the trace; /agents lists the roster
+
+- Every automatic skill use is now visible: when the engine reads any file
+  under a skill's directory, the trace re-tags that read as the `📚 skill`
+  row it factually is — `📚 skill  navigate`, `📚 skill  document-reading →
+  scripts/pdf_text.py` — several per turn when skills stack, exactly like a
+  slash invocation's row. The operating contract now tells Sherman to load
+  every matching skill together up front, so the stack shows at the top of
+  the turn.
+- `/agents` lists the whole roster locally — each @name with its specialty,
+  personal agents marked — and names its sources and the agent-forge path
+  to new ones. Declared in the capability registry under session.
+
 ## 2026-08-10 — Fixed: the pet's click finds Sherman across terminals
 
 - A click aimed at the recorded terminal app, and an empty recording fell

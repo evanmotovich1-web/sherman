@@ -26,6 +26,12 @@ export const COMMANDS = Object.freeze([
         detail: 'Starts a fresh engine session with the same Sherman identity and safety boundary. The worker sees only the explicit task and active goal.',
     },
     {
+        name: 'agents',
+        usage: '/agents',
+        summary: 'list your agents and what each one specializes in',
+        detail: 'A local read of the bundled roster (agent/agents.json) and any personal agents Sherman has forged into ~/.sherman/agents/. Each line is an @name and its specialty; @name <task> runs one as an isolated read-only worker, and the agent-forge skill is how new ones get made.',
+    },
+    {
         name: 'compact',
         usage: '/compact [focus]',
         summary: 'summarize the session and start a fresh engine thread',

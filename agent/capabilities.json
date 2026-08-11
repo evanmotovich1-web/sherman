@@ -30,6 +30,7 @@
         { "name": "goal", "verify": "command" },
         { "name": "plan", "verify": "command" },
         { "name": "subagent", "verify": "command" },
+        { "name": "agents", "verify": "command" },
         { "name": "compact", "verify": "command" },
         { "name": "eval", "verify": "command" },
         { "name": "update", "verify": "command" },

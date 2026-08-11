@@ -740,6 +740,23 @@ export function App({
                         : 'selection mode · drag to select and use your terminal copy shortcut · /select restores wheel scrolling');
                     return;
                 }
+                if (command.name === 'agents') {
+                    // Local, like /connectors: the roster the shell already
+                    // loaded is the whole answer, and it names its sources.
+                    if (!registry.agents?.ok) {
+                        commit('error', `The agent roster did not load: ${registry.agents?.reason ?? 'unknown'}.`);
+                        return;
+                    }
+                    const width = Math.max(...atAgents.map((a) => a.name.length)) + 1;
+                    commit('notice', [
+                        'Agents — @name <task> runs one as an isolated read-only worker',
+                        ...atAgents.map((a) =>
+                            `  @${a.name.padEnd(width)} ${a.specialty}${a.personal ? ' · personal' : ''}`),
+                        '',
+                        'Bundled roster: agent/agents.json · personal: ~/.sherman/agents/ · new ones: the agent-forge skill',
+                    ].join('\n'));
+                    return;
+                }
                 if (command.name === 'customize') {
                     // Local, like /connectors: two small files under
                     // ~/.sherman/pet own the whole answer.
@@ -1088,7 +1105,27 @@ export function App({
                                 // the parts ride along so the transcript can
                                 // ink the tag and detail columns separately
                                 // without re-parsing its own output.
-                                commit('tool', traceLine(event), { trace: traceParts(event) });
+                                //
+                                // A read of a skill file is re-tagged as the
+                                // skill row it factually is: the engine loading
+                                // skills/<name>/ IS the automatic skill use,
+                                // and the trace shows it in the same 📚
+                                // register as a slash invocation — several per
+                                // turn when several skills stack.
+                                let parts = traceParts(event);
+                                let text = traceLine(event);
+                                const skillRead = event.category === 'read' && typeof event.label === 'string'
+                                    ? event.label.match(/skills\/([a-z0-9][a-z0-9_-]*)\/([^\s]+)/i)
+                                    : null;
+                                if (skillRead) {
+                                    const tag = 'skill'.padEnd(TRACE_TAG_WIDTH);
+                                    const detail = skillRead[2] === 'SKILL.md'
+                                        ? skillRead[1]
+                                        : `${skillRead[1]} → ${skillRead[2]}`;
+                                    parts = { ...parts, glyph: '📚', tag, label: detail };
+                                    text = `📚 ${tag}  ${detail}${parts.outcome}${parts.duration}`;
+                                }
+                                commit('tool', text, { trace: parts });
                                 writePetState('working', event.label);
                                 if (['file-change', 'file-create', 'command'].includes(event.category)) {
                                     turnMutations += 1;
