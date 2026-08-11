@@ -44,6 +44,6 @@ State what is filled in, what is a placeholder, and what you assumed. If the
 format itself was a proposal rather than the company standard, say that at the
 top — not in a footnote.
 
-If the work explicitly established a durable format decision, record it now —
-see `vault-write`. Do not ask a second time whether to remember a decision the
-person already made.
+If the work explicitly established a durable format decision, use `vault-write`
+to offer a complete `/wiki` command for the operator to review and enter. Never
+write the vault directly.

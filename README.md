@@ -13,17 +13,17 @@ adapter are the chassis.
 ## What a turn looks like
 
 ```text
-❯ draft an SOP for specimen rejection callbacks and file it in the vault
+❯ /learn ops-summaries-open-with-exceptions | Weekly operations summaries open
+  with the exception list; totals follow because they are already visible on
+  the dashboard.
 
-  │ searched vault/wiki for existing rejection procedures
-  │ wrote vault/wiki/specimen-rejection-callback-sop.md
+  │ validated one operator-authored behavioral fact
+  │ wrote vault/memory/shared/ops-summaries-open-with-exceptions.md
 
   Sherman
-  │ Drafted the callback SOP in the company shape and filed it at
-  │ wiki/specimen-rejection-callback-sop.md. It ends with the standard
-  │ attribution line, so the fact is traceable to this session. Two
-  │ steps still need a human decision: the escalation cutoff time and
-  │ who owns weekend callbacks.
+  │ Stored the complete lesson you submitted at
+  │ memory/shared/ops-summaries-open-with-exceptions.md. No model-generated
+  │ text or attribution was added.
 ```
 
 The dim trace lines come from real engine events — Sherman never invents
@@ -143,7 +143,8 @@ other machines published, commits only the shared lanes (wiki, shared
 memory, inbox — private memory never travels), and pushes when the machine
 has write access. A machine without push access still pulls; it says so
 plainly instead of claiming it published. The `llm-wiki` skill teaches
-Sherman the habit: write the fact, sync, and report what actually happened.
+Sherman to offer an operator-reviewed `/wiki` or `/learn` command first, then
+sync only after the operator enters it, and report what actually happened.
 
 ## The safety model
 
@@ -162,8 +163,9 @@ Sherman the habit: write the fact, sync, and report what actually happened.
 - **Nothing on screen is invented.** Vault counts come from real directory
   reads, activity lines from real engine events, token figures from the
   engine's own reports. An empty vault honestly reads `0`.
-- **Every fact is attributable.** Each session has one id, and every fact
-  written to the vault ends with a `user · session · date` attribution line.
+- **Every retained fact is explicit.** `/learn` and `/wiki` store only the
+  complete operator-reviewed text submitted to that command; they do not append
+  model-authored content or hidden metadata.
 
 ## Not built yet
 

@@ -64,8 +64,8 @@ device is visible to that employee, so the vault must never sync there.
 
 | Tier | Vault path | Sherman access | Admin experience | Employee experience |
 | --- | --- | --- | --- | --- |
-| Shared business knowledge | `wiki/` and `memory/shared/` | Every user's Sherman reads and writes | Full vault clone; Obsidian and Git for direct gardening | No vault files; Sherman reaches only shared paths through the scoped service |
-| Private user memory | `memory/private/<user>/` | Only that user's Sherman reads and writes its scope | Admins retain repository custody; agents still obey user scoping | No vault files; the service exposes only the authenticated user's scope |
+| Shared business knowledge | `wiki/` and `memory/shared/` | Models read; shell-owned `/wiki` and `/learn` write | Full vault clone; Obsidian and Git for direct human gardening | No vault files; Sherman reaches only shared paths through the scoped service |
+| Private user memory | `memory/private/<user>/` | Models read only; no shell-validated private retention command yet | Admins retain repository custody; agents still obey user scoping | No vault files; the service exposes only the authenticated user's scope |
 
 Phase 1 is an Evan-only local exception: `vault/` lives in this repo and the
 adapter uses a local path. Phase 4 replaces that backend with a network vault
@@ -74,6 +74,20 @@ privacy.
 
 The vault stores durable company knowledge, one fact per file. It never stores
 patient records, named-patient results, or any other PHI.
+
+Every non-empty graceful session exit runs the provider-backed, read-only conduct
+eval. Its report is stored only under local `~/.sherman/evals/` and never copied
+into a synchronized Vault lane. Authoritative
+retention is explicit-only through `/learn <name> | <lesson>` and
+`/wiki <name> | <fact>`; exit never starts it. No model reads the session to
+select or generate authoritative retention text. A deterministic shell-owned writer rejects unsafe
+operator-provided content and atomically confines an accepted replacement to
+`memory/shared/` or `wiki/`. The command payload is redacted from the transcript
+and session log before validation, so a rejected fact is not persisted there.
+Normal Codex and OpenCode turns cannot mutate the vault; durable proposals must
+return to the operator as complete commands for explicit review.
+The optional external personal LLMWiki is not the target of `/wiki` and is never
+treated as company truth.
 
 ## Phase ladder
 

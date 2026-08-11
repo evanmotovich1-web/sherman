@@ -60,6 +60,11 @@ test('OpenCode permissions allow only the named vault outside the workspace', ()
     assert.equal(normal.share, 'disabled');
     assert.equal(normal.permission.bash, 'deny');
     assert.equal(normal.permission.task, 'deny');
+    assert.equal(normal.permission.apply_patch, 'deny');
+    assert.deepEqual(normal.permission.edit, {
+        '*': 'allow',
+        '/tmp/sherman-test/vault/**': 'deny',
+    });
     assert.equal(normal.default_agent, 'sherman');
     assert.deepEqual(normal.agent.sherman.permission, normal.permission);
 
@@ -101,7 +106,17 @@ test('OpenCode receives the exact validated Sherman MCP connectors', () => {
             headers: { Authorization: 'test-placeholder' },
         });
         assert.equal(Object.hasOwn(mcp, '__proto__'), false);
-        assert.deepEqual(JSON.parse(openCodeConfigForMode({ ...config, workspacePath: workspace })).mcp, mcp);
+        const ordinary = JSON.parse(openCodeConfigForMode(
+            { ...config, workspacePath: workspace }, 'normal', mcp, 'chat'
+        ));
+        assert.equal(ordinary.mcp, undefined);
+        assert.equal(ordinary.permission['llmwiki_*'], 'deny');
+        assert.equal(ordinary.permission['exa_*'], 'deny');
+        const explicitWiki = JSON.parse(openCodeConfigForMode(
+            { ...config, workspacePath: workspace }, 'normal', mcp, 'skill:research-wiki'
+        ));
+        assert.deepEqual(explicitWiki.mcp, { llmwiki: mcp.llmwiki });
+        assert.equal(explicitWiki.permission['exa_*'], 'deny');
         const readOnly = JSON.parse(openCodeConfigForMode(
             { ...config, workspacePath: workspace },
             'read-only',
@@ -230,9 +245,9 @@ console.log(JSON.stringify({ type: 'step_finish', sessionID: 'ses_transport', pa
         assert.deepEqual(calls[1].argv.slice(-3), ['--session', 'ses_transport', 'second']);
         assert.equal(calls[0].config.share, 'disabled');
         assert.equal(calls[0].config.permission.bash, 'deny');
-        assert.equal(calls[0].config.mcp.safe.command[0], '/bin/true');
-        assert.equal(calls[1].config.mcp.safe.command[0], '/bin/true');
-        assert.equal(calls[1].config.mcp.injected, undefined);
+        assert.equal(calls[0].config.mcp, undefined);
+        assert.equal(calls[1].config.mcp, undefined);
+        assert.equal(calls[0].config.permission['safe_*'], 'deny');
         assert.match(calls[0].xdgConfigHome, /sherman-opencode-config-/);
         assert.equal(calls[0].configDir, calls[0].xdgConfigHome);
 

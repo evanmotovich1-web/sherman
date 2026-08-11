@@ -6,7 +6,7 @@
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
 #      under an overridden HOME, writes a valid config.json.
 #   3. The assembled adapter carries the vault path, the user name, the no-PHI
-#      and autonomy rules, and the session-id memory-attribution rule — and the
+#      autonomy rules, and the explicit-only retention boundary — and the
 #      workspace carries every repo skill at both engine conventions.
 #   4. The shell entry point launches and exits clean on --version.
 #   5. Backend selection follows config.json's engine field.
@@ -193,15 +193,21 @@ else
         pass "contains the no-PHI and autonomy rules"
     fi
 
-    # The attribution rule and its session id. The id must be the launcher's
-    # (format YYYYMMDD_HHMMSS_ + 6 hex), not a placeholder.
-    grep -qE '[0-9]{8}_[0-9]{6}_[0-9a-f]{6}' "$ADAPTER" \
-        && pass "contains a session id" \
-        || fail "session id missing from adapter"
+    if grep -qF 'offer a complete operator-reviewed' "$ADAPTER" \
+        && grep -qF '`/wiki <name> | <fact>` command' "$ADAPTER" \
+        && grep -qF 'There is no validated private-memory' "$ADAPTER"; then
+        pass "contains explicit operator-reviewed retention guidance"
+    else
+        fail "explicit operator-reviewed retention guidance missing"
+    fi
 
-    grep -qE "— $SMOKE_USER · [0-9]{8}_[0-9]{6}_[0-9a-f]{6} · [0-9]{4}-[0-9]{2}-[0-9]{2}" "$ADAPTER" \
-        && pass "contains the memory-attribution line" \
-        || fail "memory-attribution line missing from adapter"
+    if ! grep -qF "every user's Sherman writes to it" "$ADAPTER" \
+        && ! grep -qF 'Every fact file you write to shared or private memory' "$ADAPTER" \
+        && ! grep -qF 'When you learn a durable new fact about the business, write it there' "$ADAPTER"; then
+        pass "contains no direct or private-memory write instruction"
+    else
+        fail "assembled adapter still instructs direct authoritative writes"
+    fi
 
     grep -qF '{{SHERMAN_BODY}}' "$ADAPTER" \
         && fail "splice token still present -- template copied, not assembled" \

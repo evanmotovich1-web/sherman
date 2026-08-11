@@ -126,9 +126,15 @@ export function assertIsolatedOpenCodeInputs(config) {
  * allowed to touch. Read-only turns deny shell and writes instead of pretending
  * OpenCode has a filesystem sandbox it does not have.
  */
-export function openCodeConfigForMode(config, mode = 'normal', admittedMcp = null) {
+export function openCodeConfigForMode(
+    config, mode = 'normal', admittedMcp = null, source = 'chat'
+) {
     const vault = config.vaultPath.replace(/\/+$/, '');
-    const mcp = admittedMcp ?? openCodeMcpConfig(config.workspacePath);
+    const allMcp = admittedMcp ?? openCodeMcpConfig(config.workspacePath);
+    const allowPersonalWiki = source === 'skill:research-wiki';
+    const mcp = Object.fromEntries(Object.entries(allMcp).filter(
+        ([name]) => name === 'llmwiki' && allowPersonalWiki
+    ));
     const readOnly = mode === 'read-only'
         || mode === 'isolated-read-only'
         || mode === 'browser-read-only';
@@ -144,11 +150,23 @@ export function openCodeConfigForMode(config, mode = 'normal', admittedMcp = nul
         // tool so a child agent with looser permissions cannot bypass policy.
         task: 'deny',
     };
+    for (const name of Object.keys(allMcp)) {
+        if (!(allowPersonalWiki && name === 'llmwiki')) permission[`${name}_*`] = 'deny';
+    }
     if (readOnly) {
         permission.edit = 'deny';
         // Local/remote MCPs are host-side capabilities. A read-only promise
         // cannot assume each third-party tool is non-mutating.
-        for (const name of Object.keys(mcp)) permission[`${name}_*`] = 'deny';
+        for (const name of Object.keys(allMcp)) permission[`${name}_*`] = 'deny';
+    } else {
+        // Reads may cross into the configured vault, but model file tools may
+        // not mutate it. apply_patch is denied outright because its movePath is
+        // authorized separately by external_directory in OpenCode 1.18.x.
+        const workspaceOnlyEdit = { '*': 'allow', [`${vault}/**`]: 'deny' };
+        permission.edit = workspaceOnlyEdit;
+        permission.write = workspaceOnlyEdit;
+        permission.patch = workspaceOnlyEdit;
+        permission.apply_patch = 'deny';
     }
     if (mode === 'isolated-read-only') {
         permission.skill = 'deny';
@@ -313,7 +331,9 @@ export class OpenCodeSession extends EngineSession {
                 XDG_CONFIG_HOME: isolatedConfigDir,
                 OPENCODE_CONFIG_DIR: isolatedConfigDir,
                 OPENCODE_CONFIG: join(isolatedConfigDir, 'opencode.json'),
-                OPENCODE_CONFIG_CONTENT: openCodeConfigForMode(this._config, mode, this._admittedMcp),
+                OPENCODE_CONFIG_CONTENT: openCodeConfigForMode(
+                    this._config, mode, this._admittedMcp, normalized?.source ?? 'chat'
+                ),
             },
         });
         this._child = child;

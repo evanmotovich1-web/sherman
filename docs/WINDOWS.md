@@ -11,10 +11,10 @@ which has weakened since this page was first written:
 1. The launcher (`bin/sherman`) and installer are bash. Nothing Sherman
    ships runs natively in PowerShell except the bootstrap below, which
    exists to reach WSL2.
-2. Sherman's safety model leans on an OS sandbox confining the engine's
-   writes to the vault, proven by an escape test on macOS only. Codex
+2. Sherman's safety model leans on an OS sandbox preventing model writes to
+   the vault while retaining shell-owned explicit retention. Codex
    itself now ships a native Windows sandbox — restricted tokens plus
-   ACLs, honoring the same `writable_roots` Sherman configures — so the
+   ACLs, honoring workspace-write boundaries — so the
    OS-level mechanism exists where it once did not
    (openai.com/index/building-codex-windows-sandbox). But Sherman has not
    wired it, nobody has re-run the escape test against it, and OpenAI's

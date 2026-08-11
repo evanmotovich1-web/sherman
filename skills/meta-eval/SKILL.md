@@ -2,7 +2,7 @@
 name: meta-eval
 category: agent
 summary: grade the eval that just graded a session — the judge gets judged, every time
-description: Grade an eval verdict against the session-eval contract — citations real, findings honest, scope held, recommendation actionable. Runs automatically after every eval; the shell files the verdict-and-grade pair into the vault inbox for review.
+description: Grade an eval verdict against the session-eval contract — citations real, findings honest, scope held, recommendation actionable. Runs automatically after every eval and remains in the local operational eval store.
 ---
 
 # Grade the judge
@@ -70,10 +70,10 @@ abandoned, or PHI quoted.
 ## What this must not do
 
 - **Do not write anything.** Not to the vault, not to skills/, not to the
-  eval store. The shell files your report and the recommendation pair into
-  `vault/inbox/eval-recommendations/` mechanically — the review queue, where
-  the operator decides what gets adopted. A meta-judge holding a pen has the
-  exact conflict this skill exists to prevent, one level up.
+  eval store. The shell records the report only in local `~/.sherman/evals/`.
+  Model- and session-derived eval output never enters a synchronized Vault
+  lane. A meta-judge holding a pen has the exact conflict this skill exists to
+  prevent, one level up.
 - **Do not re-grade the session.** Spot-checking a citation is reading the
   log to verify a quote; re-grading is forming your own verdict from it.
 - **Do not quote patient-identifying data**, even if the verdict under review

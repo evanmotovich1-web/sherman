@@ -56,10 +56,16 @@ export const COMMANDS = Object.freeze([
         detail: 'Reads every session log in ~/.sherman/sessions/, every saved eval verdict in ~/.sherman/evals/, and anything you drop in ~/.sherman/win-sources/ (exports from other tools — a ChatGPT data export, notes). One isolated read-only worker judges what is going right and wrong — vault use, skills reached for unprompted, delegation, honest limits — then the shell writes a local HTML report under ~/.sherman/win/ and opens it in your browser. The page is a local file; nothing leaves the machine.',
     },
     {
+        name: 'learn',
+        usage: '/learn <fact-name> | <lesson>',
+        summary: 'write one explicit shell-validated correction to shared memory',
+        detail: 'No model reads the session and no automatic capture runs. The shell validates the exact fact text you provide and atomically confines it to vault/memory/shared.',
+    },
+    {
         name: 'wiki',
-        usage: '/wiki',
-        summary: "capture this session's durable learnings into your LLM Wiki",
-        detail: 'Runs one turn that reads this session\'s log and folds what is worth keeping — research findings, decisions and their reasons, techniques — into your personal LLM Wiki through its MCP server (installed at ~/.sherman/llmwiki, workspace at ~/.sherman/research). Company facts still belong in the vault; the wiki is your research memory. Runs automatically when a session with turns ends, after the eval. If the wiki is not installed the command says so and does nothing.',
+        usage: '/wiki <fact-name> | <fact text>',
+        summary: "write one explicit shell-validated fact to Sherman's vault wiki",
+        detail: 'No model reads the session and no automatic capture runs. The shell validates the exact company fact text you provide and atomically confines it to vault/wiki. It does not depend on an external LLMWiki install.',
     },
     {
         name: 'connectors',
@@ -113,7 +119,7 @@ export const COMMANDS = Object.freeze([
         name: 'exit',
         usage: '/exit',
         summary: 'end the session and leave the shell',
-        detail: 'A session with turns in it is evaluated first, its learnings are captured to the LLM Wiki, and the shared vault syncs itself (pull, then publish — the same flow as `sherman sync`, bounded at 45s and honest about offline or push failures). Pressing ctrl+c twice instead skips all of it and just leaves.',
+        detail: 'A session with turns is evaluated first. Authoritative retention is explicit-only through /learn and /wiki; exit never starts either command. The shared vault then syncs itself (pull, then publish — the same flow as `sherman sync`, bounded at 45s and honest about offline or push failures). Pressing ctrl+c twice skips the in-flight eval or sync and just leaves.',
     },
 ]);
 
@@ -142,6 +148,9 @@ export function submissionRecordText(value, parsed = parseSubmission(value)) {
     if (parsed?.kind === 'command' && parsed.name === 'commons') {
         if (/^enroll\s+\S/i.test(parsed.args)) return '/commons enroll «redacted»';
         if (/^propose\s+\S/i.test(parsed.args)) return '/commons propose «payload redacted»';
+    }
+    if (parsed?.kind === 'command' && ['learn', 'wiki'].includes(parsed.name)) {
+        return `/${parsed.name} «fact text redacted»`;
     }
     return value;
 }
@@ -596,47 +605,6 @@ export function wikiPreflight({
     }
 
     return { ok: true, reason: null };
-}
-
-/**
- * The wiki-capture turn: the session's durable learnings, folded into the
- * personal LLM Wiki over MCP.
- *
- * Deliberately a SEPARATE turn from the eval, not a clause in it. The eval is
- * read-only because a judge that writes is grading a brain it is editing —
- * that contract stays intact, and the capture runs after it in the exit
- * sequence. This turn is the mirror image: it records and does not judge,
- * and its one write surface is the wiki's own MCP tools.
- */
-export function wikiCaptureRequest(logPath, goal) {
-    if (!logPath) return null;
-    return {
-        text: [
-            'WIKI CAPTURE TURN',
-            'This session is ending. Preserve what it learned.',
-            '',
-            `The session log is at ${logPath} — one JSON object per line,`,
-            '{role, at, text}, with role of user, sherman, or worker. Read it,',
-            'then fold the session\'s durable learnings into the personal LLM',
-            'Wiki using the llmwiki MCP tools (search first, then write):',
-            'research findings, decisions and the reasons behind them,',
-            'techniques that worked, dead ends worth not repeating. Follow the',
-            'research-wiki skill.',
-            '',
-            'What does NOT belong in the wiki: company procedures and facts',
-            '(those go to the vault via vault-write, deliberately, in their own',
-            'turn), credentials or secrets, and patient-identifying data —',
-            'never, in any form; describe shapes, withhold specifics.',
-            '',
-            'If the llmwiki MCP tools are not reachable in this session, say so',
-            'in one line and stop — do not simulate a capture. If the session',
-            'established nothing durable, say that in one line instead of',
-            'inventing an entry: an empty capture is a fine result.',
-            goal ? `Standing session goal: ${goal}` : null,
-        ].filter(Boolean).join('\n'),
-        mode: 'normal',
-        source: 'wiki',
-    };
 }
 
 /**

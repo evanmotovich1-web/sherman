@@ -65,5 +65,5 @@ same board or the picture is a lie.
 
 Cards, owners, and statuses only — never PHI, never secrets. A board is
 coordination state, not a knowledge store: durable facts the project
-produces still go to the vault through `vault-write`, cards just point at
-them.
+produces require an operator-reviewed `/wiki` command through `vault-write`;
+cards just point at them.

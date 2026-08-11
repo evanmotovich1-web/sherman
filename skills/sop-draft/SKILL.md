@@ -60,7 +60,6 @@ following the rule in `sop-review`: a fresh `Reviewed` date only if a person
 confirmed the content this session.
 
 When the request establishes a durable, sufficiently grounded company SOP,
-write or revise it in `vault/wiki/` now — see `vault-write`. If the request is
-for draft text only or a material fact remains unknown, return the complete
-draft with a visible placeholder. Do not end with an offer to do routine work
-the request already authorized.
+return the complete SOP and, through `vault-write`, offer a complete `/wiki`
+command for the operator to review and enter. Never write `vault/wiki/`
+directly. If a material fact remains unknown, keep a visible placeholder.
