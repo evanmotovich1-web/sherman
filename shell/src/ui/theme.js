@@ -195,7 +195,7 @@ export const ACTIVITY_GLYPH = Object.freeze({
     'file-search': '🔎',
     'web-search': '🔍',
     mcp: '🔌',
-    subagent: '🤖',
+    subagent: '🔀',
     plan: '📋',
     tool: '🔧',
 });

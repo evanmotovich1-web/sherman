@@ -3,6 +3,21 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Added: exec and delegate trace registers; unpublished-vault count
+
+- The trace gains the reference's two remaining registers: `🐍 exec` for
+  shell commands that run a language runtime (python, node, swift, ruby,
+  deno, bun — same reported fact as `$`, more precise tag), and `🔀
+  delegate` for every worker the shell hands a task to — /subagent,
+  @-agents, and the automatic deep-work verifier commit a delegate row
+  carrying the task instead of a prose notice, and the engine's own
+  subagent activity now wears the same tag and glyph.
+- The launch panel's Vault line now counts unpublished shared-lane changes
+  (`… · 3 unpublished — sherman sync`), measured by git against wiki,
+  memory/shared, and inbox only. Two machines disagreeing about the wiki
+  count IS this number on one of them; now it shows instead of being
+  discovered as confusion.
+
 ## 2026-08-10 — Added: navigate rides every turn as the blue globe; pet claims verified
 
 - Every ordinary prompt turn now carries the standing navigate reminder,

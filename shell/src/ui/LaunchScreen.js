@@ -676,7 +676,8 @@ function Knowledge({ stats, registry, caps, info, sessionId, width, stretch = fa
             lines: stats.ok
                 ? [
                       `${plural(stats.wiki, 'wiki page')} · ${plural(stats.shared, 'shared fact')}`,
-                      `${plural(stats.private, 'private fact')} · ${plural(stats.inbox, 'inbox item')}`,
+                      `${plural(stats.private, 'private fact')} · ${plural(stats.inbox, 'inbox item')}`
+                          + (stats.unpublished ? ` · ${stats.unpublished} unpublished — sherman sync` : ''),
                   ]
                 : // Unreachable is a different problem from empty, and the panel
                   // should not let them look the same.
@@ -781,6 +782,7 @@ function MidPanel({ panel, inner, info, stats, sessionId, registry, tall = false
     const vaultLine = stats.ok
         ? `${plural(stats.wiki, 'wiki page')} · ${plural(stats.shared, 'shared fact')} · `
           + `${plural(stats.private, 'private fact')} · ${plural(stats.inbox, 'inbox item')}`
+          + (stats.unpublished ? ` · ${stats.unpublished} unpublished — sherman sync` : '')
         : 'unreadable — check vault_path in ~/.sherman/config.json';
 
     return React.createElement(
@@ -894,6 +896,7 @@ function CompactSummary({ width, info, stats, sessionId, registry, spare = 0 }) 
     const facts = stats.wiki + stats.shared + stats.private;
     const vault = stats.ok
         ? `${plural(facts, 'fact')} · ${plural(stats.inbox, 'inbox item')}`
+          + (stats.unpublished ? ` · ${stats.unpublished} unpublished` : '')
         : 'unavailable · check vault_path';
     const session = sessionId ? `…${sessionId.slice(-6)}` : '—';
 

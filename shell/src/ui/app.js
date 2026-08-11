@@ -91,7 +91,7 @@ const TRACE_TAG = Object.freeze({
     'file-search': 'find',
     'web-search': 'search',
     mcp: 'mcp',
-    subagent: 'agent',
+    subagent: 'delegate',
     plan: 'plan',
     tool: 'tool',
 });
@@ -456,6 +456,17 @@ export function App({
         const result = clipboard(text, { stdout });
         commit(result.ok ? 'notice' : 'error', copyNotice(result, text.split('\n').length));
     }, [clipboard, commit, stdout]);
+
+    // A shell-launched worker gets the reference's delegate row: the 🔀 mark
+    // and the task it was handed, committed to the trace like any other act
+    // the shell performed. The launch notices this replaces carried the same
+    // facts in prose; the trace register is where acts belong.
+    const commitDelegate = useCallback((label) => {
+        const tag = 'delegate'.padEnd(TRACE_TAG_WIDTH);
+        commit('tool', `🔀 ${tag}  ${label}`, {
+            trace: { glyph: '🔀', tag, label, outcome: '', duration: '' },
+        });
+    }, [commit]);
 
     // /update runs the launcher's own update flow in a background child, so
     // the shell stays usable while the pull, npm ci, provisioner repairs, and
@@ -979,7 +990,7 @@ export function App({
                 request = workerRequest(parsed.args, goal);
                 messageKind = 'worker-message';
                 isWorker = true;
-                commit('notice', 'worker 01 · isolated · read-only');
+                commitDelegate(`${parsed.args} · isolated · read-only`);
             }
 
             // An @-mentioned agent is the /subagent contract with a specialty:
@@ -994,7 +1005,7 @@ export function App({
                 request = agentRequest(agentCall.agent, agentCall.task, goal);
                 messageKind = 'worker-message';
                 isWorker = true;
-                commit('notice', `@${agentCall.agent.name} · isolated · read-only · ${agentCall.agent.specialty}`);
+                commitDelegate(`@${agentCall.agent.name} ${agentCall.task} · isolated · read-only`);
             }
 
             // The handoff rides the first request the reset thread receives,
@@ -1145,6 +1156,17 @@ export function App({
                                     const glyph = skillRead[1] === 'navigate' ? '🌐' : '📚';
                                     parts = { ...parts, glyph, tag, label: detail };
                                     text = `${glyph} ${tag}  ${detail}${parts.outcome}${parts.duration}`;
+                                }
+                                // A shell command that runs a language runtime
+                                // is the reference's `exec` register, not `$`:
+                                // same reported fact, more precise tag.
+                                const execRun = !skillRead && event.category === 'command' && typeof event.label === 'string'
+                                    ? event.label.match(/^exec ((?:python3?|node|swift|ruby|perl|deno|bun)\b[\s\S]*)$/)
+                                    : null;
+                                if (execRun) {
+                                    const tag = 'exec'.padEnd(TRACE_TAG_WIDTH);
+                                    parts = { ...parts, glyph: '🐍', tag, label: execRun[1] };
+                                    text = `🐍 ${tag}  ${execRun[1]}${parts.outcome}${parts.duration}`;
                                 }
                                 commit('tool', text, { trace: parts });
                                 writePetState('working', event.label);
@@ -1313,7 +1335,7 @@ export function App({
                 && turnMutations >= 4 && sessionFactory && !log.failed) {
                 const check = verifyWorkRequest(log.path, goal);
                 if (check) {
-                    commit('notice', `deep work · ${turnMutations} mutating steps · verifying automatically · ctrl+c to skip`);
+                    commitDelegate(`verify the finished work · ${turnMutations} mutating steps · read-only · ctrl+c to skip`);
                     const verifier = sessionFactory();
                     activeSessionRef.current = verifier;
                     setBusyBoth(true);
@@ -1352,7 +1374,7 @@ export function App({
                 await compactSession('');
             }
         },
-        [carryOver, clearLingerTimers, commit, commonsCommand, compactSession, exit, goal, mouseEnabled, runMetaEval, runUpdate, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills, atAgents]
+        [carryOver, clearLingerTimers, commit, commitDelegate, commonsCommand, compactSession, exit, goal, mouseEnabled, runMetaEval, runUpdate, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills, atAgents]
     );
     submitRef.current = submit;
 

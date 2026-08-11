@@ -12,6 +12,7 @@
 
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 /**
  * @typedef {Object} VaultStats
@@ -84,6 +85,30 @@ export function readVaultStats({ vaultPath, user }) {
         // to count. Joining an undefined segment would throw.
         private: user ? countMarkdown(join(vaultPath, 'memory', 'private', user)) : 0,
         inbox: countMarkdown(join(vaultPath, 'inbox')),
+        // Shared-lane changes on THIS machine that `sherman sync` has not
+        // published. Two machines disagreeing about the wiki count is this
+        // number, and drift with no number gets discovered as confusion.
+        unpublished: countUnpublished(vaultPath),
         ok: true,
     };
+}
+
+/**
+ * Files changed in the shared vault lanes but not yet committed — what a
+ * `sherman sync` on this machine would publish. Measured with git against the
+ * lanes only; a vault outside any checkout, or a machine without git, reports
+ * 0 rather than failing the panel.
+ */
+function countUnpublished(vaultPath) {
+    try {
+        const result = spawnSync(
+            'git',
+            ['-C', vaultPath, 'status', '--porcelain', '--', 'wiki', 'memory/shared', 'inbox'],
+            { encoding: 'utf8', timeout: 3000 }
+        );
+        if (result.status !== 0 || typeof result.stdout !== 'string') return 0;
+        return result.stdout.split('\n').filter(Boolean).length;
+    } catch {
+        return 0;
+    }
 }
