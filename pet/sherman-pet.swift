@@ -48,6 +48,7 @@ func readState() -> PetState {
 
 struct PetPrefs {
     var size: String
+    var color: String
     var x: Double?
     var y: Double?
 }
@@ -59,21 +60,47 @@ let SIZES: [(name: String, label: String, height: CGFloat)] = [
     ("huge", "Huge", 204),
 ]
 
+// The coat colors /customize and the right-click menu offer. Pink is the
+// house accent; blue is the reference creature's periwinkle.
+let COLORS: [(name: String, label: String, base: NSColor, shade: NSColor)] = [
+    ("pink", "Pink",
+     NSColor(calibratedRed: 0.98, green: 0.42, blue: 0.68, alpha: 1),
+     NSColor(calibratedRed: 0.80, green: 0.28, blue: 0.54, alpha: 1)),
+    ("blue", "Blue",
+     NSColor(calibratedRed: 0.44, green: 0.51, blue: 0.92, alpha: 1),
+     NSColor(calibratedRed: 0.31, green: 0.36, blue: 0.74, alpha: 1)),
+    ("green", "Green",
+     NSColor(calibratedRed: 0.32, green: 0.74, blue: 0.50, alpha: 1),
+     NSColor(calibratedRed: 0.21, green: 0.55, blue: 0.36, alpha: 1)),
+    ("purple", "Purple",
+     NSColor(calibratedRed: 0.62, green: 0.45, blue: 0.92, alpha: 1),
+     NSColor(calibratedRed: 0.46, green: 0.31, blue: 0.73, alpha: 1)),
+    ("gray", "Gray",
+     NSColor(calibratedWhite: 0.55, alpha: 1),
+     NSColor(calibratedWhite: 0.40, alpha: 1)),
+]
+
+func palette(_ name: String) -> (base: NSColor, shade: NSColor) {
+    let entry = COLORS.first(where: { $0.name == name }) ?? COLORS[0]
+    return (entry.base, entry.shade)
+}
+
 func readPrefs() -> PetPrefs {
     let url = petDir.appendingPathComponent("prefs.json")
     guard let data = try? Data(contentsOf: url),
           let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        return PetPrefs(size: "medium", x: nil, y: nil)
+        return PetPrefs(size: "medium", color: "pink", x: nil, y: nil)
     }
     return PetPrefs(
         size: (raw["size"] as? String) ?? "medium",
+        color: (raw["color"] as? String) ?? "pink",
         x: raw["x"] as? Double,
         y: raw["y"] as? Double
     )
 }
 
 func savePrefs(_ prefs: PetPrefs) {
-    var raw: [String: Any] = ["size": prefs.size]
+    var raw: [String: Any] = ["size": prefs.size, "color": prefs.color]
     if let x = prefs.x { raw["x"] = x }
     if let y = prefs.y { raw["y"] = y }
     if let data = try? JSONSerialization.data(withJSONObject: raw) {
@@ -229,6 +256,14 @@ final class PetView: NSView {
             menu.addItem(item)
         }
         menu.addItem(NSMenuItem.separator())
+        for color in COLORS {
+            let item = NSMenuItem(title: color.label, action: #selector(pickColor(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = color.name
+            item.state = prefs.color == color.name ? .on : .off
+            menu.addItem(item)
+        }
+        menu.addItem(NSMenuItem.separator())
         let open = NSMenuItem(title: "Open Sherman", action: #selector(openSherman), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
@@ -238,17 +273,29 @@ final class PetView: NSView {
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 
+    /// Resize the window for the current size pref, keeping the feet planted.
+    func applySize() {
+        if let window = self.window {
+            var frame = window.frame
+            let size = desiredSize
+            frame.origin.y += frame.size.height - size.height
+            frame.size = size
+            window.setFrame(frame, display: true, animate: false)
+        }
+        needsDisplay = true
+    }
+
     @objc func pickSize(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
         prefs.size = name
         savePrefs(prefs)
-        if let window = self.window {
-            var frame = window.frame
-            let size = desiredSize
-            frame.origin.y += frame.size.height - size.height // keep the feet planted
-            frame.size = size
-            window.setFrame(frame, display: true, animate: false)
-        }
+        applySize()
+    }
+
+    @objc func pickColor(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        prefs.color = name
+        savePrefs(prefs)
         needsDisplay = true
     }
 
@@ -269,25 +316,35 @@ final class PetView: NSView {
         let baseY = bounds.minY + 4 + h * (shown == "offline" ? 0 : bob)
         let sip = sipProgress
 
-        // Sherman's inks: the shell's accent 205 for the body, its dark panel
-        // for the face, the meter's mint for the eyes.
+        // The coat comes from the color pref; the face panel stays dark and
+        // the eyes stay mint whatever the coat. Offline dims everything.
         let offline = shown == "offline"
-        let body = offline
-            ? NSColor(calibratedWhite: 0.42, alpha: 1)
-            : NSColor(calibratedRed: 0.98, green: 0.42, blue: 0.68, alpha: 1)
-        let bodyDark = offline
-            ? NSColor(calibratedWhite: 0.33, alpha: 1)
-            : NSColor(calibratedRed: 0.80, green: 0.28, blue: 0.54, alpha: 1)
+        let coat = palette(prefs.color)
+        let body = offline ? NSColor(calibratedWhite: 0.42, alpha: 1) : coat.base
+        let bodyDark = offline ? NSColor(calibratedWhite: 0.33, alpha: 1) : coat.shade
         let panel = NSColor(calibratedRed: 0.078, green: 0.078, blue: 0.11, alpha: 1)
         let eye = offline
             ? NSColor(calibratedWhite: 0.65, alpha: 1)
             : NSColor(calibratedRed: 0.62, green: 0.93, blue: 0.87, alpha: 1)
 
-        // Torso, feet, arms first so the head overlaps them.
+        // Legs first — two stubby feet the torso overlaps, the reference's
+        // stance — then torso and arms, then the head over all of it.
         let torsoW = h * 0.52
         let torsoH = h * 0.34
-        let torso = NSRect(x: cx - torsoW / 2, y: baseY, width: torsoW, height: torsoH)
-        bodyDark.setFill()
+        let legH = h * 0.10
+        let torsoY = baseY + legH * 0.72
+        for side in [-1.0, 1.0] {
+            let leg = NSRect(
+                x: cx + CGFloat(side) * torsoW * 0.26 - h * 0.07,
+                y: baseY,
+                width: h * 0.14, height: legH + h * 0.05
+            )
+            bodyDark.setFill()
+            NSBezierPath(roundedRect: leg, xRadius: h * 0.05, yRadius: h * 0.05).fill()
+        }
+
+        let torso = NSRect(x: cx - torsoW / 2, y: torsoY, width: torsoW, height: torsoH)
+        body.setFill()
         NSBezierPath(roundedRect: torso, xRadius: h * 0.09, yRadius: h * 0.09).fill()
 
         // The right arm (screen right) is the drinking arm: during a sip it is
@@ -296,28 +353,35 @@ final class PetView: NSView {
             if side > 0 && sip != nil { continue }
             let arm = NSRect(
                 x: cx + CGFloat(side) * torsoW * 0.62 - h * 0.075,
-                y: baseY + torsoH * 0.28,
+                y: torsoY + torsoH * 0.28,
                 width: h * 0.15, height: h * 0.15
             )
             bodyDark.setFill()
             NSBezierPath(ovalIn: arm).fill()
         }
 
-        // Chest mark: the caduceus, Sherman Abrams Labs' trade.
+        // Chest mark: the caduceus on a small dark screen, the reference's
+        // chest-panel arrangement in this house's trade.
+        let chestPanel = NSRect(
+            x: cx - torsoW * 0.26, y: torsoY + torsoH * 0.10,
+            width: torsoW * 0.52, height: torsoH * 0.52
+        )
+        panel.setFill()
+        NSBezierPath(roundedRect: chestPanel, xRadius: h * 0.03, yRadius: h * 0.03).fill()
         let chest = "⚕" as NSString
-        let chestFont = NSFont.systemFont(ofSize: torsoH * 0.5, weight: .bold)
+        let chestFont = NSFont.systemFont(ofSize: torsoH * 0.42, weight: .bold)
         let chestAttrs: [NSAttributedString.Key: Any] = [
             .font: chestFont,
-            .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.9),
+            .foregroundColor: eye,
         ]
         let chestSize = chest.size(withAttributes: chestAttrs)
         chest.draw(
-            at: NSPoint(x: cx - chestSize.width / 2, y: baseY + torsoH * 0.12),
+            at: NSPoint(x: cx - chestSize.width / 2, y: chestPanel.minY + torsoH * 0.03),
             withAttributes: chestAttrs
         )
 
         // The cloud head: overlapping puffs, the reference silhouette.
-        let headY = baseY + torsoH * 0.72
+        let headY = torsoY + torsoH * 0.72
         let headH = h * 0.62
         body.setFill()
         let puffs: [(dx: CGFloat, dy: CGFloat, r: CGFloat)] = [
@@ -402,7 +466,7 @@ final class PetView: NSView {
         // amber medicine bottle, tips it at the face for a pretend drink, and
         // puts it back. Phases: raise (0–0.3), sip (0.3–0.7), lower (0.7–1).
         if let p = sip {
-            let restPoint = NSPoint(x: cx + torsoW * 0.62, y: baseY + torsoH * 0.35)
+            let restPoint = NSPoint(x: cx + torsoW * 0.62, y: torsoY + torsoH * 0.35)
             let mouthPoint = NSPoint(x: cx + faceW * 0.16, y: face.minY + faceH * 0.22)
             let ease = { (t: CGFloat) -> CGFloat in t * t * (3 - 2 * t) } // smoothstep
             let lift: CGFloat
@@ -584,6 +648,17 @@ Timer.scheduledTimer(withTimeInterval: 1.0 / 12.0, repeats: true) { _ in
     if frame % 8 == 0 {
         view.state = readState()
         if view.shownStatus == "working" { view.pulse.toggle() }
+        // /customize edits prefs.json from the shell; pick the changes up
+        // live. Size and color only — position belongs to dragging, and
+        // re-applying a stored origin here would fight the operator's hand.
+        let fresh = readPrefs()
+        if fresh.color != view.prefs.color {
+            view.prefs.color = fresh.color
+        }
+        if fresh.size != view.prefs.size {
+            view.prefs.size = fresh.size
+            view.applySize()
+        }
     }
     view.needsDisplay = true
 }

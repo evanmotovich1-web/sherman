@@ -102,6 +102,13 @@
         { "name": "win", "verify": "command" },
         { "name": "wiki", "verify": "command" }
       ]
+    },
+    {
+      "name": "pet",
+      "summary": "the desktop companion",
+      "tools": [
+        { "name": "customize", "verify": "command" }
+      ]
     }
   ]
 }

@@ -80,6 +80,12 @@ export const COMMANDS = Object.freeze([
         detail: 'Sherman defaults to ordinary terminal text selection. /select toggles mouse capture for wheel scrolling; use it again to return to ordinary drag selection.',
     },
     {
+        name: 'customize',
+        usage: '/customize [size|color] <value>',
+        summary: "customize the desktop pet's size and coat color",
+        detail: 'Writes ~/.sherman/pet/prefs.json and verifies by read-back; a running pet applies the change live within a second. Sizes: small, medium, large, huge. Colors: pink, blue, green, purple, gray. A bare value works too (/customize blue). With no arguments it reports the current settings. Requires the desktop pet: run sherman pet once on this machine first.',
+    },
+    {
         name: 'update',
         usage: '/update',
         summary: 'update Sherman to the latest version and verify it',

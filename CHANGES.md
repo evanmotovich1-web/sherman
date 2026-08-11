@@ -3,6 +3,20 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Added: /customize, pet legs, and coat colors
+
+- `/customize` in the shell styles the desktop pet and verifies by read-back:
+  `/customize size <small|medium|large|huge>` and
+  `/customize color <pink|blue|green|purple|gray>` (a bare value works; no
+  arguments reports current settings). A running pet applies changes live
+  within a second — prefs are re-read on the animation clock, size and color
+  only, position stays owned by dragging. Declared in the capability
+  registry under a new `pet` toolset; the same choices live in the pet's
+  right-click menu.
+- The pet has legs now — two stubby feet under the torso, the reference
+  stance — and its chest mark sits on a small dark screen panel like the
+  reference's, drawn in the eye mint.
+
 ## 2026-08-10 — Improved: the desktop pet is alive
 
 - The pet now animates: a slow breathing bob, a blink every few seconds (the

@@ -50,7 +50,7 @@ import {
     workerRequest,
 } from '../commands.js';
 import { describe as describeConnectors } from '../connectors.js';
-import { writePetState } from '../petstate.js';
+import { customizePet, writePetState } from '../petstate.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
 import { appendEvalReport, ungradedSessions, writeRecommendation } from '../evalstore.js';
 import { collectWinSources, renderWinHtml, winRequest, writeWinSite } from '../win.js';
@@ -733,6 +733,13 @@ export function App({
                     commit('notice', next
                         ? 'wheel scrolling restored · Shift+drag selects text · /select releases the mouse again'
                         : 'selection mode · drag to select and use your terminal copy shortcut · /select restores wheel scrolling');
+                    return;
+                }
+                if (command.name === 'customize') {
+                    // Local, like /connectors: two small files under
+                    // ~/.sherman/pet own the whole answer.
+                    const result = customizePet(parsed.args);
+                    commit(result.ok ? 'notice' : 'error', result.text);
                     return;
                 }
                 if (command.name === 'update') {

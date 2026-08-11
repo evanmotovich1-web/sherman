@@ -438,12 +438,14 @@ test('the mark scales with the tall panel and stays compact below it', () => {
     );
     // A hugging panel and the first stretched sizes keep the 12-column mark;
     // only a panel with 22 inner rows to spare doubles it. The larger built-in
-    // registry consumes the first two stretch rows, moving that point to 46.
+    // registry consumes the first stretch rows — every real toolset and skill
+    // category added moves that point up; it sits at 48 with the pet toolset
+    // and the vendored skill categories.
     assert.equal(markRun(frame(40)), 10, 'a hugging panel must keep the compact mark');
     assert.equal(markRun(frame(43)), 10, 'below the threshold the panel must hug and stay compact');
     assert.equal(markRun(frame(44)), 10, 'the first stretched size still spends its rows on registry truth');
-    assert.equal(markRun(frame(45)), 10, 'one row short must not clip a doubled mark');
-    assert.equal(markRun(frame(46)), 20, 'the first body with enough room doubles the mark');
+    assert.equal(markRun(frame(47)), 10, 'one row short must not clip a doubled mark');
+    assert.equal(markRun(frame(48)), 20, 'the first body with enough room doubles the mark');
     assert.equal(markRun(frame(60)), 20, 'a tall panel must render the doubled mark');
 
     // Doubled means magnified, not redrawn: twice the rows as well as twice the
@@ -459,15 +461,15 @@ test('the mark scales with the tall panel and stays compact below it', () => {
     assert.match(plain(frame(60)), /████ {16}████/);
     assert.match(plain(frame(60)), /██████ {12}██████/);
 
-    // The mark scale now flips at 45 -> 46. The frame itself begins stretching
-    // at 44; the next two rows are legitimately occupied by the larger
+    // The mark scale now flips at 47 -> 48. The frame itself begins stretching
+    // at 44; the rows in between are legitimately occupied by the larger
     // capability registry before the doubled art can fit without clipping.
     // The frame grows only by the row the viewport actually added; the mark
     // changes scale inside a budget settled before the art is sized.
-    assert.equal(markRun(frame(45)), 10);
-    assert.equal(markRun(frame(46)), 20);
+    assert.equal(markRun(frame(47)), 10);
+    assert.equal(markRun(frame(48)), 20);
     assert.ok(
-        rawRows(frame(46)).length > rawRows(frame(45)).length,
+        rawRows(frame(48)).length > rawRows(frame(47)).length,
         'the stretched panel should be taller than the hugging one'
     );
 });
