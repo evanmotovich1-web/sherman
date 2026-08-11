@@ -47,10 +47,17 @@ On macOS the pet also has a body outside the terminal: `sherman pet` compiles
 and launches a small always-on-top companion (`pet/sherman-pet.swift`) that
 sits wherever the operator drags it, mirrors the live session — working, done,
 failed, waiting, offline — from `~/.sherman/pet/state.json`, brings the
-Sherman terminal forward when clicked, and resizes from its right-click menu.
-`sherman pet stop` ends it. The desktop pet is a viewer: it renders only what
-the shell reported, and the same boundary below covers the state file — status
-words and tool labels only, never message content.
+Sherman terminal forward when clicked, and takes a bottle sip every fifteen
+seconds. `sherman pet stop` ends it. The desktop pet is a viewer: it renders
+only what the shell reported, and the same boundary below covers the state
+file — status words and tool labels only, never message content.
+
+Its look is set two ways: the `/customize` shell command (`/customize size
+small|medium|large|huge`, `/customize color pink|blue|green|purple|gray` — a
+running pet applies changes live) and the same choices on the pet's
+right-click menu. When the operator asks about the pet's size, color, or
+design, point them at `/customize` — that command, not this skill, owns the
+desktop pet's appearance.
 
 ## The boundary
 

@@ -392,6 +392,40 @@ else
 fi
 echo
 
+# --------------------------------------------------------------- desktop pet --
+# macOS only. The pet compiles from pet/sherman-pet.swift with the system
+# Swift toolchain; doing it here means `sherman pet` starts instantly on a
+# fresh machine instead of pausing on a first-run compile. The binary name
+# carries the source hash — the same contract as `sherman pet` — so the two
+# never fight over staleness. A Mac without the Xcode Command Line Tools
+# gets an honest NOTE, not a failure: the pet is an enhancement, and git
+# needing those same tools means most machines that cloned this repo have
+# them already.
+if [ "$(uname -s)" = "Darwin" ] && [ -f "$ROOT/pet/sherman-pet.swift" ]; then
+    if command -v swiftc >/dev/null 2>&1; then
+        pet_hash=$(shasum "$ROOT/pet/sherman-pet.swift" 2>/dev/null | cut -c1-12)
+        pet_bin="$HOME/.sherman/pet/sherman-pet-$pet_hash"
+        if [ -x "$pet_bin" ]; then
+            echo "  desktop pet already compiled (start it with: sherman pet)"
+        else
+            echo "  compiling the desktop pet (sherman pet starts it)"
+            mkdir -p "$HOME/.sherman/pet"
+            if swiftc -swift-version 5 -O "$ROOT/pet/sherman-pet.swift" -o "$pet_bin" >/dev/null 2>&1 \
+                && [ -x "$pet_bin" ]; then
+                echo "  desktop pet compiled (verified: binary present and executable)"
+                echo "        start it any time with:  sherman pet"
+            else
+                rm -f "$pet_bin"
+                echo "  NOTE: the pet did not compile; sherman pet will retry and report the error."
+            fi
+        fi
+    else
+        echo "  NOTE: the desktop pet needs the Xcode Command Line Tools to compile."
+        echo "        Install them with:  xcode-select --install   then run sherman pet."
+    fi
+fi
+echo
+
 # -------------------------------------------------------------- agent reach --
 # Internet access for /mcp. Shared with `sherman update` rather than copied,
 # because the wiki's provision-here/repair-there split has already drifted.

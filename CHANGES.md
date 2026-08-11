@@ -3,6 +3,16 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Improved: install.sh compiles the pet; /pet routes to /customize
+
+- On macOS, install.sh now compiles the desktop pet during install (same
+  source-hash binary contract as `sherman pet`), so a brand-new machine gets
+  an instantly startable pet; a Mac without the Xcode Command Line Tools
+  gets the exact install command as a NOTE instead of a failure.
+- The /pet skill now names `/customize` as the owner of the desktop pet's
+  size and color, so asking the skill about the pet's design points at the
+  command instead of dead-ending.
+
 ## 2026-08-10 — Added: /customize, pet legs, and coat colors
 
 - `/customize` in the shell styles the desktop pet and verifies by read-back:
