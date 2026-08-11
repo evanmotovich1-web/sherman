@@ -1204,6 +1204,78 @@ if [ "${1:-}" = "pet" ]; then
     run_pet "$@"
 fi
 
+# `board` -- the operator's live window into a team of Sherman sessions
+# coordinating through a shared board file (see the team and kanban skills).
+# Needs no engine and no config: it renders `$WORKSPACE/boards/*.md` in place,
+# refreshing every two seconds on a TTY, printing once when piped. Reading is
+# all it does; the sessions own the writes.
+run_board() {
+    boards_dir="$WORKSPACE/boards"
+    pick="${1:-}"
+
+    board_file=""
+    if [ -n "$pick" ]; then
+        for candidate in "$boards_dir/team-$pick.md" "$boards_dir/$pick.md" "$pick"; do
+            if [ -f "$candidate" ]; then
+                board_file="$candidate"
+                break
+            fi
+        done
+        if [ -z "$board_file" ]; then
+            echo "No board named '$pick' under $boards_dir." >&2
+            exit 1
+        fi
+    else
+        # Newest board wins; team boards outrank solo boards at the same age
+        # only by being what this command exists to watch.
+        board_file=$(ls -t "$boards_dir"/team-*.md 2>/dev/null | head -1)
+        [ -n "$board_file" ] || board_file=$(ls -t "$boards_dir"/*.md 2>/dev/null | head -1)
+        if [ -z "$board_file" ]; then
+            echo "No boards yet. A Sherman session creates one when a project"
+            echo "spans workstreams (kanban skill) or when you tell sessions to"
+            echo "work as a team (team skill). Boards live in $boards_dir."
+            exit 0
+        fi
+    fi
+
+    render_board() {
+        # Light ink, honest content: headings and statuses colored, every
+        # byte of the board shown as written. NO_COLOR drops the tint.
+        if [ -n "${NO_COLOR:-}" ]; then
+            cat "$board_file"
+        else
+            awk '
+                /^#/      { printf "\033[1;36m%s\033[0m\n", $0; next }
+                /\| *done *\|/        { gsub(/\| *done *\|/, "| \033[32mdone\033[0m |") }
+                /\| *in-progress *\|/ { gsub(/\| *in-progress *\|/, "| \033[33min-progress\033[0m |") }
+                /\| *verify *\|/      { gsub(/\| *verify *\|/, "| \033[35mverify\033[0m |") }
+                /blocked/  { gsub(/blocked/, "\033[31mblocked\033[0m") }
+                { print }
+            ' "$board_file"
+        fi
+    }
+
+    if [ -t 1 ]; then
+        while :; do
+            printf '\033[H\033[2J'
+            printf '\033[2m%s · refreshed %s · ctrl+c to stop watching\033[0m\n\n' \
+                "$board_file" "$(date '+%H:%M:%S')"
+            render_board
+            sleep 2
+        done
+    else
+        # Piped output is for machines and transcripts: the bytes as written,
+        # no escape codes to clean up later.
+        cat "$board_file"
+    fi
+    exit 0
+}
+
+if [ "${1:-}" = "board" ]; then
+    shift
+    run_board "$@"
+fi
+
 # `update` is a subcommand, recognised first: it needs no engine, no config and
 # no session, so it runs before any of them are checked or created.
 if [ "${1:-}" = "update" ]; then

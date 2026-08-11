@@ -43,9 +43,10 @@ function stallMessage(ms) {
     return (
         `OpenCode produced no output for ${Math.round(ms / 1000)}s and was stopped — the turn never started.\n` +
         'Likely causes, most common first:\n' +
-        '  1. Z.AI auth expired — run: opencode auth login\n' +
-        '  2. Z.AI or the network is stalled — try: opencode run --model zai/glm-5.2 "hello"\n' +
-        '  3. An MCP server is hanging at startup.\n' +
+        '  1. Z.AI balance exhausted — OpenCode retries the refusal silently; check your Z.AI account and recharge.\n' +
+        '  2. Z.AI auth expired — run: opencode auth login\n' +
+        '  3. Z.AI or the network is stalled — try: opencode run --model zai/glm-5.2 "hello"\n' +
+        '  4. An MCP server is hanging at startup.\n' +
         'Nothing was lost; resend the prompt to retry.'
     );
 }
