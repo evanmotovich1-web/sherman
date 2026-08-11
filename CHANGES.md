@@ -16,6 +16,20 @@ shipped, verified release.
   bottom-anchored row of the newest turn, and below seven columns the reply
   still degrades to bare text rather than a box with no interior.
 
+## 2026-08-11 — Fixed: a silent zai turn is stopped and named, not waited on forever
+
+- Seen live: an OpenCode child hung before its first byte of stdout and the
+  shell showed "initializing agent" for 37 minutes — the transport waits on
+  stdout with no heartbeat, so a turn that never starts looks identical to
+  one that is initializing, indefinitely. A first-output stall detector now
+  arms at spawn and disarms on the first stdout line: a child that says
+  nothing within two minutes is killed and the error names the repairs,
+  most common first — `opencode auth login`, a direct `opencode run` probe,
+  a wedged MCP server — and says plainly that nothing was lost and a resend
+  retries. Only the window before the first line is policed; once the
+  stream is talking, a long silence is a slow tool call, not a stall.
+  `SHERMAN_OPENCODE_STALL_MS` overrides the window for tests and slow links.
+
 ## 2026-08-11 — Added: Sherman can edit its own source
 
 - New `self-edit` skill (category `agent`): when asked to fix, improve, or

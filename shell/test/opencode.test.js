@@ -280,3 +280,53 @@ console.log(JSON.stringify({ type: 'step_finish', sessionID: 'ses_transport', pa
         rmSync(dir, { recursive: true, force: true });
     }
 });
+
+// The stall detector. Seen live: an OpenCode child that hung before its first
+// byte of stdout left the shell showing "initializing agent" for 37 minutes,
+// because the transport waits on stdout with no heartbeat. A turn that
+// produces nothing within the window is now killed and NAMED — the error
+// carries the repairs, most common first — instead of being waited on
+// forever. The window covers only the time before the first output line;
+// the healthy-transport test above proves a talking child is never touched.
+test('a turn that produces no output is stopped and named, not waited on forever', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sherman-opencode-stall-'));
+    const stub = join(dir, 'opencode');
+    writeFileSync(stub, `#!/usr/bin/env node
+// Hang silently: no stdout, no exit — the observed failure mode.
+setInterval(() => {}, 1000);
+`);
+    chmodSync(stub, 0o755);
+    const runtimeConfig = {
+        ...config,
+        workspacePath: dir,
+        vaultPath: join(dir, 'vault'),
+    };
+    mkdirSync(runtimeConfig.vaultPath);
+
+    const previousPath = process.env.PATH;
+    const previousStall = process.env.SHERMAN_OPENCODE_STALL_MS;
+    process.env.PATH = `${dir}${delimiter}${previousPath}`;
+    process.env.SHERMAN_OPENCODE_STALL_MS = '250';
+    try {
+        const session = new OpenCodeSession(runtimeConfig);
+        const events = [];
+        const started = Date.now();
+        for await (const event of session.send('hang')) events.push(event);
+        const waited = Date.now() - started;
+
+        const stall = events.find((event) => event.kind === 'error');
+        assert.ok(stall, JSON.stringify(events));
+        assert.match(stall.message, /produced no output for \ds and was stopped/);
+        assert.match(stall.message, /opencode auth login/);
+        assert.match(stall.message, /resend the prompt to retry/);
+        // The stall is the whole story: no turn-end pretending the turn ran,
+        // and the wait was the configured window, not a human noticing.
+        assert.equal(events.some((event) => event.kind === 'turn-end'), false);
+        assert.ok(waited < 5000, `stall detection took ${waited}ms`);
+    } finally {
+        process.env.PATH = previousPath;
+        if (previousStall === undefined) delete process.env.SHERMAN_OPENCODE_STALL_MS;
+        else process.env.SHERMAN_OPENCODE_STALL_MS = previousStall;
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
