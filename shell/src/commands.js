@@ -712,6 +712,34 @@ export function agentRequest(agent, task, goal) {
     };
 }
 
+/**
+ * The automatic deep-work verification turn.
+ *
+ * When a prompt turn commits enough mutating events (file changes, creations,
+ * commands, diffs), the shell runs this in a fresh isolated read-only worker
+ * before handing the screen back: the work's claims get checked against the
+ * actual files while the operator is still looking at them. Read-only for the
+ * eval's reason — a verifier with a pen would be redoing the work, not
+ * verifying it.
+ */
+export function verifyWorkRequest(logPath, goal) {
+    if (!logPath) return null;
+    return {
+        text: [
+            'WORK VERIFICATION TURN',
+            'A substantial turn of mutating work just finished in the parent session. Verify it before the operator builds on it.',
+            '',
+            `The session log is at ${logPath} — one JSON object per line, {role, at, text}. Read its tail: the final user request and the turns after it are the work under review.`,
+            'Identify what that work claimed to change or produce, then verify each claim against the actual files and state with read-only inspection: read the files it names, re-run harmless read-only checks where they exist, and compare what IS there with what was SAID to be there.',
+            'Report in under twelve lines: start with VERIFIED, CONCERNS, or CANNOT VERIFY, then one line per finding with the evidence path. Do not fix anything, do not edit files, and do not re-do the work — this turn observes and reports only.',
+            goal ? `Standing session goal: ${goal}` : null,
+            'The Sherman operating contract, no-PHI rule, and sandbox remain authoritative.',
+        ].filter(Boolean).join('\n'),
+        mode: 'isolated-read-only',
+        source: 'verify',
+    };
+}
+
 export function workerRequest(task, goal) {
     return {
         text: [

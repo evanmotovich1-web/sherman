@@ -143,6 +143,11 @@ export function StatusBar({
     columns,
     goal = '',
     vaultOk = true,
+    // What kind of delegated work is in flight RIGHT NOW: an MCP connector
+    // call or an isolated worker/subagent turn. Rendered as its own chip so
+    // reaching outside the engine is visible at the rule, not only in the
+    // trace. Both default off; every value is a reported fact from app state.
+    live = null,
 }) {
     const measured = useWindowSize().columns;
     const viewportWidth = typeof columns === 'number' ? columns : measured;
@@ -214,6 +219,21 @@ export function StatusBar({
             }],
         },
     ];
+    // The delegation chip, directly after the state: 🔌 while an MCP call is
+    // in flight, 🤖 while an isolated worker or engine subagent runs. Absent
+    // entirely when neither is true — an empty chip would be noise.
+    const liveParts = [];
+    if (live?.mcp) liveParts.push('🔌 mcp');
+    if (live?.agent) liveParts.push('🤖 agent');
+    if (liveParts.length > 0) {
+        const liveText = liveParts.join(' ');
+        segments.push({
+            key: 'live',
+            plain: liveText,
+            spans: [{ text: liveText, tint: color.accent, bold: true }],
+        });
+    }
+
     if (safeModel) {
         segments.push({
             key: 'model',
@@ -267,6 +287,7 @@ export function StatusBar({
     if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'last');
     if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'duration');
     if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'tokens');
+    if (!fits(visible)) visible = visible.filter((segment) => segment.key !== 'live');
     if (!fits(visible)) {
         visible = visible.map((segment) =>
             segment.key === 'model'

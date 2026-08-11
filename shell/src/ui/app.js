@@ -44,6 +44,7 @@ import {
     shouldAutoCompact,
     skillTurn,
     submissionRecordText,
+    verifyWorkRequest,
     wikiAvailable,
     wikiCaptureRequest,
     wikiPreflight,
@@ -271,6 +272,10 @@ export function App({
 
     const [busy, setBusy] = useState(false);
     const [activities, setActivities] = useState([]);
+    // Whether the turn in flight IS an isolated worker (subagent, @agent,
+    // /plan, evals, the auto work-check). Drives the status rule's 🤖 chip;
+    // engine-reported subagent and mcp activities drive the rest of it.
+    const [workerBusy, setWorkerBusy] = useState(false);
     const [lifecycle, setLifecycle] = useState(null);
     const [goal, setGoal] = useState('');
     const [pendingEmail, setPendingEmail] = useState(null);
@@ -972,13 +977,21 @@ export function App({
             // next render rather than waiting for the engine's first event. The
             // dead time at the start of a turn is exactly what it exists to cover.
             setBusyBoth(true);
+            setWorkerBusy(isWorker);
             // The desktop pet mirrors the same transitions the busy indicator
             // does; no-op unless this machine adopted it (see petstate.js).
             writePetState('working');
             let turnFailed = false;
+            // pre-seeded below (not null) so the dead time between submit and
+            // the engine's first event reads as a stage, not a stall; the
+            // engine's own status events overwrite it the moment they arrive.
+            // Mutating events this turn: file changes, creations, commands,
+            // and diffs. Past a threshold the turn counts as deep work and
+            // earns an automatic verification pass (below).
+            let turnMutations = 0;
             clearLingerTimers();
             setActivities([]);
-            setLifecycle(null);
+            setLifecycle('initializing agent');
             // Seed this turn's live character count with what is being sent.
             // A worker's tokens are not the main thread's context, so a worker
             // turn must never move the main meter.
@@ -1077,6 +1090,9 @@ export function App({
                                 // without re-parsing its own output.
                                 commit('tool', traceLine(event), { trace: traceParts(event) });
                                 writePetState('working', event.label);
+                                if (['file-change', 'file-create', 'command'].includes(event.category)) {
+                                    turnMutations += 1;
+                                }
                                 // Committed is the record; the live slot's copy
                                 // would be the same row twice on one screen.
                                 setActivities((current) =>
@@ -1135,6 +1151,7 @@ export function App({
                         // completed tool line is.
                         case 'diff':
                             commit('diff', '', { diff: event });
+                            turnMutations += 1;
                             break;
 
                         case 'interrupted':
@@ -1159,6 +1176,7 @@ export function App({
                 writePetState('failed', err?.message ?? String(err));
             } finally {
                 setBusyBoth(false);
+                setWorkerBusy(false);
                 clearLingerTimers();
                 setActivities([]);
                 setLifecycle(null);
@@ -1224,6 +1242,50 @@ export function App({
                         draft.body,
                     ].join('\n'));
                     commit('notice', openNotice(openUrl(composeUrl(draft))));
+                }
+            }
+
+            // Deep work earns an automatic verification pass: enough mutating
+            // events in a normal prompt turn, and a fresh read-only worker
+            // checks the finished work's claims against the actual files
+            // before the operator builds on them. Prompt turns only — eval,
+            // wiki, email, and worker turns already are or produce judgments —
+            // and interruptible like any turn (ctrl+c skips it).
+            if (!isWorker && !turnFailed && parsed.kind === 'prompt'
+                && turnMutations >= 4 && sessionFactory && !log.failed) {
+                const check = verifyWorkRequest(log.path, goal);
+                if (check) {
+                    commit('notice', `deep work · ${turnMutations} mutating steps · verifying automatically · ctrl+c to skip`);
+                    const verifier = sessionFactory();
+                    activeSessionRef.current = verifier;
+                    setBusyBoth(true);
+                    setWorkerBusy(true);
+                    let verdict = '';
+                    try {
+                        for await (const event of verifier.send(check)) {
+                            if (event.kind === 'message') {
+                                verdict = verdict ? `${verdict}\n\n${event.text}` : event.text;
+                            }
+                            if (event.kind === 'error') {
+                                commit('error', `work check failed: ${event.message}`);
+                                verdict = '';
+                                break;
+                            }
+                        }
+                        if (verdict) {
+                            commit('worker-message', verdict);
+                            log.append('worker', verdict);
+                        }
+                    } catch (err) {
+                        commit('error', `work check failed: ${err?.message ?? String(err)}`);
+                    } finally {
+                        setBusyBoth(false);
+                        setWorkerBusy(false);
+                        activeSessionRef.current = session;
+                        workerUsageRef.current = addUsage(workerUsageRef.current, verifier.usage ?? emptyUsage());
+                        setUsage(addUsage(session.usage, workerUsageRef.current));
+                        verifier.dispose();
+                    }
                 }
             }
 
@@ -1533,6 +1595,13 @@ export function App({
                   lastTurnMs,
                   goal,
                   vaultOk: vaultStats.ok,
+                  // Reported facts only: an in-flight mcp/subagent activity
+                  // from the engine, or a worker turn this shell itself runs.
+                  live: {
+                      mcp: activities.some((a) => a.category === 'mcp' && !a.mark),
+                      agent: workerBusy
+                          || activities.some((a) => a.category === 'subagent' && !a.mark),
+                  },
               })
             : null,
         pendingEmail

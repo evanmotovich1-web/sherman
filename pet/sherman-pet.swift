@@ -124,7 +124,52 @@ func terminalBundleId(_ termProgram: String) -> String {
     }
 }
 
+/// Raise the specific window titled "Sherman Abrams" — the shell names its
+/// own window — so a click lands on Sherman even when other windows of the
+/// same terminal app (a Codex session, say) are frontmost. Returns false
+/// when no such window was found, and the caller falls back to activating
+/// the app. The first use asks macOS for automation consent, once.
+func raiseShermanWindow(_ termProgram: String) -> Bool {
+    let source: String
+    switch termProgram {
+    case "iTerm.app":
+        source = """
+        tell application "iTerm2"
+            repeat with w in windows
+                if (name of w as string) contains "Sherman Abrams" then
+                    select w
+                    activate
+                    return true
+                end if
+            end repeat
+        end tell
+        return false
+        """
+    case "Apple_Terminal", "":
+        source = """
+        tell application "Terminal"
+            repeat with w in windows
+                if (name of w as string) contains "Sherman Abrams" then
+                    set index of w to 1
+                    activate
+                    return true
+                end if
+            end repeat
+        end tell
+        return false
+        """
+    default:
+        return false // other terminals: app activation is the honest best
+    }
+    var errorInfo: NSDictionary?
+    guard let script = NSAppleScript(source: source) else { return false }
+    let result = script.executeAndReturnError(&errorInfo)
+    if errorInfo != nil { return false }
+    return result.booleanValue
+}
+
 func focusSherman(_ state: PetState) {
+    if raiseShermanWindow(state.terminal) { return }
     let id = terminalBundleId(state.terminal)
     if let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first {
         if #available(macOS 14.0, *) {

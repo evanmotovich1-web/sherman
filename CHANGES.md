@@ -3,6 +3,35 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Added: delegation chip, auto work verification, document reading, navigate
+
+- The status rule gains a live delegation chip: 🔌 while an MCP connector
+  call is in flight, 🤖 while an isolated worker, @-agent, or engine
+  subagent runs — reported facts from app state, dropped under width
+  pressure like any other chip. Every submitted prompt now shows
+  `initializing agent` in the activity slot until the engine's first event
+  replaces it.
+- Deep work verifies itself: a prompt turn with four or more mutating steps
+  (file changes, creations, commands, diffs) automatically runs a fresh
+  isolated read-only worker that checks the finished work's claims against
+  the actual files and reports VERIFIED / CONCERNS / CANNOT VERIFY before
+  the operator builds on it. Interruptible like any turn.
+- New `document-reading` skill: routes any named document through a working
+  extractor — PDFs via bundled `pdf_text.swift` (macOS PDFKit) or
+  `pdf_text.py` (pypdf, anywhere Python runs), docx/rtf/html via textutil,
+  spreadsheets via spreadsheet-analysis — both PDF extractors verified
+  against a real PDF at adoption, with honest errors for locked, scanned,
+  and dependency-missing cases. No-PHI boundary stated.
+- New `navigate` skill, named in the operating contract as the standing
+  first move of every substantive task: place the request, sweep before
+  diving, and pick EVERY skill the task touches — skills are expected to
+  stack. The contract also now says skills fire on match, not on mention.
+- The Sherman shell titles its terminal window "Sherman Abrams", and the pet
+  raises that specific window on click (Terminal and iTerm2; other
+  terminals fall back to app activation) — a click no longer lands on
+  whichever sibling window, such as a Codex session, was frontmost. First
+  click asks macOS automation consent once.
+
 ## 2026-08-10 — Improved: install.sh compiles the pet; /pet routes to /customize
 
 - On macOS, install.sh now compiles the desktop pet during install (same

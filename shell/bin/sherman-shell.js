@@ -178,6 +178,19 @@ async function startShell() {
     // it adds no delay of its own — `done()` fires the moment the shell is
     // ready, however early that is. Imported here rather than at module scope so
     // --version, --help and --probe keep paying nothing for it.
+    // Name the terminal window. The desktop pet raises the window whose title
+    // contains "Sherman Abrams", so this is what makes a click land on THIS
+    // window rather than whichever window of the same terminal app was
+    // frontmost (seen live: a Codex window in the same app took the click).
+    // TTY-only so piped runs stay byte-identical, and reset on exit so the
+    // title does not outlive the shell it names.
+    if (process.stdout.isTTY) {
+        process.stdout.write('\x1b]0;Sherman Abrams\x07');
+        process.on('exit', () => {
+            try { process.stdout.write('\x1b]0;\x07'); } catch { /* closing */ }
+        });
+    }
+
     const { startLoadIn } = await import('../src/ui/loadin.js');
     const loadIn = startLoadIn();
 
