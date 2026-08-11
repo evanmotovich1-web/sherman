@@ -59,6 +59,16 @@ right-click menu. When the operator asks about the pet's size, color, or
 design, point them at `/customize` — that command, not this skill, owns the
 desktop pet's appearance.
 
+**Hiding or stopping the desktop pet is an operator action, and claims about
+it must survive verification.** The pet process lives outside the engine
+sandbox: `sherman pet stop` run from inside a session may be blocked, and a
+blocked stop is a FAILED stop. Before claiming the pet is hidden, verify
+with `pgrep -f sherman-pet-` — if any process matches, the pet is still on
+screen, and the honest answer is: "the sandbox blocked me; run `sherman pet
+stop` in your terminal, or right-click the pet → Quit Pet." Never infer the
+pet's absence from a command exiting, a PID file, or an app list — only from
+the process check coming back empty.
+
 ## The boundary
 
 The pet never appears uninvited, never influences a judgment or an eval,

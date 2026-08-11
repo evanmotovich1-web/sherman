@@ -38,6 +38,7 @@ import {
     metaEvalRequest,
     naturalEmailInstruction,
     naturalResearchInstruction,
+    navigateReminder,
     parseAgentMention,
     parseEmailResult,
     parseSubmission,
@@ -716,10 +717,12 @@ export function App({
                     // A trace row, not a notice: invoking a skill is an act the
                     // shell itself performed, and the trace is where acts live.
                     // The reference renders its skill loads exactly this way.
+                    // navigate carries its blue globe here too.
                     const skillTag = 'skill'.padEnd(TRACE_TAG_WIDTH);
-                    commit('tool', `📚 ${skillTag}  skills/${skill.name}/SKILL.md`, {
+                    const skillGlyph = skill.name === 'navigate' ? '🌐' : '📚';
+                    commit('tool', `${skillGlyph} ${skillTag}  skills/${skill.name}/SKILL.md`, {
                         trace: {
-                            glyph: '📚',
+                            glyph: skillGlyph,
                             tag: skillTag,
                             label: `skills/${skill.name}/SKILL.md`,
                             outcome: '',
@@ -849,7 +852,9 @@ export function App({
             }
 
             let engine = session;
-            let request = parsed.kind === 'prompt' ? goalEnvelope(parsed.text, goal) : null;
+            let request = parsed.kind === 'prompt'
+                ? goalEnvelope(navigateReminder(parsed.text), goal)
+                : null;
             let messageKind = 'message';
             let isWorker = false;
             // An email turn's reply is machine-shaped (the draft as JSON), so
@@ -1134,8 +1139,12 @@ export function App({
                                     const detail = skillRead[2] === 'SKILL.md'
                                         ? skillRead[1]
                                         : `${skillRead[1]} → ${skillRead[2]}`;
-                                    parts = { ...parts, glyph: '📚', tag, label: detail };
-                                    text = `📚 ${tag}  ${detail}${parts.outcome}${parts.duration}`;
+                                    // navigate wears its own mark: the blue
+                                    // globe, for the skill that finds where
+                                    // things live.
+                                    const glyph = skillRead[1] === 'navigate' ? '🌐' : '📚';
+                                    parts = { ...parts, glyph, tag, label: detail };
+                                    text = `${glyph} ${tag}  ${detail}${parts.outcome}${parts.duration}`;
                                 }
                                 commit('tool', text, { trace: parts });
                                 writePetState('working', event.label);

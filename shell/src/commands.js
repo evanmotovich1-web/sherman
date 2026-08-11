@@ -276,6 +276,24 @@ export function helpText(name = '') {
     ].join('\n');
 }
 
+/**
+ * The standing navigate reminder, appended to every ordinary prompt turn.
+ *
+ * Appended, not prepended: the operator's words stay first in the request
+ * (and the envelopes that quote them stay stable); the routing rides after.
+ * Skill and research turns already carry their own routing, so they pass
+ * through untouched.
+ */
+export function navigateReminder(text) {
+    if (typeof text !== 'string' || !text.trim()) return text;
+    if (/^(?:SKILL|RESEARCH) TURN\b/.test(text)) return text;
+    return [
+        text,
+        '',
+        'NAVIGATE: unless this request is trivial or purely conversational, begin with the navigate skill — place the request, then load every matching skill together before acting.',
+    ].join('\n');
+}
+
 export function goalEnvelope(text, goal) {
     if (!goal) return text;
     return [

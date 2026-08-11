@@ -1049,7 +1049,10 @@ const poll = setInterval(() => {
             const missing = [...mappingMissing];
             if (!plain.includes('The intake SOP says')) missing.push('Sherman reply text');
             if (!draftEchoedBeforeSubmit) missing.push('composer echoes draft before submission');
-            if (sent.length !== 1 || sent[0] !== 'read\nthe sop') {
+            // The pasted lines must survive intact at the FRONT of the one
+            // submitted request; the shell may append standing routing (the
+            // navigate reminder) after them, which is not a paste defect.
+            if (sent.length !== 1 || !sent[0].startsWith('read\nthe sop')) {
                 missing.push('multi-line paste preserved until Enter');
             }
             // The signature is back on a row of its own, standing above the

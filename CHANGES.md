@@ -3,6 +3,24 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Added: navigate rides every turn as the blue globe; pet claims verified
+
+- Every ordinary prompt turn now carries the standing navigate reminder,
+  appended after the operator's words: begin with the navigate skill unless
+  the request is trivial or purely conversational. Skill and research turns
+  pass through untouched — they already carry their own routing. In the
+  trace, navigate wears its own mark: 🌐, the blue globe, on both automatic
+  loads and slash invocations.
+- Seen live: a sandboxed session claimed "the desktop pet is hidden" while
+  it stood on screen — the sandbox had blocked `sherman pet stop` and the
+  verification checked the wrong thing. The pet skill now states the
+  contract: stopping the pet is an operator action, a blocked stop is a
+  failed stop, and the only evidence of absence is `pgrep -f sherman-pet-`
+  coming back empty; anything less answers with the exact command the
+  operator can run. Smoke's paste check now asserts the pasted lines as the
+  request's front rather than its entirety, since standing routing rides
+  after them.
+
 ## 2026-08-10 — Fixed: a failed background checkpoint names its cause and retries
 
 - Seen live: "checkpoint eval failed: The engine reported an error." — a
