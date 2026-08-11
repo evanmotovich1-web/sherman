@@ -23,6 +23,33 @@ const NOT_INSTALLED =
     '\n' +
     'Then run `opencode auth login`, select Z.AI, and run sherman again.';
 
+// How long a spawned turn may produce NOTHING before it is declared stalled.
+// OpenCode has no heartbeat, and its worst observed failure mode (seen live:
+// 37 minutes of "initializing agent") is a child that hangs before its first
+// byte of stdout — expired auth it cannot prompt for because stdin is ignored
+// by design, a Z.AI network stall, or an MCP server wedged at startup. The
+// timer covers ONLY the window before the first output line: once the stream
+// is talking, a long silence is a slow tool call, and killing that would turn
+// patience into a bug. Overridable through the env for tests and for
+// operators on genuinely slow links.
+export const FIRST_OUTPUT_STALL_MS = 120_000;
+
+function firstOutputStallMs() {
+    const raw = Number(process.env.SHERMAN_OPENCODE_STALL_MS);
+    return Number.isFinite(raw) && raw > 0 ? raw : FIRST_OUTPUT_STALL_MS;
+}
+
+function stallMessage(ms) {
+    return (
+        `OpenCode produced no output for ${Math.round(ms / 1000)}s and was stopped — the turn never started.\n` +
+        'Likely causes, most common first:\n' +
+        '  1. Z.AI auth expired — run: opencode auth login\n' +
+        '  2. Z.AI or the network is stalled — try: opencode run --model zai/glm-5.2 "hello"\n' +
+        '  3. An MCP server is hanging at startup.\n' +
+        'Nothing was lost; resend the prompt to retry.'
+    );
+}
+
 /** Build the exact headless invocation. Never enable OpenCode sharing. */
 export function openCodeArgs(config, text, sessionId) {
     const args = [
@@ -349,8 +376,26 @@ export class OpenCodeSession extends EngineSession {
             child.once('close', (code, signal) => resolve({ code, signal, error: null }));
         });
 
+        // The stall detector. Armed at spawn, disarmed by the first stdout
+        // line — even a blank one, because any line proves the child is
+        // talking. A stalled child is killed and the stall is REMEMBERED,
+        // so the exit handling below can name what happened instead of
+        // reporting a bare "OpenCode exited without a status".
+        const stallMs = firstOutputStallMs();
+        let stalled = false;
+        let stallTimer = setTimeout(() => {
+            if (child.exitCode === null) {
+                stalled = true;
+                child.kill('SIGTERM');
+            }
+        }, stallMs);
+
         const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
         for await (const line of lines) {
+            if (stallTimer) {
+                clearTimeout(stallTimer);
+                stallTimer = null;
+            }
             if (!line.trim()) continue;
             let record;
             try {
@@ -374,10 +419,20 @@ export class OpenCodeSession extends EngineSession {
         }
 
         const exit = await result;
+        if (stallTimer) {
+            clearTimeout(stallTimer);
+            stallTimer = null;
+        }
         this._child = null;
         rmSync(isolatedConfigDir, { recursive: true, force: true });
         if (this._interrupted) {
             yield ev.interrupted();
+            return;
+        }
+        // Before the generic exit checks: a stall killed the child itself, so
+        // the honest report is the stall and its repairs, not the kill signal.
+        if (stalled) {
+            yield ev.error(stallMessage(stallMs));
             return;
         }
         if (exit.error?.code === 'ENOENT') {
