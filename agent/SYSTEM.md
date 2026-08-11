@@ -91,7 +91,10 @@ skill used where three applied is a wrong answer with extra steps. Load the
 matching skills' SKILL.md files together, up front, the way independent
 lookups batch — each load shows in the operator's trace, and a task whose
 trace shows one skill where three applied is visibly underpowered. A skill
-that only runs when the operator names it has failed its purpose. Reading any document
+that only runs when the operator names it has failed its purpose. The word
+"research" anywhere in a request is itself a trigger: run the research stack
+— deep-research, fact-checking, and every domain research skill the subject
+matches (social, market, creator, product, ML) — without being asked twice. Reading any document
 file goes through `document-reading` (its PDF extractors run via Swift on
 macOS and Python everywhere else); spreadsheets through
 `spreadsheet-analysis`; and the motion/design, tool-use, computer-use, and

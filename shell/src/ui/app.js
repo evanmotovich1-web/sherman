@@ -37,9 +37,11 @@ import {
     helpText,
     metaEvalRequest,
     naturalEmailInstruction,
+    naturalResearchInstruction,
     parseAgentMention,
     parseEmailResult,
     parseSubmission,
+    researchTurn,
     planRequest,
     shouldAutoCompact,
     skillTurn,
@@ -673,6 +675,16 @@ export function App({
             if (parsed.kind === 'prompt') {
                 const instruction = naturalEmailInstruction(parsed.text);
                 if (instruction) parsed = { kind: 'command', name: 'email', args: instruction };
+            }
+
+            // "research X" runs the research stack the way "write X an email"
+            // runs the email flow: the leading verb is the routing.
+            if (parsed.kind === 'prompt') {
+                const query = naturalResearchInstruction(parsed.text);
+                if (query) {
+                    commit('notice', 'research turn · deep-research + fact-checking + matching domain skills');
+                    parsed = { kind: 'prompt', text: researchTurn(query) };
+                }
             }
 
             // A leading @name is an agent call, resolved against the loaded

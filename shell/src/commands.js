@@ -161,6 +161,38 @@ export function naturalEmailInstruction(value) {
     return personFirst && !artifact.test(personFirst[1]) ? text : null;
 }
 
+/**
+ * Route clear imperative research prose into the research skill stack.
+ *
+ * "research X", "deep research on X", "do research into X" — the leading
+ * verb is the trigger, exactly like naturalEmailInstruction's write/draft.
+ * Questions that merely contain the word ("what does the research say")
+ * stay ordinary prompts. Returns the research subject, or null.
+ */
+export function naturalResearchInstruction(value) {
+    if (typeof value !== 'string') return null;
+    const match = value.trim().match(
+        /^(?:please\s+)?(?:run\s+|do\s+)?(?:a\s+)?(?:deep\s+)?research(?:\s+(?:on|into|about))?[:\s]\s*(\S[\s\S]*)$/i
+    );
+    return match ? match[1].trim() : null;
+}
+
+/**
+ * The research turn: the subject, wrapped in the standing instruction to run
+ * the whole research stack together rather than one skill grudgingly. A
+ * normal-mode prompt on purpose — research writes findings (wiki, files),
+ * and the stack's own skills carry the discipline.
+ */
+export function researchTurn(query) {
+    return [
+        'RESEARCH TURN',
+        `The operator asked for research: ${query}`,
+        'Follow the research skill stack from your workspace skills, together: deep-research for the sweep, fact-checking for claims worth verifying, and every domain research skill that matches the subject — social, market, creator, or product questions include trend-discovery, social-listening-brief, product-demand-research, and the scrapecreators-api routing skill when its key is wired; ML questions include ml-research. Capture durable findings per research-wiki.',
+        'Cite sources inline, separate established from reported from speculation, and say plainly what could not be confirmed.',
+        'The Sherman operating contract and no-PHI rule remain authoritative.',
+    ].join('\n');
+}
+
 export function commandFor(name) {
     return BY_NAME.get(name) ?? null;
 }

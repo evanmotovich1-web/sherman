@@ -3,6 +3,27 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Added: 13 social-research skills; "research …" auto-runs the stack
+
+- Vendored all 13 skills from ScrapeCreators/social-media-research-skills
+  (per-skill MIT) after a full-file audit: scrapecreators-api (the routing
+  backbone — 27+ platforms behind one REST API and an env-var key) plus
+  outlier-post-finder, transcript-intelligence, comment-mining,
+  competitor-social-research, ad-library-teardown, trend-discovery,
+  influencer-prospecting, audience-research, social-listening-brief,
+  product-demand-research, creator-profile-teardown, and
+  content-repurposing, under a new `social-research` category. The audit
+  found no injection and a clean network surface (the documented API and
+  docs domains only, key sent solely as a header); the backbone skill
+  carries Sherman's secret-handling boundary — the key's value never
+  prints, logs, or enters the vault, and /0-1 owns wiring it.
+- Typing "research X" (or "deep research on X") now routes like "write X an
+  email" does: the shell wraps it in a research turn that runs the whole
+  stack together — deep-research, fact-checking, and every domain research
+  skill the subject matches — with research-wiki capture. The operating
+  contract carries the same trigger for the word "research" anywhere in a
+  request, so phrasing does not decide whether the stack runs.
+
 ## 2026-08-10 — Added: automatic skill loads show in the trace; /agents lists the roster
 
 - Every automatic skill use is now visible: when the engine reads any file
