@@ -1141,10 +1141,23 @@ run_pet() {
     mkdir -p "$pet_dir"
     # Seed the state with the terminal this command ran from, so the very
     # first click can bring the right app forward before any shell session
-    # has written a state of its own. Never overwrites a live session's file.
-    if [ ! -f "$pet_dir/state.json" ]; then
+    # has written a state of its own. TERM_PROGRAM does not survive every
+    # multiplexer, so the terminal-specific env vars back it up — mirroring
+    # shell/src/petstate.js detectTerminal. A state whose terminal is EMPTY
+    # is re-seeded too: an empty recording aims clicks at the wrong app.
+    seed_term="${TERM_PROGRAM:-}"
+    if [ -z "$seed_term" ]; then
+        if [ -n "${GHOSTTY_RESOURCES_DIR:-}" ]; then seed_term="ghostty"
+        elif [ -n "${WEZTERM_EXECUTABLE:-}" ]; then seed_term="WezTerm"
+        elif [ -n "${KITTY_PID:-}" ]; then seed_term="kitty"
+        elif [ -n "${ALACRITTY_WINDOW_ID:-}" ]; then seed_term="Alacritty"
+        elif [ -n "${ITERM_SESSION_ID:-}" ]; then seed_term="iTerm.app"
+        fi
+    fi
+    if [ ! -f "$pet_dir/state.json" ] \
+        || grep -q '"terminal":""' "$pet_dir/state.json" 2>/dev/null; then
         printf '{"status":"offline","detail":"","terminal":"%s","session":"","updatedAt":%s}\n' \
-            "${TERM_PROGRAM:-}" "$(($(date +%s) * 1000))" > "$pet_dir/state.json"
+            "$seed_term" "$(($(date +%s) * 1000))" > "$pet_dir/state.json"
     fi
     pet_hash=$(shasum "$pet_src" 2>/dev/null | cut -c1-12)
     pet_bin="$pet_dir/sherman-pet-$pet_hash"

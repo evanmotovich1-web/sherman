@@ -3,6 +3,23 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Fixed: the pet's click finds Sherman across terminals
+
+- A click aimed at the recorded terminal app, and an empty recording fell
+  back to Terminal.app — which raised whatever sibling window was frontmost
+  (seen live: a Codex session). The pet now searches every RUNNING terminal
+  for the window titled "Sherman Abrams" — Terminal and iTerm2 by
+  AppleScript, Ghostty/WezTerm/kitty/Alacritty through System Events (one
+  automation consent on first click) — and only then falls back to app
+  activation, preferring the recorded terminal.
+- Terminal detection got backup signals: when TERM_PROGRAM is stripped (a
+  multiplexer, a launcher), GHOSTTY_RESOURCES_DIR, WEZTERM_EXECUTABLE,
+  KITTY_PID, ALACRITTY_WINDOW_ID, and ITERM_SESSION_ID name the host —
+  in the shell's state writes and in `sherman pet`'s seed alike, and a
+  seeded state whose terminal is empty is re-seeded rather than trusted.
+- Every click logs its attempts to ~/.sherman/pet/click.log (bounded), so a
+  click that lands wrong is diagnosable from the file.
+
 ## 2026-08-10 — Added: delegation chip, auto work verification, document reading, navigate
 
 - The status rule gains a live delegation chip: 🔌 while an MCP connector

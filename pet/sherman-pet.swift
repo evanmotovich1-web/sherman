@@ -124,28 +124,39 @@ func terminalBundleId(_ termProgram: String) -> String {
     }
 }
 
-/// Raise the specific window titled "Sherman Abrams" — the shell names its
-/// own window — so a click lands on Sherman even when other windows of the
-/// same terminal app (a Codex session, say) are frontmost. Returns false
-/// when no such window was found, and the caller falls back to activating
-/// the app. The first use asks macOS for automation consent, once.
-func raiseShermanWindow(_ termProgram: String) -> Bool {
+/// One line per click attempt into ~/.sherman/pet/click.log, so a click that
+/// lands wrong is diagnosable from the file instead of from memory. Bounded:
+/// the log is truncated when it passes ~32KB.
+func clickLog(_ message: String) {
+    let url = petDir.appendingPathComponent("click.log")
+    let stamp = ISO8601DateFormatter().string(from: Date())
+    let line = "\(stamp) \(message)\n"
+    if let existing = try? Data(contentsOf: url), existing.count < 32_768 {
+        try? (String(data: existing, encoding: .utf8)! + line).write(to: url, atomically: true, encoding: .utf8)
+    } else {
+        try? line.write(to: url, atomically: true, encoding: .utf8)
+    }
+}
+
+func runAppleScript(_ source: String) -> (matched: Bool, error: String?) {
+    guard let script = NSAppleScript(source: source) else { return (false, "script did not parse") }
+    var errorInfo: NSDictionary?
+    let result = script.executeAndReturnError(&errorInfo)
+    if let info = errorInfo {
+        return (false, String(describing: info[NSAppleScript.errorBriefMessage] ?? info))
+    }
+    return (result.booleanValue, nil)
+}
+
+/// Raise the window titled "Sherman Abrams" (the shell names its own window)
+/// inside one terminal app. Terminal and iTerm2 are scriptable directly;
+/// everything else (Ghostty, WezTerm, kitty, Alacritty) goes through System
+/// Events, which needs the one-time automation consent macOS asks for on
+/// first use. Returns whether a Sherman window was found and raised.
+func raiseIn(bundleId: String, processName: String, scriptable: String?) -> Bool {
     let source: String
-    switch termProgram {
-    case "iTerm.app":
-        source = """
-        tell application "iTerm2"
-            repeat with w in windows
-                if (name of w as string) contains "Sherman Abrams" then
-                    select w
-                    activate
-                    return true
-                end if
-            end repeat
-        end tell
-        return false
-        """
-    case "Apple_Terminal", "":
+    switch scriptable {
+    case "terminal":
         source = """
         tell application "Terminal"
             repeat with w in windows
@@ -158,20 +169,81 @@ func raiseShermanWindow(_ termProgram: String) -> Bool {
         end tell
         return false
         """
+    case "iterm":
+        source = """
+        tell application "iTerm2"
+            repeat with w in windows
+                if (name of w as string) contains "Sherman Abrams" then
+                    select w
+                    activate
+                    return true
+                end if
+            end repeat
+        end tell
+        return false
+        """
     default:
-        return false // other terminals: app activation is the honest best
+        source = """
+        tell application "System Events"
+            tell process "\(processName)"
+                repeat with w in windows
+                    if (name of w as string) contains "Sherman Abrams" then
+                        perform action "AXRaise" of w
+                        set frontmost to true
+                        return true
+                    end if
+                end repeat
+            end tell
+        end tell
+        return false
+        """
     }
-    var errorInfo: NSDictionary?
-    guard let script = NSAppleScript(source: source) else { return false }
-    let result = script.executeAndReturnError(&errorInfo)
-    if errorInfo != nil { return false }
-    return result.booleanValue
+    let outcome = runAppleScript(source)
+    if let error = outcome.error {
+        clickLog("raise \(processName): error \(error)")
+        return false
+    }
+    clickLog("raise \(processName): \(outcome.matched ? "matched" : "no Sherman window")")
+    return outcome.matched
+}
+
+// Every terminal the pet knows how to look inside, keyed by bundle id.
+let TERMINALS: [(bundleId: String, processName: String, scriptable: String?)] = [
+    ("com.apple.Terminal", "Terminal", "terminal"),
+    ("com.googlecode.iterm2", "iTerm2", "iterm"),
+    ("com.mitchellh.ghostty", "Ghostty", nil),
+    ("com.github.wez.wezterm", "wezterm-gui", nil),
+    ("net.kovidgoyal.kitty", "kitty", nil),
+    ("org.alacritty", "Alacritty", nil),
+]
+
+func isRunning(_ bundleId: String) -> Bool {
+    !NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty
 }
 
 func focusSherman(_ state: PetState) {
-    if raiseShermanWindow(state.terminal) { return }
-    let id = terminalBundleId(state.terminal)
-    if let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first {
+    clickLog("click: recorded terminal '\(state.terminal)'")
+
+    // Search for the Sherman window across every RUNNING terminal, the
+    // recorded one first. A stale or empty recording must not send the click
+    // to the wrong app when the right window is findable by name.
+    let recordedId = terminalBundleId(state.terminal)
+    let ordered = TERMINALS.sorted { a, _ in a.bundleId == recordedId }
+    for terminal in ordered where isRunning(terminal.bundleId) {
+        if raiseIn(bundleId: terminal.bundleId, processName: terminal.processName,
+                   scriptable: terminal.scriptable) {
+            return
+        }
+    }
+
+    // No titled window anywhere (a session older than the title feature, or
+    // consent declined): activate the recorded terminal's app if it runs,
+    // else any running terminal, else launch the default one.
+    let fallbackId = isRunning(recordedId)
+        ? recordedId
+        : TERMINALS.first(where: { isRunning($0.bundleId) })?.bundleId ?? recordedId
+    clickLog("fallback: activating \(fallbackId)")
+    if let app = NSRunningApplication.runningApplications(withBundleIdentifier: fallbackId).first {
         if #available(macOS 14.0, *) {
             app.activate()
         } else {
@@ -179,9 +251,7 @@ func focusSherman(_ state: PetState) {
         }
         return
     }
-    // The recorded terminal is not running; fall back to the default one so a
-    // click always lands somewhere Sherman can be started.
-    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
+    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: fallbackId)
         ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") {
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }

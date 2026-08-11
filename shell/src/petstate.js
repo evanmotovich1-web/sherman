@@ -29,6 +29,22 @@ function petDir(home) {
     return join(home ?? homedir(), '.sherman', 'pet');
 }
 
+/**
+ * The terminal program hosting this shell, as robustly as the environment
+ * allows. TERM_PROGRAM is the convention, but it does not survive every
+ * multiplexer or launcher, so the terminal-specific env vars back it up —
+ * a click on the pet is only as good as this answer.
+ */
+export function detectTerminal(env = process.env) {
+    if (env.TERM_PROGRAM) return env.TERM_PROGRAM;
+    if (env.GHOSTTY_RESOURCES_DIR || /ghostty/i.test(env.TERM ?? '')) return 'ghostty';
+    if (env.WEZTERM_EXECUTABLE) return 'WezTerm';
+    if (env.KITTY_PID) return 'kitty';
+    if (env.ALACRITTY_WINDOW_ID) return 'Alacritty';
+    if (env.ITERM_SESSION_ID) return 'iTerm.app';
+    return '';
+}
+
 /** Whether this machine has adopted the desktop pet. */
 export function petAdopted({ home } = {}) {
     return existsSync(petDir(home));
@@ -101,7 +117,7 @@ export function writePetState(status, detail = '', { home, session = '' } = {}) 
         const payload = JSON.stringify({
             status,
             detail: String(detail ?? '').replace(/\s+/g, ' ').trim().slice(0, DETAIL_MAX),
-            terminal: process.env.TERM_PROGRAM ?? '',
+            terminal: detectTerminal(),
             session: session || (process.env.SHERMAN_SESSION_ID ?? ''),
             updatedAt: Date.now(),
         });
