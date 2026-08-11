@@ -1391,6 +1391,10 @@ export function App({
             if (verdict) {
                 await runMetaEval({ evalText: verdict, target, logPath });
             }
+            // Whether a verdict actually landed: the caller uses this to
+            // restore the grading debt after a failed background judge, so a
+            // transient engine error costs one checkpoint, not the coverage.
+            return Boolean(verdict);
         },
         [commit, log, runMetaEval, session, sessionFactory]
     );
@@ -1423,15 +1427,24 @@ export function App({
             // interrupted checkpoint must not re-run immediately and double
             // up. Exactly turns (not turns+1): the judge is a worker, so no
             // main-thread turn follows from the grading itself.
-            lastEvalTurnRef.current = turnsRef.current;
+            const before = lastEvalTurnRef.current;
+            const booked = turnsRef.current;
+            lastEvalTurnRef.current = booked;
 
-            await gradeOnWorker({
+            const graded = await gradeOnWorker({
                 request,
                 kind: 'checkpoint eval',
                 target: sessionId,
                 logPath: log.path,
                 notice: 'checkpoint eval · background · read-only worker grading the session so far',
             });
+            // A failed judge must not mark the turns graded: restore the debt
+            // (unless something else — a manual /eval — booked meanwhile) so
+            // the next tick or the exit eval retries, and say so.
+            if (!graded && lastEvalTurnRef.current === booked) {
+                lastEvalTurnRef.current = before;
+                commit('notice', 'the failed checkpoint will retry at the next checkpoint; the exit eval covers it regardless');
+            }
         };
 
         const timer = setInterval(tick, evalEveryMs);
@@ -1440,7 +1453,7 @@ export function App({
             bgEvalWorkerRef.current?.dispose();
             bgEvalWorkerRef.current = null;
         };
-    }, [evalEveryMs, gradeOnWorker, log, sessionFactory, sessionId]);
+    }, [commit, evalEveryMs, gradeOnWorker, log, sessionFactory, sessionId]);
 
     // The catch-up eval: the loop's guarantee that EVERY session ends with a
     // verdict, including the ones that never got to say goodbye. A closed

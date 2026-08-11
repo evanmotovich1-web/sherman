@@ -3,6 +3,17 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Fixed: a failed background checkpoint names its cause and retries
+
+- Seen live: "checkpoint eval failed: The engine reported an error." — a
+  transient engine failure in the background judge's own worker, with no
+  detail and, worse, the graded-turns marker already booked, so the failed
+  stretch would never be re-graded. Both halves fixed: an engine error item
+  with no message now carries the codex stderr tail (or names itself a
+  transient failure plainly), and a failed background judge restores the
+  grading debt — the next checkpoint retries, the exit eval covers it
+  regardless, and the shell says so.
+
 ## 2026-08-10 — Added: 13 social-research skills; "research …" auto-runs the stack
 
 - Vendored all 13 skills from ScrapeCreators/social-media-research-skills

@@ -522,10 +522,22 @@ export class CodexSession extends EngineSession {
             case 'todo_list':
                 return this._mapTool(item, phase);
 
-            case 'error':
-                return phase === 'completed'
-                    ? [ev.error(text || 'The engine reported an error.')]
-                    : [];
+            case 'error': {
+                if (phase !== 'completed') return [];
+                // A bare error item tells the operator nothing actionable.
+                // The stderr tail usually holds codex's real complaint (a 429,
+                // an auth failure), so it is the message when the item itself
+                // is empty — seen live as a checkpoint eval failing with only
+                // the generic sentence and no way to diagnose it.
+                let message = text;
+                if (!message) {
+                    const tail = (this._stderrTail ?? '').trim().split('\n').slice(-4).join('\n');
+                    message = tail
+                        ? `The engine reported an error:\n${tail}`
+                        : 'The engine reported an error with no detail — usually a transient engine/API failure; retrying normally clears it.';
+                }
+                return [ev.error(message)];
+            }
 
             default:
                 // An unknown item is not evidence of what work happened. Silence
@@ -652,8 +664,12 @@ export class CodexSession extends EngineSession {
         // and stall the child mid-turn.
         let stderr = '';
         child.stderr.setEncoding('utf8');
+        this._stderrTail = '';
         child.stderr.on('data', (chunk) => {
             stderr += chunk;
+            // Mirrored onto the instance so _mapItem's empty-error case can
+            // name what codex actually printed. Bounded: only a tail is read.
+            this._stderrTail = stderr.length > 4096 ? stderr.slice(-4096) : stderr;
         });
 
         const finished = new Promise((resolve) => {
