@@ -3,6 +3,17 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Improved: the desktop pet is alive
+
+- The pet now animates: a slow breathing bob, a blink every few seconds (the
+  failed × never blinks away), and — every fifteen seconds — it pulls out a
+  little amber medicine bottle, tips it at its face for a pretend sip with a
+  glug wobble and rising bubbles, and puts it back. All motion derives from
+  the wall clock at ~12 fps; there is exactly one timer in the program.
+- `sherman pet` now seeds the state file with the terminal it was launched
+  from, so the very first click brings the right app forward before any
+  shell session has reported in.
+
 ## 2026-08-10 — Added: 21 audited skills vendored from awesome-ai-agent-skills
 
 - Adopted 21 of the 103 skills in github.com/seb1n/awesome-ai-agent-skills

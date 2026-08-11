@@ -124,6 +124,32 @@ final class PetView: NSView {
     private var downAt: NSPoint?
     private var moved = false
 
+    // Everything animated derives from the wall clock, so the motion needs no
+    // state machine: the bob is a sine of now, a blink happens when now lands
+    // in the first beat of its cycle, and the sip plays in the first ~2.8s of
+    // every 15-second cycle.
+    var now: Double { Date().timeIntervalSince1970 }
+
+    static let SIP_PERIOD = 15.0
+    static let SIP_LENGTH = 2.8
+
+    /// 0..1 while the sip animation plays, nil the rest of the cycle.
+    var sipProgress: CGFloat? {
+        guard shownStatus != "offline" else { return nil }
+        let cycle = now.truncatingRemainder(dividingBy: PetView.SIP_PERIOD)
+        return cycle < PetView.SIP_LENGTH ? CGFloat(cycle / PetView.SIP_LENGTH) : nil
+    }
+
+    /// True during the ~140ms of a blink, roughly every 4.3 seconds.
+    var blinking: Bool {
+        now.truncatingRemainder(dividingBy: 4.3) < 0.14
+    }
+
+    /// The idle breathing bob, in pet-height fractions.
+    var bob: CGFloat {
+        CGFloat(sin(now * 2 * Double.pi / 3.2)) * 0.012
+    }
+
     // The face the pet SHOWS. `done` decays to idle on the pet's own clock so
     // a finished turn celebrates briefly instead of grinning forever.
     var shownStatus: String {
@@ -238,7 +264,10 @@ final class PetView: NSView {
         let shown = shownStatus
         let h = petHeight
         let cx = bounds.midX
-        let baseY = bounds.minY + 4
+        // The whole creature rides the breathing bob; the speech bubble stays
+        // anchored so the text does not wobble while being read.
+        let baseY = bounds.minY + 4 + h * (shown == "offline" ? 0 : bob)
+        let sip = sipProgress
 
         // Sherman's inks: the shell's accent 205 for the body, its dark panel
         // for the face, the meter's mint for the eyes.
@@ -261,7 +290,10 @@ final class PetView: NSView {
         bodyDark.setFill()
         NSBezierPath(roundedRect: torso, xRadius: h * 0.09, yRadius: h * 0.09).fill()
 
+        // The right arm (screen right) is the drinking arm: during a sip it is
+        // drawn later, up at the face holding the bottle, instead of here.
         for side in [-1.0, 1.0] {
+            if side > 0 && sip != nil { continue }
             let arm = NSRect(
                 x: cx + CGFloat(side) * torsoW * 0.62 - h * 0.075,
                 y: baseY + torsoH * 0.28,
@@ -308,7 +340,8 @@ final class PetView: NSView {
         panel.setFill()
         NSBezierPath(roundedRect: face, xRadius: faceH * 0.30, yRadius: faceH * 0.30).fill()
 
-        // Eyes, by state.
+        // Eyes, by state. A blink flattens whatever face is showing for a
+        // beat — except the failed ×, which does not blink away a failure.
         eye.setStroke()
         eye.setFill()
         let eyeY = face.midY
@@ -316,6 +349,15 @@ final class PetView: NSView {
         let lineWidth = max(2.0, h * 0.028)
         for side in [-1.0, 1.0] {
             let ex = cx + CGFloat(side) * eyeDX
+            if blinking && shown != "failed" && shown != "offline" {
+                let lid = NSBezierPath()
+                lid.lineWidth = lineWidth
+                lid.lineCapStyle = .round
+                lid.move(to: NSPoint(x: ex - h * 0.045, y: eyeY))
+                lid.line(to: NSPoint(x: ex + h * 0.045, y: eyeY))
+                lid.stroke()
+                continue
+            }
             switch shown {
             case "working":
                 let r = h * (pulse ? 0.048 : 0.040)
@@ -353,6 +395,86 @@ final class PetView: NSView {
                     startAngle: 200, endAngle: 340
                 )
                 arc.stroke()
+            }
+        }
+
+        // The sip: every fifteen seconds the right arm rises with a little
+        // amber medicine bottle, tips it at the face for a pretend drink, and
+        // puts it back. Phases: raise (0–0.3), sip (0.3–0.7), lower (0.7–1).
+        if let p = sip {
+            let restPoint = NSPoint(x: cx + torsoW * 0.62, y: baseY + torsoH * 0.35)
+            let mouthPoint = NSPoint(x: cx + faceW * 0.16, y: face.minY + faceH * 0.22)
+            let ease = { (t: CGFloat) -> CGFloat in t * t * (3 - 2 * t) } // smoothstep
+            let lift: CGFloat
+            let tilt: CGFloat
+            if p < 0.3 {
+                lift = ease(p / 0.3)
+                tilt = lift * 0.9
+            } else if p < 0.7 {
+                lift = 1
+                // A little wobble mid-sip: the glug.
+                tilt = 0.9 + 0.12 * CGFloat(sin(Double(p) * 34))
+            } else {
+                lift = ease((1 - p) / 0.3)
+                tilt = lift * 0.9
+            }
+            let hand = NSPoint(
+                x: restPoint.x + (mouthPoint.x - restPoint.x) * lift,
+                y: restPoint.y + (mouthPoint.y - restPoint.y) * lift
+            )
+
+            // A small open mouth on the panel while drinking.
+            if p >= 0.3 && p < 0.7 {
+                let mouthR = h * 0.022
+                eye.setFill()
+                NSBezierPath(ovalIn: NSRect(
+                    x: cx - mouthR, y: face.minY + faceH * 0.16 - mouthR,
+                    width: mouthR * 2, height: mouthR * 2
+                )).fill()
+            }
+
+            // The arm, following the hand.
+            bodyDark.setFill()
+            NSBezierPath(ovalIn: NSRect(
+                x: hand.x - h * 0.075, y: hand.y - h * 0.075,
+                width: h * 0.15, height: h * 0.15
+            )).fill()
+
+            // The bottle, tilted toward the face as it rises.
+            ctx.saveGState()
+            ctx.translateBy(x: hand.x, y: hand.y)
+            ctx.rotate(by: -tilt) // clockwise toward the mouth
+            let bw = h * 0.11
+            let bh = h * 0.20
+            let amber = NSColor(calibratedRed: 0.72, green: 0.44, blue: 0.16, alpha: 1)
+            let amberDark = NSColor(calibratedRed: 0.55, green: 0.32, blue: 0.10, alpha: 1)
+            amber.setFill()
+            NSBezierPath(roundedRect: NSRect(x: -bw / 2, y: 0, width: bw, height: bh),
+                         xRadius: bw * 0.25, yRadius: bw * 0.25).fill()
+            // Label.
+            NSColor(calibratedWhite: 0.95, alpha: 0.95).setFill()
+            NSBezierPath(roundedRect: NSRect(x: -bw * 0.36, y: bh * 0.22, width: bw * 0.72, height: bh * 0.34),
+                         xRadius: 1.5, yRadius: 1.5).fill()
+            // Neck and cap.
+            amberDark.setFill()
+            NSBezierPath(rect: NSRect(x: -bw * 0.18, y: bh, width: bw * 0.36, height: bh * 0.16)).fill()
+            NSColor(calibratedWhite: 0.25, alpha: 1).setFill()
+            NSBezierPath(roundedRect: NSRect(x: -bw * 0.24, y: bh * 1.14, width: bw * 0.48, height: bh * 0.14),
+                         xRadius: 1, yRadius: 1).fill()
+            ctx.restoreGState()
+
+            // Two rising bubbles mid-sip, alternating with the wobble.
+            if p >= 0.35 && p < 0.7 {
+                eye.setFill()
+                let phase = CGFloat((Double(p) * 20).truncatingRemainder(dividingBy: 2))
+                for (i, r) in [h * 0.012, h * 0.018].enumerated() {
+                    let rise = (phase / 2 + CGFloat(i) * 0.4).truncatingRemainder(dividingBy: 1)
+                    NSBezierPath(ovalIn: NSRect(
+                        x: mouthPoint.x + h * 0.10 + CGFloat(i) * h * 0.04,
+                        y: mouthPoint.y + rise * h * 0.10,
+                        width: r * 2, height: r * 2
+                    )).fill()
+                }
             }
         }
 
@@ -452,18 +574,18 @@ panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 panel.contentView = view
 panel.orderFrontRegardless()
 
-// The watch loop: re-read the state every 700ms and repaint on change. The
-// pulse bit gives the working face a heartbeat without an animation system.
-Timer.scheduledTimer(withTimeInterval: 0.7, repeats: true) { _ in
-    let fresh = readState()
-    let changed = fresh.status != view.state.status
-        || fresh.detail != view.state.detail
-        || fresh.updatedAt != view.state.updatedAt
-    view.state = fresh
-    if view.shownStatus == "working" { view.pulse.toggle() }
-    if changed || view.shownStatus == "working" || view.shownStatus == "done" {
-        view.needsDisplay = true
+// The animation loop: ~12 frames a second, which is plenty for a bob, a
+// blink, and a sip, and costs nothing measurable for a view this small. The
+// state file is re-read every ~0.7s inside the same loop rather than on its
+// own timer, so there is exactly one clock in the program.
+var frame = 0
+Timer.scheduledTimer(withTimeInterval: 1.0 / 12.0, repeats: true) { _ in
+    frame += 1
+    if frame % 8 == 0 {
+        view.state = readState()
+        if view.shownStatus == "working" { view.pulse.toggle() }
     }
+    view.needsDisplay = true
 }
 
 app.run()

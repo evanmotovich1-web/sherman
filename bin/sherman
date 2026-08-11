@@ -1139,6 +1139,13 @@ run_pet() {
         exit 1
     fi
     mkdir -p "$pet_dir"
+    # Seed the state with the terminal this command ran from, so the very
+    # first click can bring the right app forward before any shell session
+    # has written a state of its own. Never overwrites a live session's file.
+    if [ ! -f "$pet_dir/state.json" ]; then
+        printf '{"status":"offline","detail":"","terminal":"%s","session":"","updatedAt":%s}\n' \
+            "${TERM_PROGRAM:-}" "$(($(date +%s) * 1000))" > "$pet_dir/state.json"
+    fi
     pet_hash=$(shasum "$pet_src" 2>/dev/null | cut -c1-12)
     pet_bin="$pet_dir/sherman-pet-$pet_hash"
     if [ ! -x "$pet_bin" ]; then
