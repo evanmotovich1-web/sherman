@@ -742,11 +742,16 @@ export const MID_MIN_ROWS = 22;
  * plainly: "the box needs to be taller like the mac — why is the logo like
  * that and not downward".
  */
-function MidPanel({ panel, inner, info, stats, sessionId, registry, tall = false }) {
+function MidPanel({ panel, inner, info, stats, sessionId, registry, tall = false, spare = 0 }) {
     const leftWidth = Math.min(LEFT_COLUMN, inner);
     const rightWidth = Math.max(1, inner - leftWidth - 1);
 
-    const section = (key, title, result) =>
+    // `names` picks what the dense line enumerates. Tools and skills list
+    // their category names (the items would never fit); the mcp and agent
+    // registries are small enough that the items themselves are the
+    // informative line — "wired, available" would name the grouping and hide
+    // the servers.
+    const section = (key, title, result, names = (r) => r.categories.map((c) => c.name)) =>
         React.createElement(
             Box,
             { key, flexDirection: 'column' },
@@ -758,12 +763,20 @@ function MidPanel({ panel, inner, info, stats, sessionId, registry, tall = false
                       React.createElement(
                           Text,
                           { color: color.value },
-                          `  ${result.categories.map((c) => c.name).join(', ')}`
+                          `  ${names(result).join(', ')}`
                       ),
                       React.createElement(Text, { color: color.muted }, ` · ${result.count} total`)
                   )
                 : React.createElement(Text, { color: color.muted, wrap: 'truncate' }, `  ${result.reason}`)
         );
+    const items = (r) => r.categories.flatMap((c) => c.items);
+
+    // The optional registries render only when the height budget covers their
+    // two rows each — the mid frame's minimum is exact, and one surplus row
+    // makes Ink duplicate frames (issue #18). MCP outranks agents: it is the
+    // section the operator asked to see everywhere.
+    const showMcp = Boolean(registry.mcp) && spare >= 2;
+    const showAgents = Boolean(registry.agents) && spare >= 4;
 
     const vaultLine = stats.ok
         ? `${plural(stats.wiki, 'wiki page')} · ${plural(stats.shared, 'shared fact')} · `
@@ -837,7 +850,9 @@ function MidPanel({ panel, inner, info, stats, sessionId, registry, tall = false
                       )
                     : null,
                 section('tools', 'Available Tools', registry.tools),
+                showMcp ? section('mcp', 'MCP Servers', registry.mcp, items) : null,
                 section('skills', 'Available Skills', registry.skills),
+                showAgents ? section('agents', 'Agents', registry.agents, items) : null,
                 React.createElement(
                     Box,
                     // Tall spends its one separator row on the identity gap
@@ -847,10 +862,15 @@ function MidPanel({ panel, inner, info, stats, sessionId, registry, tall = false
                     React.createElement(Text, { color: color.accent, bold: true, wrap: 'truncate' }, 'Vault'),
                     React.createElement(Text, { color: color.muted, wrap: 'truncate' }, `  ${vaultLine}`)
                 ),
-                // Tools and skills only, matching the sections this abridged
-                // frame actually shows: its right column is ~36 cells, and the
-                // extra counts would truncate the /help hint off the tally.
-                React.createElement(Totals, { tools: registry.tools, skills: registry.skills })
+                // The tally carries a count only for a section this abridged
+                // frame actually shows: its right column is ~36 cells, and
+                // unexplained extra counts would truncate the /help hint.
+                React.createElement(Totals, {
+                    tools: registry.tools,
+                    skills: registry.skills,
+                    mcp: showMcp ? registry.mcp : null,
+                    agents: showAgents ? registry.agents : null,
+                })
             )
         )
     );
@@ -888,15 +908,24 @@ function CompactSummary({ width, info, stats, sessionId, registry, spare = 0 }) 
     // row is worse than a missing one.
     const capabilities = [];
     if (spare >= 2 && registry) {
-        for (const [label, result] of [['tools', registry.tools], ['skills', registry.skills]]) {
+        // mcp and agents ride the same grammar when further rows exist, and
+        // enumerate their items rather than their groupings — the servers and
+        // the @names are the informative line at this size. mcp first: it is
+        // the section the operator asked to see at every frame size.
+        const rows = [
+            ['tools', registry.tools, (r) => r.categories.map((c) => c.name)],
+            ['skills', registry.skills, (r) => r.categories.map((c) => c.name)],
+        ];
+        if (spare >= 3) rows.splice(1, 0, ['mcp', registry.mcp, (r) => r.categories.flatMap((c) => c.items)]);
+        if (spare >= 4) rows.push(['agents', registry.agents, (r) => r.categories.flatMap((c) => c.items)]);
+        for (const [label, result, names] of rows) {
             if (!result?.ok) continue;
-            const names = result.categories.map((c) => c.name).join(', ');
             capabilities.push(
                 React.createElement(
                     Text,
                     { key: label, wrap: 'truncate' },
                     React.createElement(Text, { color: color.muted }, label.padEnd(10)),
-                    React.createElement(Text, { color: color.value }, names),
+                    React.createElement(Text, { color: color.value }, names(result).join(', ')),
                     React.createElement(Text, { color: color.muted }, ` · ${result.count} total`)
                 )
             );
@@ -1100,6 +1129,13 @@ export function LaunchScreen({ info, stats, sessionId, columns, rows, registry, 
                       sessionId,
                       registry: reg,
                       tall: tallMid,
+                      // Rows above this frame's own minimum — what the optional
+                      // MCP and Agents sections may spend. The tall minimum is
+                      // tallMid's own inequality; the flat one is MID_MIN_ROWS
+                      // restated against the wordmark actually drawn.
+                      spare: tallMid
+                          ? height - (2 + wmRows + 5 + markSize(1).rows)
+                          : height - (wmRows + MID_MIN_ROWS - SMALL_ROWS),
                   })
               )
             : compactPanel

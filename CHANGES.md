@@ -37,6 +37,11 @@ shipped, verified release.
   failure marks red. Slash-invoked skills commit a `📚 skill` trace row of
   their own instead of a prose notice. Plain-text content of every row is
   unchanged.
+- The MCP Servers section now appears at every frame size, not only the full
+  panel: the abridged mid frame renders it as a dense line naming the servers
+  themselves (with Agents following when two more rows exist), and the compact
+  card gains matching `mcp` and `agents` rows as its height budget allows.
+  Each frame's tally counts exactly the sections it shows.
 
 ## 2026-08-04 — Building: Sherman Commons trust boundary documented
 
