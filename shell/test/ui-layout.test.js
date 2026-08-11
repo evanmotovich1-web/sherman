@@ -755,7 +755,7 @@ test('multiline user prompts align continuation rows under the body', () => {
     assert.deepEqual(output, [' ❯ line one', '   line two', '   line three']);
 });
 
-test('reply geometry is a signature line above a left rule', () => {
+test('reply geometry is a closed box with the signature in its top border', () => {
     const reply = rawRows(renderToString(
         React.createElement(Transcript, {
             items: [{ id: 'reply', kind: 'message', text: 'Concise response.' }],
@@ -763,13 +763,20 @@ test('reply geometry is a signature line above a left rule', () => {
         }),
         { columns: 80 }
     ));
-    // One column of transcript gutter, then the two-cell rule indent. The
-    // signature stands on its own row above the rule and shares its left edge;
-    // there is no top, right or bottom border left to carry it.
-    assert.deepEqual(reply, [
-        '   Sherman',
-        '   │ Concise response.',
-    ]);
+    // One column of transcript gutter, then the two-cell frame indent. The
+    // signature lives inside the top border, and the frame closes on all four
+    // sides — top row, both side rules, bottom row.
+    assert.equal(reply.length, 3, `expected a three-row closed box, got ${JSON.stringify(reply)}`);
+    assert.match(reply[0], /^ {3}╭─ Sherman ─+╮$/, 'reply lost its titled top border');
+    assert.match(reply[1], /^ {3}│ Concise response\. +│$/, 'reply body lost its side rules');
+    assert.match(reply[2], /^ {3}╰─+╯$/, 'reply lost its bottom border');
+    // Every row of the frame is the same width: the box is genuinely closed,
+    // not three rows that happen to start with border glyphs.
+    assert.equal(
+        new Set(reply.map((line) => stringWidth(line))).size,
+        1,
+        'the box edges are ragged'
+    );
 });
 
 // The whole point of the rule is that the transcript has ONE left edge. Diff,
@@ -806,11 +813,11 @@ test('the reply rule sits at the same column as the diff and tool gutters', () =
     );
 });
 
-// A reply that wraps is the common case, and the rule is drawn by Ink across
-// the measured height rather than prefixed per line precisely so it survives
-// one. A rule that stopped after the first row would leave the continuation
-// text floating unattributed in the transcript.
-test('the reply rule runs the full height of a wrapped reply', () => {
+// A reply that wraps is the common case, and the side rules are drawn by Ink
+// across the measured height rather than prefixed per line precisely so they
+// survive one. A frame that stopped after the first row would leave the
+// continuation text floating unattributed — and unclosed — in the transcript.
+test('the reply frame closes around the full height of a wrapped reply', () => {
     for (const columns of [60, 200]) {
         const body = 'wrap '.repeat(80).trim();
         const rows = contentRows(renderToString(
@@ -820,14 +827,17 @@ test('the reply rule runs the full height of a wrapped reply', () => {
             }),
             { columns }
         ));
-        const [signature, ...bodyRows] = rows;
-        assert.match(signature, /^ {3}Sherman$/, `${columns}-column reply lost its signature line`);
+        const top = rows[0];
+        const bottom = rows.at(-1);
+        const bodyRows = rows.slice(1, -1);
+        assert.match(top, /^ {3}╭─ Sherman ─+╮$/, `${columns}-column reply lost its titled top border`);
+        assert.match(bottom, /^ {3}╰─+╯$/, `${columns}-column reply lost its bottom border`);
         assert.ok(bodyRows.length > 1, `${columns}-column reply did not wrap, so this proves nothing`);
         for (const [index, line] of bodyRows.entries()) {
             assert.match(
                 line,
-                /^ {3}│ /,
-                `${columns}-column reply lost its rule on wrapped row ${index + 1}`
+                /^ {3}│ .*│$/,
+                `${columns}-column reply lost its frame on wrapped row ${index + 1}`
             );
         }
         assert.ok(
@@ -843,9 +853,9 @@ test('the reply rule runs the full height of a wrapped reply', () => {
     }
 });
 
-// The narrow fallback. Below indent + rule + padding + a cell of text there is
-// no frame to draw, and the reply degrades to bare truncated text rather than
-// rendering a rule with nothing beside it or overflowing the viewport.
+// The narrow fallback. Below indent + two borders + padding + a cell of text
+// there is no frame to draw, and the reply degrades to bare truncated text
+// rather than rendering a box with no interior or overflowing the viewport.
 test('a reply too narrow to frame degrades to plain text without overflowing', () => {
     for (const columns of [3, 5, 6]) {
         const output = renderToString(
@@ -894,13 +904,13 @@ test('live transcript geometry anchors the newest of two turns at 80x24', async 
         { id: 'm2', kind: 'worker-message', text: 'Worker reply.' },
     ], 80, 24);
 
-    // Row 23 is the LAST row of a 24-row viewport. This read 22 while a reply
-    // ended in a bottom border, which spent the final row on frame rather than
-    // on speech; the left rule spends nothing after the text, so the newest
-    // words now sit flush against the bottom edge. Same invariant — newest
-    // content anchored at the bottom — one row tighter.
+    // Row 23 is the LAST row of a 24-row viewport. The reply is a closed box
+    // again, so the frame's bottom border spends that final row and the newest
+    // words stand one row above it — still anchored: the box's closing edge is
+    // the newest content, and nothing hangs below the viewport.
     const frameRows = rawRows(output);
-    assert.equal(frameRows.findIndex((line) => line.includes('Worker reply.')), 23);
+    assert.equal(frameRows.findIndex((line) => line.includes('Worker reply.')), 22);
+    assert.match(frameRows[23], /^ {3}╰─+╯\s*$/, 'the closing border should hold the bottom row');
 });
 
 test('live transcript clips oldest turns and renders newest rows once', async () => {
