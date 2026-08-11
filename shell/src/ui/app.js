@@ -631,21 +631,22 @@ export function App({
             commit('notice', 'meta eval · grading the eval itself · read-only worker');
             const worker = sessionFactory();
             let metaReply = '';
+            const engineErrors = [];
             try {
                 for await (const event of worker.send(request)) {
                     if (event.kind === 'message') {
                         metaReply = metaReply ? `${metaReply}\n\n${event.text}` : event.text;
                     }
-                    if (event.kind === 'error') {
-                        commit('error', `meta eval failed: ${event.message}`);
-                        metaReply = '';
-                        break;
-                    }
+                    // Same contract as gradeOnWorker: outcome decides, an
+                    // error mid-stream does not — the reply may still arrive.
+                    if (event.kind === 'error') engineErrors.push(event.message);
                 }
                 if (metaReply) {
                     commit('worker-message', metaReply);
                     log.append('worker', metaReply);
                     appendEvalReport(target, 'meta eval', metaReply);
+                } else if (engineErrors.length > 0) {
+                    commit('error', `meta eval failed: ${engineErrors[engineErrors.length - 1]}`);
                 }
             } catch (err) {
                 commit('error', `meta eval failed: ${err?.message ?? String(err)}`);
@@ -1282,6 +1283,13 @@ export function App({
                             writePetState('failed', event.message);
                             break;
 
+                        case 'advisory':
+                            // An engine housekeeping note on a turn that is
+                            // still succeeding — shown, never treated as
+                            // failure (see session.js).
+                            commit('notice', event.message);
+                            break;
+
                         default:
                             // Unknown kinds are ignored, matching the backend's own
                             // tolerance. A future codex event must not crash the UI.
@@ -1379,20 +1387,21 @@ export function App({
                     setBusyBoth(true);
                     setWorkerBusy(true);
                     let verdict = '';
+                    const engineErrors = [];
                     try {
                         for await (const event of verifier.send(check)) {
                             if (event.kind === 'message') {
                                 verdict = verdict ? `${verdict}\n\n${event.text}` : event.text;
                             }
-                            if (event.kind === 'error') {
-                                commit('error', `work check failed: ${event.message}`);
-                                verdict = '';
-                                break;
-                            }
+                            // Same contract as gradeOnWorker: the check is
+                            // judged by whether its verdict arrived.
+                            if (event.kind === 'error') engineErrors.push(event.message);
                         }
                         if (verdict) {
                             commit('worker-message', verdict);
                             log.append('worker', verdict);
+                        } else if (engineErrors.length > 0) {
+                            commit('error', `work check failed: ${engineErrors[engineErrors.length - 1]}`);
                         }
                     } catch (err) {
                         commit('error', `work check failed: ${err?.message ?? String(err)}`);
@@ -1430,20 +1439,28 @@ export function App({
             bgEvalWorkerRef.current = worker;
             commit('notice', notice);
             let verdict = '';
+            const engineErrors = [];
             try {
                 for await (const event of worker.send(request)) {
                     if (event.kind === 'message') {
                         verdict = verdict ? `${verdict}\n\n${event.text}` : event.text;
                     }
-                    if (event.kind === 'error') {
-                        commit('error', `${kind} failed: ${event.message}`);
-                        return;
-                    }
+                    // Collected, not fatal: a worker turn is judged by whether
+                    // its verdict arrived, not by whether the engine grumbled
+                    // on the way. Seen live on codex 0.146.0 — error items on
+                    // turns that then completed, and the abort-on-first-error
+                    // this replaces threw away a verdict one event from done.
+                    if (event.kind === 'error') engineErrors.push(event.message);
                 }
                 if (verdict) {
+                    if (engineErrors.length > 0) {
+                        commit('notice', `${kind} finished despite an engine error: ${engineErrors[engineErrors.length - 1]}`);
+                    }
                     commit('worker-message', verdict);
                     log.append('worker', verdict);
                     appendEvalReport(target, kind, verdict);
+                } else {
+                    commit('error', `${kind} failed: ${engineErrors[engineErrors.length - 1] ?? 'the worker returned no verdict'}`);
                 }
             } catch (err) {
                 commit('error', `${kind} failed: ${err?.message ?? String(err)}`);

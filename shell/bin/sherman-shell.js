@@ -80,6 +80,8 @@ function renderEvent(event) {
             return '  · interrupted';
         case 'error':
             return `\n! ${event.message}\n`;
+        case 'advisory':
+            return `  · engine note: ${event.message}`;
         default:
             // Forward-compatible: an event kind this build does not know about
             // must never take the harness down.

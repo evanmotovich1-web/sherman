@@ -349,3 +349,32 @@ test('turn.completed carries a measured context event, and its absence stays abs
         rmSync(home, { recursive: true, force: true });
     }
 });
+
+// Probed against codex 0.146.0: error items carry their text in `message`
+// (not `text`), and housekeeping notes arrive AS error items on turns that
+// complete normally. Both behaviors are load-bearing for the background
+// workers — see the error case in _mapItem.
+test('error items surface item.message, and known advisories are not errors', () => {
+    const instance = session();
+
+    // A real complaint in the 0.146.0 field lands verbatim as an error.
+    const real = map(instance, 'item.completed', {
+        id: 'e1', type: 'error', message: 'stream error: 429 Too Many Requests',
+    });
+    assert.equal(real[0].kind, 'error');
+    assert.equal(real[0].message, 'stream error: 429 Too Many Requests');
+
+    // The skills-budget housekeeping note is an advisory, not a failure.
+    const note = map(instance, 'item.completed', {
+        id: 'e2', type: 'error',
+        message: 'Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill.',
+    });
+    assert.equal(note[0].kind, 'advisory');
+    assert.match(note[0].message, /skills context budget/);
+
+    // An empty error item still names what codex printed to stderr.
+    instance._stderrTail = 'line one\nauth failed: token expired';
+    const empty = map(instance, 'item.completed', { id: 'e3', type: 'error' });
+    assert.equal(empty[0].kind, 'error');
+    assert.match(empty[0].message, /auth failed: token expired/);
+});

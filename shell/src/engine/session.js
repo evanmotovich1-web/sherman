@@ -93,6 +93,7 @@ export const EVENT_KINDS = Object.freeze([
     'context',
     'interrupted',
     'error',
+    'advisory',
     'diff',
 ]);
 
@@ -136,6 +137,13 @@ export const ev = Object.freeze({
     context: (used, window = null) => ({ kind: 'context', used, window }),
     interrupted: () => ({ kind: 'interrupted' }),
     error: (message) => ({ kind: 'error', message }),
+    // An engine housekeeping note that does NOT mean the turn failed. Codex
+    // 0.146.0 ships these as items typed `error` ("Skill descriptions were
+    // shortened to fit the 2% skills context budget...") on turns that then
+    // complete normally — seen live as every background worker aborting one
+    // event before its verdict. Consumers show it or ignore it; they must
+    // never treat it as failure.
+    advisory: (message) => ({ kind: 'advisory', message }),
 });
 
 /** @returns {Usage} */

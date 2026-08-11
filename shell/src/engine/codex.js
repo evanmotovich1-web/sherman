@@ -39,6 +39,13 @@ const NOT_INSTALLED =
     '\n' +
     'Then run sherman again.';
 
+// Error-typed items that are housekeeping notes, not failures. Probed against
+// codex 0.146.0: the skills-budget note arrives as `{type:"error", message:
+// "Skill descriptions were shortened to fit the 2% skills context budget..."}`
+// at the top of a turn that completes normally. Each entry here must have been
+// observed alongside a successful turn.completed before it is added.
+const ADVISORY_PATTERN = /skills context budget/i;
+
 /**
  * Best-effort model name for the status bar.
  *
@@ -524,12 +531,20 @@ export class CodexSession extends EngineSession {
 
             case 'error': {
                 if (phase !== 'completed') return [];
-                // A bare error item tells the operator nothing actionable.
-                // The stderr tail usually holds codex's real complaint (a 429,
-                // an auth failure), so it is the message when the item itself
-                // is empty — seen live as a checkpoint eval failing with only
-                // the generic sentence and no way to diagnose it.
-                let message = text;
+                // Probed against codex 0.146.0: error items carry their text
+                // in `message`, not `text` — reading only item.text loses the
+                // real complaint and falls through to the stderr tail, which
+                // on 0.146.0 is the harmless "Reading additional input from
+                // stdin..." notice. That mislabel is exactly what a night of
+                // "checkpoint eval failed" reports pointed at.
+                let message = item.message ?? text;
+                // Same probe: 0.146.0 emits housekeeping notes AS error items
+                // on turns that then complete normally. Known advisories are
+                // reclassified so no consumer mistakes them for a failed turn;
+                // the pattern is deliberately narrow — an unrecognized error
+                // stays an error, because downgrading real failures is worse
+                // than a false alarm.
+                if (ADVISORY_PATTERN.test(message)) return [ev.advisory(message)];
                 if (!message) {
                     const tail = (this._stderrTail ?? '').trim().split('\n').slice(-4).join('\n');
                     message = tail
