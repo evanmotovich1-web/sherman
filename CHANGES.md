@@ -3,6 +3,19 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-11 — Changed: the reply closes its box
+
+- Sherman's reply — and the worker's — renders inside a closed four-sided
+  frame again, the signature embedded in the top border: `╭─ Sherman ─…─╮`
+  over the body, closed by `╰─…─╯`. The retired Hermes `embedTextInBorder`
+  port, kept precisely for the next labelled border, is live again and drew
+  it. The frame's left edge still stands on the transcript's one left-edge
+  column with the trace rules above it; both speakers wear the same frame, so
+  the transcript keeps one visual language. Geometry re-pinned: a wrapped
+  reply's side rules run its full measured height, the bottom border is the
+  bottom-anchored row of the newest turn, and below seven columns the reply
+  still degrades to bare text rather than a box with no interior.
+
 ## 2026-08-10 — Fixed: telegram token errors name the repair; geometry tests pinned
 
 - The Telegram bridge's first live run surfaced its first honest defect: a
