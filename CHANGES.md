@@ -17,6 +17,26 @@ shipped, verified release.
   stream is talking, a long silence is a slow tool call, not a stall.
   `SHERMAN_OPENCODE_STALL_MS` overrides the window for tests and slow links.
 
+## 2026-08-11 — Added: Sherman can edit its own source
+
+- New `self-edit` skill (category `agent`): when asked to fix, improve, or
+  extend Sherman itself — or when a defect traces to code rather than to a
+  missing vault lesson — Sherman works in its source repository, not the
+  disposable workspace. The loop it encodes: read `AGENTS.md` and `DESIGN.md`
+  first, locate the defect in source, make the smallest true fix, run
+  `./smoke.sh`, commit explicit paths on a branch, never push, and tell the
+  operator a relaunch picks the change up. The skill-vs-code tell it teaches:
+  if a fresh Sherman would still have the problem after reading every vault
+  lesson, it is a code problem.
+- The generated workspace context gains a **Your own source** section: the
+  launcher now bakes the absolute repo root into the body it assembles, right
+  above the PHI floor, so an engine session knows where Sherman actually
+  lives and that workspace edits do not survive a launch. Until now Sherman
+  could not even locate its own source from inside a session.
+- Design note in `docs/superpowers/specs/2026-08-11-self-edit-design.md`.
+  Built by parallel subagents with disjoint file scopes — plus, by explicit
+  request, a dedicated motivator agent cheering the other two on.
+
 ## 2026-08-10 — Fixed: telegram token errors name the repair; geometry tests pinned
 
 - The Telegram bridge's first live run surfaced its first honest defect: a
