@@ -43,8 +43,8 @@ test('read-only requests change real sandbox posture without writable roots', ()
         text: 'inspect non-PHI mail', mode: 'browser-read-only', source: 'email',
     });
     assert.ok(browserReadOnly.includes('sandbox_mode="read-only"'));
-    assert.ok(browserReadOnly.includes('features.computer_use=true'));
-    assert.ok(browserReadOnly.includes('features.browser_use=true'));
+    assert.ok(browserReadOnly.includes('features.computer_use=false'));
+    assert.ok(browserReadOnly.includes('features.browser_use=false'));
     assert.equal(browserReadOnly.some((arg) => arg.includes('writable_roots')), false);
 
     const forgedBrowserReadOnly = instance._argsFor({
@@ -85,12 +85,22 @@ test('read-only requests change real sandbox posture without writable roots', ()
 
     const normal = instance._argsFor('answer normally');
     assert.ok(normal.includes('sandbox_mode="workspace-write"'));
-    assert.ok(normal.some((arg) => arg.includes('writable_roots')));
-    assert.ok(normal.includes('features.browser_use=true'));
-    assert.ok(normal.includes('features.browser_use_external=true'));
-    assert.ok(normal.includes('features.computer_use=true'));
+    assert.equal(normal.some((arg) => arg.includes('writable_roots')), false);
+    assert.ok(normal.includes('features.browser_use=false'));
+    assert.ok(normal.includes('features.browser_use_external=false'));
+    assert.ok(normal.includes('features.computer_use=false'));
     assert.equal(isolated.includes('features.browser_use=true'), false);
     assert.equal(isolated.includes('features.computer_use=true'), false);
+
+    instance._configuredMcpServerKeys = ['llmwiki', 'exa'];
+    const chat = instance._argsFor({ text: 'ordinary turn', mode: 'normal', source: 'chat' });
+    assert.ok(chat.includes('mcp_servers.llmwiki.enabled=false'));
+    assert.ok(chat.includes('mcp_servers.exa.enabled=false'));
+    const personalWiki = instance._argsFor({
+        text: 'explicit personal wiki turn', mode: 'normal', source: 'skill:research-wiki',
+    });
+    assert.equal(personalWiki.includes('mcp_servers.llmwiki.enabled=false'), false);
+    assert.ok(personalWiki.includes('mcp_servers.exa.enabled=false'));
 });
 
 test('extracts configured MCP names without reading values', () => {
@@ -107,6 +117,22 @@ test('extracts configured MCP names without reading values', () => {
         mcpServerKeysFromToml(config),
         ['obsidian', 'node_repl', '"server.with.dots"']
     );
+});
+
+test('ordinary Codex turns disable MCP servers from a custom CODEX_HOME', () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-codex-home-'));
+    const oldCodexHome = process.env.CODEX_HOME;
+    try {
+        writeFileSync(join(home, 'config.toml'), '[mcp_servers.untrusted]\ncommand = "placeholder"\n');
+        process.env.CODEX_HOME = home;
+        const instance = session();
+        const args = instance._argsFor({ text: 'ordinary', mode: 'normal', source: 'chat' });
+        assert.ok(args.includes('mcp_servers.untrusted.enabled=false'));
+    } finally {
+        if (oldCodexHome === undefined) delete process.env.CODEX_HOME;
+        else process.env.CODEX_HOME = oldCodexHome;
+        rmSync(home, { recursive: true, force: true });
+    }
 });
 
 test('maps rich Codex activities and truthful outcomes', () => {

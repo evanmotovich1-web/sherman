@@ -24,9 +24,9 @@ someone starts their day is theirs, not company knowledge:
   section means they do not want one, not that it was forgotten.
 - **If it does not exist, build the default below** without pausing to ask how
   to configure it. If the user later reacts with a durable preference —
-  "shorter", "skip the inbox", "lead with sessions" — record that preference
-  in their own private scope without asking whether to remember it. That is a
-  configuration being dictated, and `vault-write` is how it sticks.
+  "shorter", "skip the inbox", "lead with sessions" — apply it in the current
+  response but do not persist it directly. Sherman has no shell-validated
+  private-memory retention command yet; say that plainly if persistence matters.
 
 Never read another user's brief configuration. Scopes do not cross.
 

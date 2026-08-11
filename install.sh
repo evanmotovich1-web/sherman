@@ -312,16 +312,16 @@ if [ -f "$ROOT/shell/package.json" ]; then
 fi
 
 # ------------------------------------------------------------------ llm wiki --
-# The personal research wiki (github.com/lucasastorian/llmwiki): every Sherman
-# install gets one, so /wiki can fold each session's learnings into it over
-# MCP. Provisioned OUTSIDE the repo at ~/.sherman/llmwiki with its workspace
-# at ~/.sherman/research — it is per-machine tooling, not Sherman source.
+# The optional personal research wiki (github.com/lucasastorian/llmwiki).
+# Sherman's explicit /wiki writes to vault/wiki; this separate
+# MCP exists only for explicit personal-research requests. Provisioned OUTSIDE
+# the repo at ~/.sherman/llmwiki with its workspace at ~/.sherman/research.
 #
 # Every step degrades to an honest NOTE instead of failing the install: the
 # wiki is an enhancement, and a machine without python3 still deserves a
 # working Sherman. "Installed" is claimed only after the CLI answers --help
 # from its own venv — pip exiting 0 is an attempt's report, not a verification.
-echo "  installing the LLM Wiki (personal research wiki, used by /wiki)"
+echo "  installing the optional personal research LLM Wiki"
 WIKI_DIR="$HOME/.sherman/llmwiki"
 WIKI_WS="$HOME/.sherman/research"
 if ! command -v git >/dev/null 2>&1; then
@@ -383,10 +383,10 @@ else
                 echo "  LLM Wiki installed (verified: its CLI answers from its own venv)"
                 echo "  wiki workspace: $WIKI_WS"
             else
-                echo "  NOTE: the LLM Wiki CLI did not answer from its venv; /wiki will say it is not installed."
+                echo "  NOTE: the optional personal research LLM Wiki CLI did not answer from its venv."
             fi
         else
-            echo "  NOTE: could not create the wiki's Python venv; /wiki will say it is not installed."
+            echo "  NOTE: could not create the optional personal research wiki's Python venv."
         fi
     fi
 fi

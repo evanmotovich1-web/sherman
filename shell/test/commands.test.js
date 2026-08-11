@@ -11,6 +11,7 @@ import {
     parseEmailResult,
     parseSubmission,
     planRequest,
+    submissionRecordText,
     suggestionsFor,
     workerRequest,
 } from '../src/commands.js';
@@ -30,12 +31,23 @@ test('parses commands, multiline args, and literal slash escape', () => {
     });
 });
 
+test('explicit retention payloads are redacted before transcript or session logging', () => {
+    assert.equal(
+        submissionRecordText('/wiki approved-format | Internal fact text'),
+        '/wiki «fact text redacted»'
+    );
+    assert.equal(
+        submissionRecordText('/learn verify-first | Verify before claiming completion'),
+        '/learn «fact text redacted»'
+    );
+});
+
 test('registry drives suggestions and help', () => {
     assert.equal(commandFor('subagent')?.usage, '/subagent <task>');
     assert.deepEqual(suggestionsFor('/p').map((c) => c.name), ['plan']);
     assert.deepEqual(
         suggestionsFor('/').map((c) => c.name),
-        ['goal', 'plan', 'subagent', 'agents', 'compact', 'eval', 'email', 'win', 'wiki',
+        ['goal', 'plan', 'subagent', 'agents', 'compact', 'eval', 'email', 'win', 'learn', 'wiki',
             'connectors', 'commons', 'copy', 'select', 'customize', 'update', 'clear', 'help', 'exit']
     );
     // /compact, /connectors, /copy, and /clear share a prefix, so none may
@@ -51,6 +63,8 @@ test('registry drives suggestions and help', () => {
     assert.equal(suggestionsFor('//plan').length, 0);
     assert.match(helpText(), /\/goal/);
     assert.match(helpText('plan'), /read-only sandbox/);
+    assert.match(helpText('learn'), /shared memory/);
+    assert.match(helpText('wiki'), /vault\/wiki/);
     assert.match(helpText('missing'), /Unknown command/);
 });
 

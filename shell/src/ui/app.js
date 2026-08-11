@@ -48,17 +48,15 @@ import {
     skillTurn,
     submissionRecordText,
     verifyWorkRequest,
-    wikiAvailable,
-    wikiCaptureRequest,
-    wikiPreflight,
     workerRequest,
 } from '../commands.js';
 import { describe as describeConnectors } from '../connectors.js';
 import { customizePet, writePetState } from '../petstate.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
-import { appendEvalReport, ungradedSessions, writeRecommendation } from '../evalstore.js';
+import { appendEvalReport, ungradedSessions } from '../evalstore.js';
 import { collectWinSources, renderWinHtml, winRequest, writeWinSite } from '../win.js';
 import { runCommonsCommand } from '../commons/command.js';
+import { applyRetentionResult } from '../retention.js';
 
 // Monotonic ids. React list keys must be stable per item, and array index is
 // not one — items keep their identity while the array in front of them grows.
@@ -170,9 +168,8 @@ export function App({
     // shell's busiest, and the backlog has already waited since that session
     // ended. Injectable for the same reason as evalEveryMs.
     catchUpDelayMs = 15_000,
-    // Whether the LLM Wiki capture is available. null means "measure it"
-    // (wikiAvailable reads the install off disk); tests inject true/false so
-    // they exercise both worlds without provisioning a wiki.
+    // Retained for caller compatibility; vault wiki capture no longer depends
+    // on an external LLMWiki installation.
     wiki = null,
     commonsCommand = runCommonsCommand,
 }) {
@@ -259,19 +256,6 @@ export function App({
     // The in-flight background judge, if any: one at a time, and disposed on
     // unmount so quitting the shell never orphans a worker process.
     const bgEvalWorkerRef = useRef(null);
-    // Whether the LLM Wiki is installed, measured once at mount like the
-    // registry — an install appearing mid-session is next launch's news. The
-    // ran flag mirrors the eval booking: set before a capture turn starts, so
-    // an interrupted capture does not re-run on the way out, and a manual
-    // /wiki satisfies the exit capture the way a manual /eval satisfies the
-    // exit eval.
-    const [wikiOn] = useState(() => (wiki === null || wiki === undefined ? wikiAvailable() : Boolean(wiki)));
-    // An explicit `wiki` prop is the caller overriding the machine probe, so
-    // the deeper /wiki preflight is skipped for the same reason wikiAvailable
-    // was: both are probes of the same installation, and a caller that has
-    // asserted the answer is not asking.
-    const wikiProbed = wiki === null || wiki === undefined;
-    const wikiRanRef = useRef(false);
 
     const [busy, setBusy] = useState(false);
     const [activities, setActivities] = useState([]);
@@ -411,6 +395,10 @@ export function App({
     const busyRef = useRef(false);
     const activeSessionRef = useRef(session);
     const workerUsageRef = useRef(emptyUsage());
+    // True only while /exit owns the current eval/sync chain. A second Ctrl+C
+    // can then be the documented force-exit without turning a single Ctrl+C
+    // during an ordinary answer into process termination.
+    const exitFlowRef = useRef(false);
 
     // What survived the last compaction, waiting for a turn to ride along with.
     // It is spent on the first request after the reset and then forgotten --
@@ -611,11 +599,10 @@ export function App({
 
     // The meta-eval: the judge gets judged, every time a judge runs. A fresh
     // read-only worker grades the verdict against the meta-eval skill, its
-    // report lands beside the verdict in ~/.sherman/evals/, and the PAIR —
-    // recommendation plus the grade of the recommender — is filed by the
-    // SHELL (never the judge) into vault/inbox/eval-recommendations/ where
-    // the operator reviews it and sherman sync publishes it. Shared by every
-    // eval path: exit, manual /eval, checkpoint, catch-up.
+    // report lands beside the verdict in local ~/.sherman/evals/. Eval output
+    // never enters the Vault: it is model-generated from session evidence and
+    // therefore cannot become durable synchronized content implicitly. Shared
+    // by every eval path: exit, manual /eval, checkpoint, catch-up.
     //
     // Quiet about its own failure modes by the eval store's own contract: a
     // meta worker that dies still leaves the eval verdict filed, just
@@ -623,11 +610,7 @@ export function App({
     const runMetaEval = useCallback(
         async ({ evalText, target, logPath }) => {
             const request = metaEvalRequest(evalText, logPath);
-            if (!request || !sessionFactory) {
-                return writeRecommendation({
-                    vaultPath: session.info.vaultPath, sessionId: target, evalText,
-                });
-            }
+            if (!request || !sessionFactory) return null;
             commit('notice', 'meta eval · grading the eval itself · read-only worker');
             const worker = sessionFactory();
             let metaReply = '';
@@ -656,16 +639,43 @@ export function App({
                 setUsage(addUsage(session.usage, workerUsageRef.current));
                 worker.dispose();
             }
-            const file = writeRecommendation({
-                vaultPath: session.info.vaultPath, sessionId: target, evalText, metaText: metaReply,
-            });
-            commit('notice', file
-                ? `recommendation filed under the vault inbox · review it there, publish with sherman sync`
-                : 'recommendation could not be filed under the vault inbox — the verdict is still in ~/.sherman/evals/');
-            return file;
+            return null;
         },
         [commit, log, session, sessionFactory]
     );
+
+
+    const syncVaultOnExit = useCallback(async () => {
+        if (!process.env.SHERMAN_SESSION_ID || process.env.SHERMAN_NO_FETCH) return;
+        commit('notice', 'vault sync · pulling and publishing the shared lanes');
+        const outcome = await new Promise((resolve) => {
+            let child;
+            try {
+                child = spawn(join(REPO_ROOT, 'bin', 'sherman'), ['sync'], {
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                    env: process.env,
+                });
+            } catch (err) {
+                resolve(`vault sync could not start: ${err?.message ?? String(err)}`);
+                return;
+            }
+            let output = '';
+            const collect = (chunk) => { output += String(chunk); };
+            child.stdout?.on('data', collect);
+            child.stderr?.on('data', collect);
+            const timer = setTimeout(() => child.kill('SIGTERM'), 45_000);
+            child.on('error', (err) => {
+                clearTimeout(timer);
+                resolve(`vault sync could not start: ${err?.message ?? String(err)}`);
+            });
+            child.on('close', () => {
+                clearTimeout(timer);
+                resolve(output.trim().split('\n').slice(-2).join(' · ')
+                    || 'vault sync produced no report');
+            });
+        });
+        commit('notice', outcome);
+    }, [commit]);
 
     // The newest submit, for the one command that recurses into it: /exit runs
     // the end-of-session eval as a real submission, and a callback cannot name
@@ -741,7 +751,11 @@ export function App({
                             duration: '',
                         },
                     });
-                    parsed = { kind: 'prompt', text: skillTurn(skill.name, parsed.args) };
+                    parsed = {
+                        kind: 'prompt',
+                        text: skillTurn(skill.name, parsed.args),
+                        source: `skill:${skill.name}`,
+                    };
                 }
             }
 
@@ -808,6 +822,27 @@ export function App({
                     commit(commons.ok ? 'notice' : 'error', commons.text);
                     return;
                 }
+                if (command.name === 'learn' || command.name === 'wiki') {
+                    const divider = parsed.args.indexOf('|');
+                    const rawName = divider < 0 ? '' : parsed.args.slice(0, divider).trim();
+                    const content = divider < 0 ? '' : parsed.args.slice(divider + 1).trim();
+                    const path = rawName.endsWith('.md') ? rawName : `${rawName}.md`;
+                    if (!rawName || !content) {
+                        commit('error', `Usage: /${command.name} <fact-name> | <fact text>`);
+                        return;
+                    }
+                    try {
+                        const changed = applyRetentionResult({
+                            vaultPath: session.info.vaultPath,
+                            source: command.name,
+                            text: JSON.stringify({ operations: [{ path, content }] }),
+                        });
+                        commit('notice', `${command.name} retained ${changed.length} shell-validated fact file`);
+                    } catch (error) {
+                        commit('error', `${command.name} rejected · nothing written · ${error?.message ?? String(error)}`);
+                    }
+                    return;
+                }
                 if (command.name === 'clear') {
                     // The screen, not the record: the engine thread keeps its
                     // context (/compact is what resets it) and the session log
@@ -817,6 +852,11 @@ export function App({
                     return;
                 }
                 if (command.name === 'exit') {
+                    if (exitFlowRef.current) {
+                        commit('notice', 'exit already in progress · ctrl+c once more to force exit');
+                        return false;
+                    }
+                    exitFlowRef.current = true;
                     // The same contract as the second ctrl+c: a session with
                     // UNJUDGED turns is graded on the way out — turns since
                     // the last eval, not "no eval ever ran", so working past
@@ -830,16 +870,7 @@ export function App({
                         commit('notice', 'evaluating this session before exit · ctrl+c to skip');
                         await submitRef.current('/eval');
                     }
-                    // The wiki capture rides the same exit, AFTER the
-                    // judgment and as its own turn: the eval stays read-only
-                    // (a judge that writes is grading a brain it is editing),
-                    // and the capture writes only through the wiki's MCP.
-                    // Each stage is separately interruptible, so ctrl+c
-                    // still cannot trap the operator — it just skips stages
-                    // one at a time.
-                    if (wikiOn && turnsRef.current > 0 && !wikiRanRef.current && !log.failed) {
-                        await submitRef.current('/wiki');
-                    }
+
                     // The vault syncs itself on the way out: pull what other
                     // machines published, publish what this session learned —
                     // the drift between two machines' wiki counts was exactly
@@ -848,39 +879,10 @@ export function App({
                     // SHERMAN_NO_FETCH opts out, a 45s cap keeps a dead
                     // network from holding the door shut, and ctrl+c twice
                     // remains the skip-everything exit.
-                    if (process.env.SHERMAN_SESSION_ID && !process.env.SHERMAN_NO_FETCH) {
-                        commit('notice', 'vault sync · pulling and publishing the shared lanes');
-                        const outcome = await new Promise((resolve) => {
-                            let child;
-                            try {
-                                child = spawn(join(REPO_ROOT, 'bin', 'sherman'), ['sync'], {
-                                    stdio: ['ignore', 'pipe', 'pipe'],
-                                    env: process.env,
-                                });
-                            } catch (err) {
-                                resolve(`vault sync could not start: ${err?.message ?? String(err)}`);
-                                return;
-                            }
-                            let output = '';
-                            const collect = (chunk) => { output += String(chunk); };
-                            child.stdout?.on('data', collect);
-                            child.stderr?.on('data', collect);
-                            const timer = setTimeout(() => child.kill('SIGTERM'), 45_000);
-                            child.on('error', (err) => {
-                                clearTimeout(timer);
-                                resolve(`vault sync could not start: ${err?.message ?? String(err)}`);
-                            });
-                            child.on('close', () => {
-                                clearTimeout(timer);
-                                resolve(output.trim().split('\n').slice(-2).join(' · ')
-                                    || 'vault sync produced no report');
-                            });
-                        });
-                        commit('notice', outcome);
-                    }
+                    await syncVaultOnExit();
                     session.dispose();
                     exit();
-                    return;
+                    return true;
                 }
                 if (command.name === 'goal') {
                     if (parsed.args === 'clear' || parsed.args === '--clear') {
@@ -902,9 +904,12 @@ export function App({
             }
 
             let engine = session;
-            let request = parsed.kind === 'prompt'
+            const promptText = parsed.kind === 'prompt'
                 ? goalEnvelope(navigateReminder(parsed.text), goal)
                 : null;
+            let request = promptText && parsed.source
+                ? { text: promptText, mode: 'normal', source: parsed.source }
+                : promptText;
             let messageKind = 'message';
             let isWorker = false;
             // An email turn's reply is machine-shaped (the draft as JSON), so
@@ -918,6 +923,7 @@ export function App({
             // ~/.sherman/evals/ where /win and the operator can find trends.
             let isEval = false;
             let evalReply = '';
+
             // /win's verdict becomes a page: accumulated, rendered, opened.
             let isWin = false;
             let winSources = null;
@@ -964,33 +970,7 @@ export function App({
                 commit('notice', 'evaluating this session · read-only · judging conduct, not answers');
             }
 
-            if (parsed.kind === 'command' && parsed.name === 'wiki') {
-                if (!wikiOn) {
-                    commit('error', 'The LLM Wiki is not installed on this machine — re-run install.sh to provision it.');
-                    return;
-                }
-                // Before spending a turn: is the wiki actually reachable from
-                // THIS engine? A broken venv or an unregistered codex MCP
-                // entry would otherwise surface as one causeless line from
-                // the model after a whole turn of discovering it.
-                const preflight = wikiProbed
-                    ? wikiPreflight({ engine: session.info.engine })
-                    : { ok: true, reason: null };
-                if (!preflight.ok) {
-                    commit('error', `The LLM Wiki cannot capture: ${preflight.reason}.`);
-                    return;
-                }
-                request = wikiCaptureRequest(log.path, goal);
-                if (!request) {
-                    commit('error', 'No session log to capture from.');
-                    return;
-                }
-                // Booked before the turn runs, mirroring the eval: an
-                // interrupted capture must not turn one exit into two, and a
-                // deliberate manual capture satisfies the exit's.
-                wikiRanRef.current = true;
-                commit('notice', "wiki capture · folding this session's learnings into your LLM Wiki · ctrl+c to skip");
-            }
+
 
             if (parsed.kind === 'command' && parsed.name === 'win') {
                 if (!sessionFactory) {
@@ -1318,6 +1298,7 @@ export function App({
                 if (!turnFailed) writePetState('done');
             }
 
+
             if (isEval && evalReply) {
                 appendEvalReport(sessionId, 'session eval', evalReply);
                 // The loop on the loop: this verdict now gets graded, and the
@@ -1375,7 +1356,7 @@ export function App({
             // events in a normal prompt turn, and a fresh read-only worker
             // checks the finished work's claims against the actual files
             // before the operator builds on them. Prompt turns only — eval,
-            // wiki, email, and worker turns already are or produce judgments —
+            // email, and worker turns already are or produce judgments —
             // and interruptible like any turn (ctrl+c skips it).
             if (!isWorker && !turnFailed && parsed.kind === 'prompt'
                 && turnMutations >= 4 && sessionFactory && !log.failed) {
@@ -1421,7 +1402,7 @@ export function App({
                 await compactSession('');
             }
         },
-        [carryOver, clearLingerTimers, commit, commitDelegate, commonsCommand, compactSession, exit, goal, mouseEnabled, runMetaEval, runUpdate, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills, atAgents]
+        [carryOver, clearLingerTimers, commit, commitDelegate, commonsCommand, compactSession, exit, goal, mouseEnabled, runMetaEval, runUpdate, session, sessionFactory, sessionId, setBusyBoth, log, slashSkills, atAgents, syncVaultOnExit]
     );
     submitRef.current = submit;
 
@@ -1630,53 +1611,27 @@ export function App({
 
         if (!(key.ctrl && input === 'c')) return;
 
+        if (exitFlowRef.current) {
+            activeSessionRef.current.interrupt();
+            // Dispose the active worker, not only the main chat session:
+            // OpenCode uses this hook to synchronously remove its disposable
+            // candidate store before the process exits. This branch also owns
+            // the tiny idle gaps between retention/sync stages, so a second
+            // exit flow can never start there.
+            activeSessionRef.current.dispose();
+            if (activeSessionRef.current !== session) session.dispose();
+            exit();
+            return;
+        }
+
         if (busyRef.current) {
             activeSessionRef.current.interrupt();
             return;
         }
-
-        // The end-of-session evaluation, run on the way out.
-        //
-        // Only when the session has UNJUDGED turns: launching the shell and
-        // quitting has no conduct to grade, a just-graded session owes
-        // nothing — and a session that kept working after a checkpoint still
-        // owes its tail, which is why this gates on turn debt rather than on
-        // whether any eval ever ran.
-        //
-        // The escape hatch is deliberate and load-bearing. The eval sets busy,
-        // so the NEXT ctrl+c takes the interrupt branch above and stops it, and
-        // the one after that exits — an eval can never trap the operator in a
-        // shell they asked to leave. The /eval branch books the debt before
-        // the turn starts rather than after it, so an interrupted eval does
-        // not re-run on the way out and turn one exit into two.
-        // The wiki capture owed on the way out, if any — mirrors the exit
-        // command: after the eval, as its own interruptible turn. The /wiki
-        // branch books wikiRanRef before its turn starts, so an interrupted
-        // capture is skipped by the next ctrl+c rather than re-run by it.
-        const wikiOwed = () =>
-            wikiOn && turnsRef.current > 0 && !wikiRanRef.current && !log.failed;
-
-        if (turnsRef.current > lastEvalTurnRef.current && !log.failed) {
-            commit('notice', 'evaluating this session before exit · ctrl+c to skip');
-            submit('/eval')
-                .then(() => (wikiOwed() ? submit('/wiki') : null))
-                .finally(() => {
-                    session.dispose();
-                    exit();
-                });
-            return;
-        }
-
-        if (wikiOwed()) {
-            submit('/wiki').finally(() => {
-                session.dispose();
-                exit();
-            });
-            return;
-        }
-
-        session.dispose();
-        exit();
+        // Ctrl+C and /exit deliberately share one implementation. That keeps
+        // eval, validated retention, debt handling, and vault sync in the same
+        // order instead of letting the keyboard path silently skip a stage.
+        void submitRef.current('/exit');
     });
 
     // One row for the activity line, and only from surplus: the tool trace has

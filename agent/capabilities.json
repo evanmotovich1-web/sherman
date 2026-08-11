@@ -52,7 +52,8 @@
       "tools": [
         { "name": "search_vault", "verify": "engine" },
         { "name": "read_vault", "verify": "engine" },
-        { "name": "write_vault", "verify": "engine" }
+        { "name": "learn", "verify": "command" },
+        { "name": "wiki", "verify": "command" }
       ]
     },
     {
@@ -77,16 +78,7 @@
       "summary": "reach outside the company",
       "tools": [
         { "name": "web_search", "verify": "engine" },
-        { "name": "browser:control-in-app-browser", "verify": "engine" },
-        { "name": "chrome:control-chrome", "verify": "engine" },
         { "name": "connectors", "verify": "command" }
-      ]
-    },
-    {
-      "name": "desktop",
-      "summary": "see and operate browser and desktop interfaces",
-      "tools": [
-        { "name": "computer-use:computer-use", "verify": "engine" }
       ]
     },
     {

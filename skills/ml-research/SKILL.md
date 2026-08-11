@@ -56,6 +56,6 @@ not a plan — say so.
 ## Done
 
 The deliverable is a brief with the four sections above, sources inline.
-Durable findings and decisions go to the LLM Wiki (`research-wiki`); anything
-that changes a company procedure goes to the vault (`vault-write`, linked per
-`memory-link`).
+For durable company findings and decisions, use `vault-write` to offer an
+explicit `/wiki` command for operator review. Non-company findings go to the
+optional personal LLM Wiki (`research-wiki`) only when explicitly requested.

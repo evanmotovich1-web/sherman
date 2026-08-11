@@ -47,9 +47,9 @@ Deletion gets to neutral; matching gets to *them*.
   sign-offs, sentence length, formality, the words they would never use.
 - If it does not, work from evidence in front of you: how they typed their
   request is a sample of them. After explicit feedback that a rewrite lands
-  ("that's it, that's how I sound"), save only the durable preference that
-  feedback established to their voice note with `vault-write`, without asking
-  whether to remember it.
+  ("that's it, that's how I sound"), apply the preference in the current
+  response but do not persist it directly. Sherman has no shell-validated
+  private-memory retention command yet.
 - Never read another user's voice note. Never invent one from a draft alone;
   explicit voice feedback is what authorizes recording that preference.
 

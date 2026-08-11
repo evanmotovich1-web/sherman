@@ -20,8 +20,9 @@ operating contract.
 Two Codex specifics:
 
 - Your working directory is a scratch workspace, not the company's knowledge.
-  The knowledge base is the vault, at the paths named below. Read and write
-  there.
+  The knowledge base is the vault, at the paths named below. Search and read it,
+  but never modify authoritative Vault files directly. Offer a complete
+  operator-reviewed `/learn` or `/wiki` command for intentional retention.
 - Use your file search and read tools against the vault the way you would
   against a codebase: search first, cite the file, then answer.
 
