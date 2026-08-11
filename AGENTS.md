@@ -18,6 +18,9 @@ The skills and vault knowledge are the product; the launcher, shell, and engine 
 - `bin/` — the installed `sherman` launcher and wizard entry point.
 - `docs/` — setup, onboarding, and operator documentation.
 - `logo/` — plain and ANSI terminal banners.
+- `pet/` — the floating macOS desktop companion, compiled locally by
+  `sherman pet`; it renders `~/.sherman/pet/state.json`, which the shell
+  writes through `shell/src/petstate.js`.
 - `shell/` — Sherman-owned TUI; it drives engines headlessly.
 - `skills/` — company-work skills, one folder with a `SKILL.md` per skill. The
   front matter (`name`, `category`, `summary`) is what the launch screen lists;

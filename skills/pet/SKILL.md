@@ -41,6 +41,17 @@ On `/pet` (or being asked about the pet):
 
 `/pet name <newname>` renames it once; note the old name in the file.
 
+## The desktop companion
+
+On macOS the pet also has a body outside the terminal: `sherman pet` compiles
+and launches a small always-on-top companion (`pet/sherman-pet.swift`) that
+sits wherever the operator drags it, mirrors the live session — working, done,
+failed, waiting, offline — from `~/.sherman/pet/state.json`, brings the
+Sherman terminal forward when clicked, and resizes from its right-click menu.
+`sherman pet stop` ends it. The desktop pet is a viewer: it renders only what
+the shell reported, and the same boundary below covers the state file — status
+words and tool labels only, never message content.
+
 ## The boundary
 
 The pet never appears uninvited, never influences a judgment or an eval,

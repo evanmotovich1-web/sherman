@@ -50,6 +50,7 @@ import {
     workerRequest,
 } from '../commands.js';
 import { describe as describeConnectors } from '../connectors.js';
+import { writePetState } from '../petstate.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
 import { appendEvalReport, ungradedSessions, writeRecommendation } from '../evalstore.js';
 import { collectWinSources, renderWinHtml, winRequest, writeWinSite } from '../win.js';
@@ -226,6 +227,12 @@ export function App({
     // first one. The ref is the live array; `items` stays the render source.
     const itemsRef = useRef(items);
     useEffect(() => { itemsRef.current = items; }, [items]);
+
+    // The pet's goodbye. Unmount is the one point every exit path crosses —
+    // /exit, double ctrl+c, a crash of the render — so it is where "this
+    // session stopped reporting" becomes the recorded truth. No-op on
+    // machines that never adopted the pet.
+    useEffect(() => () => { writePetState('offline'); }, []);
 
     // Whether this session has anything worth grading, and whether it has been
     // graded. A session that was launched and quit has no conduct to judge, and
@@ -958,6 +965,10 @@ export function App({
             // next render rather than waiting for the engine's first event. The
             // dead time at the start of a turn is exactly what it exists to cover.
             setBusyBoth(true);
+            // The desktop pet mirrors the same transitions the busy indicator
+            // does; no-op unless this machine adopted it (see petstate.js).
+            writePetState('working');
+            let turnFailed = false;
             clearLingerTimers();
             setActivities([]);
             setLifecycle(null);
@@ -1058,6 +1069,7 @@ export function App({
                                 // ink the tag and detail columns separately
                                 // without re-parsing its own output.
                                 commit('tool', traceLine(event), { trace: traceParts(event) });
+                                writePetState('working', event.label);
                                 // Committed is the record; the live slot's copy
                                 // would be the same row twice on one screen.
                                 setActivities((current) =>
@@ -1124,6 +1136,8 @@ export function App({
 
                         case 'error':
                             commit('error', event.message);
+                            turnFailed = true;
+                            writePetState('failed', event.message);
                             break;
 
                         default:
@@ -1134,6 +1148,8 @@ export function App({
                 }
             } catch (err) {
                 commit('error', err?.message ?? String(err));
+                turnFailed = true;
+                writePetState('failed', err?.message ?? String(err));
             } finally {
                 setBusyBoth(false);
                 clearLingerTimers();
@@ -1146,6 +1162,9 @@ export function App({
                 // still ran for a true amount of time, and that is the honest
                 // value for "last".
                 setLastTurnMs(Date.now() - turnStartRef.current);
+                // The pet celebrates a finished turn; a failure keeps the
+                // failed face the error event already reported.
+                if (!turnFailed) writePetState('done');
             }
 
             if (isEval && evalReply) {

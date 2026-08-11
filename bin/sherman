@@ -15,6 +15,7 @@
 #   sherman model     choose a provider/model; Codex changes verify by read-back
 #   sherman telegram  the Telegram bridge, same adapter and engine layer as the shell
 #   sherman brief     one headless morning-brief turn; delivers to Telegram when paired
+#   sherman pet       the floating desktop companion (macOS); pet stop ends it
 #
 # Target shell: macOS system bash 3.2. No ${var,,}, no associative arrays,
 # no readlink -f.
@@ -1097,6 +1098,84 @@ if [ "${1:-}" = "commons" ]; then
         exit 1
     fi
     exec node "$ROOT/shell/bin/sherman-commons.js" "$@"
+fi
+
+# `pet` runs the floating desktop companion (pet/sherman-pet.swift): compiled
+# locally with the system Swift toolchain on first run (and again whenever the
+# source changes — the binary name carries the source hash), then launched
+# detached so it outlives this command. It needs no engine and no config, so
+# it dispatches early like update. The pet is a viewer: the shell writes
+# ~/.sherman/pet/state.json and the pet renders it; creating that directory
+# here is what turns those writes on (see shell/src/petstate.js).
+run_pet() {
+    pet_dir="$SHERMAN_HOME/pet"
+    pet_src="$ROOT/pet/sherman-pet.swift"
+    case "${1:-start}" in
+        stop)
+            if [ -f "$pet_dir/pet.pid" ] && kill "$(cat "$pet_dir/pet.pid")" 2>/dev/null; then
+                rm -f "$pet_dir/pet.pid"
+                echo "pet stopped."
+            else
+                rm -f "$pet_dir/pet.pid"
+                echo "the pet is not running."
+            fi
+            exit 0 ;;
+        start) ;;
+        *)
+            echo "Usage: sherman pet [start|stop]" >&2
+            exit 1 ;;
+    esac
+    if [ "$(uname -s)" != "Darwin" ]; then
+        echo "The desktop pet is macOS-only for now. The /pet skill works everywhere."
+        exit 1
+    fi
+    if [ ! -f "$pet_src" ]; then
+        echo "Pet source missing: $pet_src" >&2
+        exit 1
+    fi
+    if ! command -v swiftc >/dev/null 2>&1; then
+        echo "The pet compiles locally and needs the Xcode Command Line Tools."
+        echo "Install them with:  xcode-select --install   then run sherman pet again."
+        exit 1
+    fi
+    mkdir -p "$pet_dir"
+    pet_hash=$(shasum "$pet_src" 2>/dev/null | cut -c1-12)
+    pet_bin="$pet_dir/sherman-pet-$pet_hash"
+    if [ ! -x "$pet_bin" ]; then
+        echo "compiling the pet (first run, or the pet changed) ..."
+        if ! swiftc -swift-version 5 -O "$pet_src" -o "$pet_bin"; then
+            echo "the pet did not compile; nothing was started." >&2
+            exit 1
+        fi
+        # Old builds are dead weight once a new hash exists.
+        for old in "$pet_dir"/sherman-pet-*; do
+            [ "$old" = "$pet_bin" ] || rm -f "$old"
+        done
+    fi
+    # One pet at a time: retire a previous instance before starting.
+    if [ -f "$pet_dir/pet.pid" ]; then
+        kill "$(cat "$pet_dir/pet.pid")" 2>/dev/null || true
+        rm -f "$pet_dir/pet.pid"
+    fi
+    nohup "$pet_bin" >/dev/null 2>&1 &
+    pet_pid=$!
+    echo "$pet_pid" > "$pet_dir/pet.pid"
+    sleep 1
+    if kill -0 "$pet_pid" 2>/dev/null; then
+        echo "pet started (verified: compiled binary running, pid $pet_pid)."
+        echo "  drag it anywhere · click brings Sherman forward · right-click sizes it"
+        echo "  it shows live status from your next sherman session · sherman pet stop ends it"
+    else
+        rm -f "$pet_dir/pet.pid"
+        echo "the pet started and immediately exited; run $pet_bin by hand to see why." >&2
+        exit 1
+    fi
+    exit 0
+}
+
+if [ "${1:-}" = "pet" ]; then
+    shift
+    run_pet "$@"
 fi
 
 # `update` is a subcommand, recognised first: it needs no engine, no config and

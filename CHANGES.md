@@ -42,6 +42,16 @@ shipped, verified release.
   themselves (with Agents following when two more rows exist), and the compact
   card gains matching `mcp` and `agents` rows as its height budget allows.
   Each frame's tally counts exactly the sections it shows.
+- `sherman pet` (macOS) launches a floating always-on-top desktop companion in
+  the Codex-pets lineage: it mirrors the live session — working with the last
+  tool's label, done, failed, waiting, offline — from
+  `~/.sherman/pet/state.json`, which the shell now writes at each transition;
+  clicking it brings the terminal Sherman runs in forward, dragging moves it
+  (the spot is remembered), and a right-click menu sizes it small → huge.
+  Compiled locally from `pet/sherman-pet.swift` with the system Swift
+  toolchain — no downloads, nothing runs that this machine did not build.
+  State writes are gated on adopting the pet, so nothing changes for machines
+  that never run `sherman pet`; `sherman pet stop` ends it.
 
 ## 2026-08-04 — Building: Sherman Commons trust boundary documented
 
