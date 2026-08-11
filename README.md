@@ -55,7 +55,10 @@ capabilities Sherman reaches outward with — the LLM Wiki, and Agent Reach
 `uv` tool, uv itself installed first if missing) — and compiles the desktop
 pet (`sherman pet` starts it). Every "installed" line it prints follows a
 verification, and a failed download says so instead. If the chosen bin
-directory is not on your PATH, the installer prints the exact line to add.
+directory is not on your PATH, the installer adds the PATH line to your
+shell profile itself (verified by read-back; idempotent on re-runs) — new
+terminals just work, and it prints the one command that fixes the current
+terminal too.
 
 The one thing the installer cannot do is sign you in: the engine's own login
 runs in your browser on first launch.

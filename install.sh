@@ -466,19 +466,50 @@ case ":$ORIG_PATH:" in
         echo
         ;;
     *)
-        echo "  NOTE: $TARGET_DIR is NOT on your PATH."
-        echo
-        echo "  Add this to your shell profile (~/.zshrc or ~/.bash_profile):"
-        echo
-        echo "      export PATH=\"$TARGET_DIR:\$PATH\""
-        echo
-        echo "  Then open a new terminal and run:"
-        echo
-        echo "      sherman"
-        echo
-        echo "  Until then you can run it directly:"
-        echo
-        echo "      $ROOT/bin/sherman"
-        echo
+        # The paste finishes the job: the PATH line is appended to the shell
+        # profile HERE, idempotently, and claimed only after reading it back —
+        # telling a person to edit a dotfile is the installer not finishing.
+        # zsh (macOS default) reads ~/.zprofile at login and ~/.zshrc for
+        # interactive shells; writing both covers every terminal app. The
+        # marker comment is what makes re-runs and human edits detectable.
+        path_line="export PATH=\"$TARGET_DIR:\$PATH\""
+        case "${SHELL:-/bin/zsh}" in
+            */bash) profiles="$HOME/.bash_profile" ;;
+            */zsh)  profiles="$HOME/.zprofile $HOME/.zshrc" ;;
+            *)      profiles="$HOME/.profile" ;;
+        esac
+        path_added=""
+        for profile in $profiles; do
+            if grep -Fqs "$TARGET_DIR" "$profile" 2>/dev/null; then
+                path_added="$path_added $profile"
+                continue
+            fi
+            { printf '\n# Added by Sherman install.sh — puts the sherman command on PATH\n%s\n' "$path_line" >> "$profile"; } 2>/dev/null || continue
+            if grep -Fqs "$TARGET_DIR" "$profile" 2>/dev/null; then
+                path_added="$path_added $profile"
+            fi
+        done
+        if [ -n "$path_added" ]; then
+            echo "  PATH configured in:$path_added (verified: read back)"
+            echo
+            echo "  New terminals pick it up automatically. In THIS terminal, run:"
+            echo
+            echo "      export PATH=\"$TARGET_DIR:\$PATH\""
+            echo
+            echo "  then:"
+            echo
+            echo "      sherman"
+            echo
+        else
+            echo "  NOTE: $TARGET_DIR is NOT on your PATH and no shell profile"
+            echo "  could be written. Add this line to your shell profile yourself:"
+            echo
+            echo "      export PATH=\"$TARGET_DIR:\$PATH\""
+            echo
+            echo "  Until then you can run it directly:"
+            echo
+            echo "      $ROOT/bin/sherman"
+            echo
+        fi
         ;;
 esac
