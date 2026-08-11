@@ -389,9 +389,11 @@ test('composed busy chrome reserves activity, status, goal, and composer rows', 
                 assert.match(statusRows[0], /goal set$/);
                 // The composer is reserved chrome at every height: its prompt
                 // row must exist, framed by its own rounded borders, and it must
-                // be the last thing in the frame.
+                // be the last thing in the frame. Mid-turn it is the LIVE
+                // steering prompt now, not a deaf busy row — the placeholder
+                // names both the steering path and the interrupt.
                 const promptRow = frameRows.findIndex(
-                    (row) => /^│ ❯ Ctrl\+C to interrupt… +│$/.test(row)
+                    (row) => /^│ ❯ steer Sherman while it works · Enter queues · Ctrl\+C to interrupt… +│$/.test(row)
                 );
                 assert.ok(
                     promptRow > 0,
@@ -1072,6 +1074,98 @@ test('/email shows a multiple-choice box for a new recipient and resumes with th
     } finally {
         instance.unmount();
         delete process.env.SHERMAN_NO_BROWSER;
+        process.env.HOME = oldHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
+
+// Steering: the composer stays live while a turn runs, and Enter queues a
+// note instead of interrupting or being dropped. The note shows immediately,
+// the running turn is never touched (no interrupt, no second send), and the
+// moment the turn completes the shell delivers every queued note as ONE
+// follow-up turn framed as mid-work steering — so the engine continues the
+// work rather than restarting it. Commands stay boundary-only: a /command
+// typed mid-turn is refused with the reason, not queued as prose.
+test('mid-turn typing queues steering and delivers it at the turn boundary', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-steer-test-'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const requests = [];
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    let interrupts = 0;
+    const session = {
+        info: {
+            engine: 'fake', model: 'steer-model', user: 'test-user',
+            vaultPath: join(home, 'vault'), threadId: null, contextWindow: 100000,
+        },
+        usage: zeroUsage(),
+        async *send(request) {
+            requests.push(request);
+            yield { kind: 'turn-start' };
+            // The first turn holds its stream open until the test releases it,
+            // which is the window every steering assertion below lives in.
+            if (requests.length === 1) await gate;
+            yield { kind: 'message', text: `reply ${requests.length}` };
+            yield { kind: 'turn-end', usage: zeroUsage() };
+        },
+        interrupt() { interrupts += 1; },
+        dispose() {},
+    };
+
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => {};
+    stdin.ref = () => {};
+    stdin.unref = () => {};
+    const stdout = new PassThrough();
+    stdout.isTTY = true;
+    stdout.columns = 80;
+    stdout.rows = 24;
+    let captured = '';
+    stdout.on('data', (chunk) => { captured += chunk.toString(); });
+
+    // interactive + debug: off a TTY Ink writes the frame only at unmount,
+    // and every assertion below reads the screen WHILE the turn runs.
+    const instance = render(
+        React.createElement(App, { session, sessionId: '20260811_010000_steer1' }),
+        { stdin, stdout, exitOnCtrlC: false, patchConsole: false, interactive: true, debug: true }
+    );
+
+    try {
+        type(stdin, 'start the report', 40);
+        await until(() => requests.length === 1);
+
+        // Mid-turn: a steering note and a refused command.
+        type(stdin, 'make it shorter', 150);
+        await until(() => plain(captured).includes('steering queued'));
+        type(stdin, '/compact', 300);
+        await until(() => plain(captured).includes('commands cannot run mid-turn'));
+
+        // Nothing reached or disturbed the running turn.
+        assert.equal(requests.length, 1);
+        assert.equal(interrupts, 0);
+
+        release();
+        await until(() => requests.length === 2);
+        await until(() => plain(captured).includes('reply 2'));
+
+        // The delivery is one framed follow-up carrying the note verbatim…
+        assert.equal(typeof requests[1], 'string');
+        assert.match(requests[1], /Steering from the operator/);
+        assert.match(requests[1], /- make it shorter/);
+        assert.match(requests[1], /do not restart/);
+        // …and the refused command never rode along.
+        assert.doesNotMatch(requests[1], /compact/);
+
+        const output = plain(captured);
+        // The operator's words entered the transcript when queued; the
+        // envelope's framing never shows there — it is transport, not speech.
+        assert.match(output, /make it shorter/);
+        assert.doesNotMatch(output, /Steering from the operator/);
+    } finally {
+        instance.unmount();
         process.env.HOME = oldHome;
         rmSync(home, { recursive: true, force: true });
     }

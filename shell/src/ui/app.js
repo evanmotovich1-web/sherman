@@ -133,6 +133,20 @@ const OUTCOME_MARK = {
 };
 
 /** The mark for a completed tool, matching what formatTool renders. */
+// A steering delivery: notes the operator typed while the previous turn was
+// still running, delivered at the turn boundary as one follow-up turn. Framed
+// so the engine folds them into the work in progress instead of reading them
+// as a fresh assignment — the whole point of steering is not starting over.
+function steerTurn(notes) {
+    return [
+        'Steering from the operator, typed while your previous turn was still',
+        'running and delivered at the turn boundary. Continue the work in',
+        'progress — do not restart it or re-plan from scratch. Fold these in:',
+        '',
+        ...notes.map((note) => `- ${note}`),
+    ].join('\n');
+}
+
 function completionMark(event) {
     return OUTCOME_MARK[event.outcome] ?? event.glyph ?? '›';
 }
@@ -409,6 +423,10 @@ export function App({
     // Mirrors `busy` for the Ctrl+C handler. React state is async, so two fast
     // presses would both observe the stale value and neither would exit.
     const busyRef = useRef(false);
+    // Steering notes typed while a turn runs, waiting for its boundary. A ref,
+    // not state: submit reads and drains it inside the same async run that set
+    // busy, and a render in between must not lose a note.
+    const steerQueueRef = useRef([]);
     const activeSessionRef = useRef(session);
     const workerUsageRef = useRef(emptyUsage());
 
@@ -672,27 +690,59 @@ export function App({
     // itself inside its own useCallback body.
     const submitRef = useRef(null);
     const submit = useCallback(
-        async (text) => {
-            let parsed = parseSubmission(text);
+        async (text, opts = {}) => {
+            // Typed while a turn is running: steering, not a new turn. The
+            // exec transport is one child per turn with stdin ignored, so
+            // there is no live channel INTO a running turn — the note shows
+            // in the transcript immediately, queues, and the moment the turn
+            // completes it is delivered on the same thread (see the drain at
+            // the tail of this function), framed so the engine folds it into
+            // the work in progress instead of starting over. Ctrl+C remains
+            // the interrupt; steering never is one.
+            if (busyRef.current && !opts.steer) {
+                const note = text.trim();
+                if (!note) return;
+                setScrollOffset(0);
+                offsetRef.current = 0;
+                if (note.startsWith('/')) {
+                    commit('notice', 'commands cannot run mid-turn — send plain steering, or ctrl+c to interrupt');
+                    return;
+                }
+                steerQueueRef.current.push(note);
+                commit('user', note);
+                log.append('user', note);
+                commit('notice', 'steering queued · delivered the moment the current turn completes');
+                return;
+            }
+
+            // A steering delivery arrives pre-framed and pre-committed: the
+            // notes hit the transcript and the log when they were queued, so
+            // recording the envelope too would show the same words twice.
+            let parsed = opts.steer ? { kind: 'prompt', text } : parseSubmission(text);
             // Submitting is a statement that you are done reading history: the
             // answer is going to arrive at the tail, so snap there rather than
             // leaving the operator parked above their own new turn.
             setScrollOffset(0);
             offsetRef.current = 0;
-            const recordedText = submissionRecordText(text, parsed);
-            commit('user', recordedText);
-            log.append('user', recordedText);
+            if (!opts.steer) {
+                const recordedText = submissionRecordText(text, parsed);
+                commit('user', recordedText);
+                log.append('user', recordedText);
+            }
 
             // Clear imperative email prose takes the same evidence-first route
             // as /email. Questions ABOUT writing email remain normal prompts.
-            if (parsed.kind === 'prompt') {
+            // Steering deliveries skip every natural-language route below: a
+            // note about work in progress must reach the thread as steering
+            // even when it happens to open with a routing verb.
+            if (parsed.kind === 'prompt' && !opts.steer) {
                 const instruction = naturalEmailInstruction(parsed.text);
                 if (instruction) parsed = { kind: 'command', name: 'email', args: instruction };
             }
 
             // "research X" runs the research stack the way "write X an email"
             // runs the email flow: the leading verb is the routing.
-            if (parsed.kind === 'prompt') {
+            if (parsed.kind === 'prompt' && !opts.steer) {
                 const query = naturalResearchInstruction(parsed.text);
                 if (query) {
                     commit('notice', 'research turn · deep-research + fact-checking + matching domain skills');
@@ -704,7 +754,7 @@ export function App({
             // roster. A name the roster does not carry is answered with the
             // roster, not silently sent to the engine as a typo-shaped prompt.
             let agentCall = null;
-            if (parsed.kind === 'prompt') {
+            if (parsed.kind === 'prompt' && !opts.steer) {
                 const mention = parseAgentMention(parsed.text, atAgents);
                 if (mention && !mention.agent) {
                     const roster = atAgents.map((a) => `@${a.name}`).join(', ');
@@ -902,8 +952,11 @@ export function App({
             }
 
             let engine = session;
+            // A steering envelope goes verbatim: it already frames itself, and
+            // the standing navigate reminder is for fresh assignments, not for
+            // a mid-work course correction.
             let request = parsed.kind === 'prompt'
-                ? goalEnvelope(navigateReminder(parsed.text), goal)
+                ? goalEnvelope(opts.steer ? parsed.text : navigateReminder(parsed.text), goal)
                 : null;
             let messageKind = 'message';
             let isWorker = false;
@@ -1420,6 +1473,17 @@ export function App({
                 commit('notice', `context ${autoCompactPercent}% · compacting automatically`);
                 await compactSession('');
             }
+
+            // Steering typed while this turn ran is delivered now, before the
+            // shell goes idle: one follow-up turn on the same thread carries
+            // every queued note in order. Notes typed during THAT turn queue
+            // and drain the same way, so steering chains without interrupting
+            // anything. After a compaction, the carry-over envelope rides this
+            // delivery like it would any next turn.
+            if (steerQueueRef.current.length > 0) {
+                const notes = steerQueueRef.current.splice(0);
+                await submitRef.current(steerTurn(notes), { steer: true });
+            }
         },
         [carryOver, clearLingerTimers, commit, commitDelegate, commonsCommand, compactSession, exit, goal, mouseEnabled, runMetaEval, runUpdate, session, sessionFactory, sessionId, setBusyBoth, log, wikiOn, slashSkills, atAgents]
     );
@@ -1762,7 +1826,12 @@ export function App({
             : null,
         React.createElement(Composer, {
             onSubmit: submit,
-            busy: busy || Boolean(pendingEmail),
+            // `busy` blocks the composer outright — only the email tone choice
+            // does that now, because its arrow keys must not land in the
+            // buffer. A running engine turn is `steering` instead: the input
+            // stays live and Enter queues a mid-work note (see submit).
+            busy: Boolean(pendingEmail),
+            steering: busy,
             click,
             skills: slashSkills,
         })
