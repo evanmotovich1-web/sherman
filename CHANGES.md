@@ -3,6 +3,30 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Added: 21 audited skills vendored from awesome-ai-agent-skills
+
+- Adopted 21 of the 103 skills in github.com/seb1n/awesome-ai-agent-skills
+  (MIT), chosen for Sherman's charter and audited file-by-file — three
+  parallel reviewers read every SKILL.md, reference, script, and asset for
+  injection, exfiltration, network access, and unsafe execution before
+  anything was copied. All bundled Python is local-only validation/profiling;
+  the unused `agents/openai.yaml` files were dropped.
+- Agent infrastructure: multi-agent-orchestration, agent-evaluation,
+  tool-schema-design, mcp-server-building (with a caution note on its
+  unverified protocol-revision claims), human-in-the-loop,
+  prompt-injection-defense, and skill-supply-chain-audit — the last is now
+  Sherman's own procedure for vetting future third-party skills.
+- Company ops: spreadsheet-analysis, pdf-processing, presentation-creation,
+  invoice-processing, budget-planning, compliance-checklist-generation,
+  contract-review, onboarding-playbook-creation — the document- and
+  data-facing ones carry an explicit Sherman no-PHI boundary note.
+- Comms and knowledge: proofreading, translation, data-analysis,
+  data-visualization, fact-checking, deep-research.
+- Every vendored skill's front matter was normalized to Sherman's loader
+  contract (name/category/summary/description; new categories: security,
+  finance, data), each carries its source attribution, and smoke's
+  self-containment and registry checks pass over the full 59-skill set.
+
 ## 2026-08-10 — Added: /update, named @-agents, MCP and Agents launch sections, harness upgrade
 
 - `/update` runs the launcher's full update flow from inside the shell — pull,
