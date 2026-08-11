@@ -3,6 +3,27 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-11 — Added: Shermans work as a team; `sherman board` watches them
+
+- New `team` skill (category `method`): how several Sherman sessions on one
+  machine work the same project without colliding. One shared board file —
+  `boards/team-<slug>.md`, the kanban board plus an Agents roster and a
+  Messages lane — is where the team exists. The protocol: join by reading
+  the whole board and adding yourself to the roster; claim only `backlog`
+  cards by the read-write-reread race check; never edit a teammate's card
+  (append-only notes and messages instead); heartbeat `last seen` on every
+  touch, and a teammate stale by an hour may be reclaimed with a note; hand
+  off through named files, because chat dies with the session. Durable facts
+  still go to the vault, and no board surface ever carries PHI.
+- `sherman board [name]` is the operator's live window: renders the newest
+  team board (or the named one) in the terminal, statuses inked, refreshing
+  every two seconds on a TTY and printing plain bytes when piped. Reading is
+  all it does — the sessions own the writes.
+- The zai stall message gains the cause that was live when the detector
+  first fired for real: Z.AI balance exhausted (error 1113), which OpenCode
+  retries silently instead of reporting. It now leads the likely-causes
+  list, verified against the API directly.
+
 ## 2026-08-11 — Added: steer Sherman mid-turn without interrupting
 
 - The composer stays live while a turn runs. What used to be dropped
