@@ -7,6 +7,7 @@ import stringWidth from 'string-width';
 import chalk from 'chalk';
 
 import { COMMANDS } from '../src/commands.js';
+import { loadRegistry } from '../src/registry.js';
 import { CommandMenu } from '../src/ui/CommandMenu.js';
 import { Composer } from '../src/ui/Composer.js';
 import { ChoiceBox } from '../src/ui/ChoiceBox.js';
@@ -115,11 +116,32 @@ const info = {
 };
 const stats = { wiki: 2, shared: 1, private: 0, inbox: 1, ok: true };
 
+// The geometry tests pin their panel heights to exact rows, so every registry
+// section they render must be machine-independent. Tools and skills come from
+// the repo (stable in CI and on every checkout); mcp and agents are pinned
+// fixtures here because the real loaders read THIS machine's workspace and
+// ~/.sherman — state a relaunch or a connector change silently moves, which
+// is exactly what once flipped these tests overnight.
+const geometryRegistry = {
+    ...loadRegistry(),
+    mcp: { ok: true, categories: [{ name: 'wired', items: ['agent-reach', 'llmwiki', 'exa'] }], count: 3 },
+    agents: {
+        ok: true,
+        categories: [
+            { name: 'research', items: ['@researcher', '@scout', '@ml-researcher'] },
+            { name: 'review', items: ['@reviewer'] },
+        ],
+        count: 4,
+        list: [],
+        malformed: [],
+    },
+};
+
 test('launch hierarchy stays clean and bounded across target terminal sizes', () => {
     for (const [columns, rows] of [[80, 24], [100, 30], [120, 40], [160, 48]]) {
         const output = renderToString(
             React.createElement(LaunchScreen, {
-                info, stats, sessionId: '20260728_010000_abc123', columns, rows,
+                info, stats, registry: geometryRegistry, sessionId: '20260728_010000_abc123', columns, rows,
                 platform: 'win32',
             }),
             { columns }
@@ -133,7 +155,7 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
         // On the Mac the same terminal gets the original full-bleed frame.
         const macOutput = renderToString(
             React.createElement(LaunchScreen, {
-                info, stats, sessionId: '20260728_010000_abc123', columns, rows,
+                info, stats, registry: geometryRegistry, sessionId: '20260728_010000_abc123', columns, rows,
                 platform: 'darwin',
             }),
             { columns }
@@ -167,19 +189,19 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     // its registry at the smaller viewport's cap.
     const at41 = plain(renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 41,
+            info, stats, registry: geometryRegistry, sessionId: '20260728_010000_layout', columns: 120, rows: 41,
         }),
         { columns: 120 }
     ));
     const at43 = plain(renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 43,
+            info, stats, registry: geometryRegistry, sessionId: '20260728_010000_layout', columns: 120, rows: 43,
         }),
         { columns: 120 }
     ));
     const at60 = plain(renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 60,
+            info, stats, registry: geometryRegistry, sessionId: '20260728_010000_layout', columns: 120, rows: 60,
             platform: 'win32',
         }),
         { columns: 120 }
@@ -226,7 +248,7 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     // of stretching a mostly-empty box across the whole screen.
     const maximized = plain(renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_layout', columns: 250, rows: 60,
+            info, stats, registry: geometryRegistry, sessionId: '20260728_010000_layout', columns: 250, rows: 60,
             platform: 'win32',
         }),
         { columns: 250 }
@@ -241,7 +263,7 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     // unbounded — the operator kept the PC cap and asked for the Mac back.
     const macMaximized = plain(renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_layout', columns: 250, rows: 60,
+            info, stats, registry: geometryRegistry, sessionId: '20260728_010000_layout', columns: 250, rows: 60,
             platform: 'darwin',
         }),
         { columns: 250 }
@@ -252,7 +274,7 @@ test('launch hierarchy stays clean and bounded across target terminal sizes', ()
     assert.equal(macBorder.length - macBorder.trimStart().length, 0, 'Mac maximized panel must not be centered');
     const macAt60 = plain(renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_layout', columns: 120, rows: 60,
+            info, stats, registry: geometryRegistry, sessionId: '20260728_010000_layout', columns: 120, rows: 60,
             platform: 'darwin',
         }),
         { columns: 120 }
@@ -416,7 +438,7 @@ test('the mark scales with the tall panel and stays compact below it', () => {
 
     const frame = (rows) => renderToString(
         React.createElement(LaunchScreen, {
-            info, stats, sessionId: '20260728_010000_markscale', columns: 120, rows,
+            info, stats, registry: geometryRegistry, sessionId: '20260728_010000_markscale', columns: 120, rows,
         }),
         { columns: 120 }
     );
@@ -429,7 +451,7 @@ test('the mark scales with the tall panel and stays compact below it', () => {
     assert.equal(
         markRun(renderToString(
             React.createElement(LaunchScreen, {
-                info, stats, sessionId: '20260728_010000_markscale', columns: 120, rows: 21,
+                info, stats, registry: geometryRegistry, sessionId: '20260728_010000_markscale', columns: 120, rows: 21,
             }),
             { columns: 120 }
         )),

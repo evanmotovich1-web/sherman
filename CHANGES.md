@@ -3,6 +3,22 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Fixed: telegram token errors name the repair; geometry tests pinned
+
+- The Telegram bridge's first live run surfaced its first honest defect: a
+  bad bot token died as `getMe: Not Found`, a mystery. It now names the
+  problem and the four-step repair (BotFather token → sherman telegram
+  --token → run). The bridge design was verified in the same pass: default-
+  deny single-chat pairing by terminal code, one engine session per chat,
+  same persona and no-PHI contract as the shell.
+- The launch-geometry tests pinned exact panel heights while rendering the
+  MACHINE's live mcp/agents registries — connector changes flipped them
+  overnight. They now inject a fixed registry fixture; repo-derived tools
+  and skills remain live because they are stable on every checkout.
+- The voice grows a greeting register: a bare hello gets a hello back with
+  a playful jab and an opening — ribbing for small talk only, real answers
+  for real questions.
+
 ## 2026-08-10 — Added: auto vault sync, the kanban skill, and verb-headed live diffs
 
 - The vault syncs itself on the way out: /exit now runs the `sherman sync`

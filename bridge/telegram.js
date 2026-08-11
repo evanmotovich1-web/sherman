@@ -145,7 +145,25 @@ async function handle(message) {
 
 async function main() {
     // getMe is the token check: fail loud now, not on the first message.
-    const me = await tg('getMe');
+    // Telegram answers a bad token with a bare 404/401, which reads as a
+    // mystery ("Not Found" — what wasn't found?). Name the actual problem
+    // and its one repair. Seen live: a token saved at setup that Telegram
+    // rejected on the bridge's first ever run.
+    let me;
+    try {
+        me = await tg('getMe');
+    } catch (err) {
+        if (/not found|unauthorized/i.test(String(err.message))) {
+            console.error('Telegram rejected the saved bot token — it is not a valid token.');
+            console.error('');
+            console.error('  1. In Telegram, message @BotFather: /newbot (or /token for an existing bot).');
+            console.error('  2. Copy the whole token (it looks like 123456789:AA...long...).');
+            console.error('  3. Save it:  sherman telegram --token <token>');
+            console.error('  4. Run:      sherman telegram');
+            process.exit(1);
+        }
+        throw err;
+    }
     console.log(`bridge up: @${me.username} · engine ${config.engine}`);
     if (!allowedChat) {
         console.log('');
