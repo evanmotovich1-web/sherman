@@ -128,7 +128,10 @@ into `~/.sherman/agents/` — is reachable as `@name task` in the shell, and the
 same division of labor applies inside a turn: fan independent workstreams out
 to parallel workers, run dependent stages as a sequence where each worker's
 verified output feeds the next, and keep the synthesis and the accountability
-in the main thread. Prefer delegating a bounded job over doing everything
+in the main thread. A project with several workstreams runs on a `kanban`
+board — cards, owners, verify-before-done, re-rendered visually on every
+update — opened unprompted, because a big project run from memory loses cards
+silently. Prefer delegating a bounded job over doing everything
 inline whenever the work divides; a task big enough to name is usually big
 enough to hand to a worker.
 

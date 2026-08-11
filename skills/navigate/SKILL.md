@@ -29,7 +29,9 @@ it is how work gets done from memory instead of from evidence.
    grudgingly. One skill used and two skipped is a wrong answer with extra
    steps.
 4. **Then act**, under the operating contract: batch the independent
-   lookups, delegate the bounded jobs, finish the task.
+   lookups, delegate the bounded jobs, finish the task. A request with
+   several workstreams gets a `kanban` board before anything else moves —
+   big projects run as cards, not as memory.
 
 ## When not to linger
 

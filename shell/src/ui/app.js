@@ -839,6 +839,44 @@ export function App({
                     if (wikiOn && turnsRef.current > 0 && !wikiRanRef.current && !log.failed) {
                         await submitRef.current('/wiki');
                     }
+                    // The vault syncs itself on the way out: pull what other
+                    // machines published, publish what this session learned —
+                    // the drift between two machines' wiki counts was exactly
+                    // the sync nobody ran. Real launches only (the launcher
+                    // sets SHERMAN_SESSION_ID; fixtures and tests do not),
+                    // SHERMAN_NO_FETCH opts out, a 45s cap keeps a dead
+                    // network from holding the door shut, and ctrl+c twice
+                    // remains the skip-everything exit.
+                    if (process.env.SHERMAN_SESSION_ID && !process.env.SHERMAN_NO_FETCH) {
+                        commit('notice', 'vault sync · pulling and publishing the shared lanes');
+                        const outcome = await new Promise((resolve) => {
+                            let child;
+                            try {
+                                child = spawn(join(REPO_ROOT, 'bin', 'sherman'), ['sync'], {
+                                    stdio: ['ignore', 'pipe', 'pipe'],
+                                    env: process.env,
+                                });
+                            } catch (err) {
+                                resolve(`vault sync could not start: ${err?.message ?? String(err)}`);
+                                return;
+                            }
+                            let output = '';
+                            const collect = (chunk) => { output += String(chunk); };
+                            child.stdout?.on('data', collect);
+                            child.stderr?.on('data', collect);
+                            const timer = setTimeout(() => child.kill('SIGTERM'), 45_000);
+                            child.on('error', (err) => {
+                                clearTimeout(timer);
+                                resolve(`vault sync could not start: ${err?.message ?? String(err)}`);
+                            });
+                            child.on('close', () => {
+                                clearTimeout(timer);
+                                resolve(output.trim().split('\n').slice(-2).join(' · ')
+                                    || 'vault sync produced no report');
+                            });
+                        });
+                        commit('notice', outcome);
+                    }
                     session.dispose();
                     exit();
                     return;

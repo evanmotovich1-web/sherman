@@ -113,7 +113,7 @@ export const COMMANDS = Object.freeze([
         name: 'exit',
         usage: '/exit',
         summary: 'end the session and leave the shell',
-        detail: 'The same path as pressing ctrl+c twice: a session with turns in it is evaluated first (ctrl+c skips the eval), then the shell closes.',
+        detail: 'A session with turns in it is evaluated first, its learnings are captured to the LLM Wiki, and the shared vault syncs itself (pull, then publish — the same flow as `sherman sync`, bounded at 45s and honest about offline or push failures). Pressing ctrl+c twice instead skips all of it and just leaves.',
     },
 ]);
 

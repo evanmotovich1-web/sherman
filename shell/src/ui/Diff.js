@@ -19,8 +19,8 @@ import { Box, Text } from 'ink';
 import { color } from './theme.js';
 import { safeTerminalText } from './sanitize.js';
 
-/** The edit kinds codex reports, as a one-glyph header marker. */
-const KIND_MARK = { add: '+', update: '~', delete: '-' };
+/** The edit kinds codex reports, as the header's verb. */
+const KIND_WORD = { add: 'Create', update: 'Update', delete: 'Delete' };
 
 /**
  * @param {{diff: {path:string, changeKind:string, available:boolean, reason:string|null,
@@ -30,18 +30,25 @@ const KIND_MARK = { add: '+', update: '~', delete: '-' };
 export function Diff({ diff }) {
     if (!diff || typeof diff !== 'object') return null;
 
-    const mark = KIND_MARK[diff.changeKind] ?? '~';
+    const word = KIND_WORD[diff.changeKind] ?? 'Update';
     const path = safeTerminalText(diff.path ?? '');
 
-    // The header carries the counts so a truncated hunk still reports the true
-    // size of the change.
-    const tally = diff.available ? `  +${diff.added} -${diff.removed}` : '';
-
+    // The header carries the verb and the counts so a truncated hunk still
+    // reports the true size of the change — `Update path  +3 -1`, the
+    // reference register, with the counts inked like the lines they count.
     const rows = [
         React.createElement(
             Text,
-            { key: 'head', color: color.tertiary, wrap: 'truncate' },
-            `  │ ${mark} ${path}${tally}`
+            { key: 'head', wrap: 'truncate' },
+            React.createElement(Text, { color: color.tertiary }, '  │ '),
+            React.createElement(Text, { color: color.accent, bold: true }, word),
+            React.createElement(Text, { color: color.value }, ` ${path}`),
+            diff.available
+                ? React.createElement(Text, { color: color.diffAdded }, `  +${diff.added}`)
+                : null,
+            diff.available
+                ? React.createElement(Text, { color: color.diffRemoved }, ` -${diff.removed}`)
+                : null
         ),
     ];
 

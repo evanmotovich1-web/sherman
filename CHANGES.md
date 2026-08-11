@@ -3,6 +3,25 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-10 — Added: auto vault sync, the kanban skill, and verb-headed live diffs
+
+- The vault syncs itself on the way out: /exit now runs the `sherman sync`
+  flow after the eval and wiki capture — pull what other machines
+  published, publish what this session learned — gated to real launches,
+  opted out by SHERMAN_NO_FETCH, bounded at 45s, honest about offline and
+  push failures. Ctrl+c twice remains the skip-everything exit. Two
+  machines that both exit cleanly now converge without anyone remembering
+  to sync.
+- New `kanban` skill, auto-invoked for any multi-workstream project and
+  named by navigate and the operating contract: decompose into cards with
+  observable "done means", delegate independent cards to parallel workers
+  and sequence dependent ones, verify before Done, and re-render the board
+  as columns in the reply on every update. The board file lives in the
+  workspace (`boards/<slug>.md`) and survives across sessions.
+- Live diffs wear the reference's header: `Update path  +3 -1` — verb by
+  change kind, counts inked like the lines they count — over the same
+  honest read-both-sides line detail as before.
+
 ## 2026-08-10 — Added: exec and delegate trace registers; unpublished-vault count
 
 - The trace gains the reference's two remaining registers: `🐍 exec` for
