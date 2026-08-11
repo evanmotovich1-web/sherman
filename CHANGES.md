@@ -3,6 +3,26 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-11 — Added: steer Sherman mid-turn without interrupting
+
+- The composer stays live while a turn runs. What used to be dropped
+  keystrokes is steering now: type a note, press Enter, and it enters the
+  transcript immediately and queues — the running turn is never touched.
+  The moment the turn completes, every queued note is delivered in order as
+  one follow-up turn on the same thread, framed as mid-work steering so the
+  engine folds it into the work in progress instead of restarting. Notes
+  typed during the delivery turn queue and drain the same way, so steering
+  chains. Ctrl+C remains the interrupt, and the mid-turn placeholder names
+  both: `steer Sherman while it works · Enter queues · Ctrl+C to interrupt…`.
+- Honesty over theater: the exec transport is one engine child per turn with
+  stdin deliberately ignored, so there is no live channel into a running
+  turn — the shell says "queued · delivered the moment the current turn
+  completes" rather than pretending the note went straight in. Steering
+  deliveries skip the natural-language routes (email, research, @-agents):
+  a course correction reaches the thread as steering even when it opens
+  with a routing verb. Commands stay boundary-only — a /command typed
+  mid-turn is refused with the reason, never queued as prose.
+
 ## 2026-08-11 — Changed: the reply closes its box
 
 - Sherman's reply — and the worker's — renders inside a closed four-sided

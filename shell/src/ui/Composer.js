@@ -29,7 +29,13 @@ function normalizeInput(input) {
 }
 
 /**
- * @param {{onSubmit: (text: string) => void, busy: boolean, columns?: number, initialValue?: string, click?: {column: number, row: number, seq: number} | null}} props
+ * @param {{onSubmit: (text: string) => void, busy: boolean, steering?: boolean, columns?: number, initialValue?: string, click?: {column: number, row: number, seq: number} | null}} props
+ *
+ * `busy` blocks the composer outright — a pending choice owns the keyboard.
+ * `steering` is the running-turn state: the input stays live so the operator
+ * can type a mid-work note, and Enter hands it to onSubmit, which queues it
+ * for the turn boundary rather than starting a second turn. The command menu
+ * sleeps while steering, because commands cannot run mid-turn.
  *
  * `click` is the most recent mouse press the shell saw, forwarded verbatim.
  * The composer maps it itself rather than being told where its caret should go,
@@ -37,7 +43,7 @@ function normalizeInput(input) {
  * row it occupies moves with the command palette, the busy state, and the
  * terminal height, and a caller guessing at that would be guessing.
  */
-export function Composer({ onSubmit, busy, columns, initialValue = '', click = null, skills = [] }) {
+export function Composer({ onSubmit, busy, steering = false, columns, initialValue = '', click = null, skills = [] }) {
     const [value, setValue] = useState(initialValue);
     // Where the next character goes. Kept at the end of the text at all times
     // except when a click has moved it, so a keyboard-only session behaves
@@ -47,7 +53,7 @@ export function Composer({ onSubmit, busy, columns, initialValue = '', click = n
     const [menuDismissed, setMenuDismissed] = useState(false);
     const size = useWindowSize();
     const width = Math.max(1, typeof columns === 'number' ? columns : size.columns);
-    const suggestions = menuDismissed ? [] : suggestionsFor(value, skills);
+    const suggestions = menuDismissed || steering ? [] : suggestionsFor(value, skills);
     // A typed value that names a loaded skill inks the whole entry purple —
     // the composer-side echo of the palette's skill rows, so the operator sees
     // which contract Enter is about to invoke before pressing it.
@@ -193,8 +199,11 @@ export function Composer({ onSubmit, busy, columns, initialValue = '', click = n
                 }));
             }
         },
-        // While a turn is in flight the composer stops listening entirely, so a
-        // user cannot queue a second turn the engine has no way to accept.
+        // Only a pending choice deafens the composer — its arrow keys belong
+        // to the ChoiceBox. While a turn is in flight the composer stays LIVE:
+        // what used to be dropped keystrokes is now steering, queued by submit
+        // for the turn boundary, so typing mid-turn is never lost and never
+        // interrupts.
         { isActive: !busy }
     );
 
@@ -271,6 +280,14 @@ export function Composer({ onSubmit, busy, columns, initialValue = '', click = n
     const placeholder = width >= 36
         ? 'Ask about company operations…'
         : width >= 28 ? 'Ask about operations…' : '';
+    // The steering placeholder keeps the literal words "Ctrl+C to interrupt"
+    // at every width that shows one: that phrase is the running-turn marker
+    // the operator (and the scrollback tests) recognize, and steering must
+    // not hide the interrupt it is the alternative to.
+    const steerPlaceholder = width >= 68
+        ? 'steer Sherman while it works · Enter queues · Ctrl+C to interrupt…'
+        : width >= 28 ? 'Ctrl+C to interrupt…' : '';
+    const hint = steering ? steerPlaceholder : placeholder;
     // Reserve one row for status and three for the bordered composer (top
     // border, one prompt row, bottom border). The palette owns only the
     // remainder, so suggestions can never evict the composer — and no more
@@ -333,11 +350,11 @@ export function Composer({ onSubmit, busy, columns, initialValue = '', click = n
                               flexShrink: 0,
                           },
                           React.createElement(Text, { color: color.promptLive, bold: true }, '❯ '),
-                          value.length === 0 && placeholder
+                          value.length === 0 && hint
                               ? React.createElement(
                                     Text,
                                     { color: color.muted, wrap: 'truncate' },
-                                    placeholder
+                                    hint
                                 )
                               // At the end of the text — which is where it sits
                               // unless a click moved it — this is the same two
@@ -358,7 +375,7 @@ export function Composer({ onSubmit, busy, columns, initialValue = '', click = n
                                         ),
                                         value.slice(caret + 1)
                                     ),
-                          caret >= value.length || (value.length === 0 && placeholder)
+                          caret >= value.length || (value.length === 0 && hint)
                               ? React.createElement(Text, { color: color.accent, inverse: true }, ' ')
                               : null
                       ),
