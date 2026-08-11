@@ -23,6 +23,53 @@ shipped, verified release.
   with a routing verb. Commands stay boundary-only — a /command typed
   mid-turn is refused with the reason, never queued as prose.
 
+## 2026-08-11 — Changed: the reply closes its box
+
+- Sherman's reply — and the worker's — renders inside a closed four-sided
+  frame again, the signature embedded in the top border: `╭─ Sherman ─…─╮`
+  over the body, closed by `╰─…─╯`. The retired Hermes `embedTextInBorder`
+  port, kept precisely for the next labelled border, is live again and drew
+  it. The frame's left edge still stands on the transcript's one left-edge
+  column with the trace rules above it; both speakers wear the same frame, so
+  the transcript keeps one visual language. Geometry re-pinned: a wrapped
+  reply's side rules run its full measured height, the bottom border is the
+  bottom-anchored row of the newest turn, and below seven columns the reply
+  still degrades to bare text rather than a box with no interior.
+
+## 2026-08-11 — Fixed: a silent zai turn is stopped and named, not waited on forever
+
+- Seen live: an OpenCode child hung before its first byte of stdout and the
+  shell showed "initializing agent" for 37 minutes — the transport waits on
+  stdout with no heartbeat, so a turn that never starts looks identical to
+  one that is initializing, indefinitely. A first-output stall detector now
+  arms at spawn and disarms on the first stdout line: a child that says
+  nothing within two minutes is killed and the error names the repairs,
+  most common first — `opencode auth login`, a direct `opencode run` probe,
+  a wedged MCP server — and says plainly that nothing was lost and a resend
+  retries. Only the window before the first line is policed; once the
+  stream is talking, a long silence is a slow tool call, not a stall.
+  `SHERMAN_OPENCODE_STALL_MS` overrides the window for tests and slow links.
+
+## 2026-08-11 — Added: Sherman can edit its own source
+
+- New `self-edit` skill (category `agent`): when asked to fix, improve, or
+  extend Sherman itself — or when a defect traces to code rather than to a
+  missing vault lesson — Sherman works in its source repository, not the
+  disposable workspace. The loop it encodes: read `AGENTS.md` and `DESIGN.md`
+  first, locate the defect in source, make the smallest true fix, run
+  `./smoke.sh`, commit explicit paths on a branch, never push, and tell the
+  operator a relaunch picks the change up. The skill-vs-code tell it teaches:
+  if a fresh Sherman would still have the problem after reading every vault
+  lesson, it is a code problem.
+- The generated workspace context gains a **Your own source** section: the
+  launcher now bakes the absolute repo root into the body it assembles, right
+  above the PHI floor, so an engine session knows where Sherman actually
+  lives and that workspace edits do not survive a launch. Until now Sherman
+  could not even locate its own source from inside a session.
+- Design note in `docs/superpowers/specs/2026-08-11-self-edit-design.md`.
+  Built by parallel subagents with disjoint file scopes — plus, by explicit
+  request, a dedicated motivator agent cheering the other two on.
+
 ## 2026-08-10 — Fixed: telegram token errors name the repair; geometry tests pinned
 
 - The Telegram bridge's first live run surfaced its first honest defect: a
@@ -72,6 +119,46 @@ shipped, verified release.
   memory/shared, and inbox only. Two machines disagreeing about the wiki
   count IS this number on one of them; now it shows instead of being
   discovered as confusion.
+
+## 2026-08-10 — Added: explicit, shell-validated learning and vault wiki capture
+
+- Every non-empty session exits through read-only `/eval`. Authoritative retention
+  is explicit-only through `/learn <name> | <lesson>` and
+  `/wiki <name> | <fact>`; exit never starts either command. No model reads the
+  session to select or generate authoritative retention text. A deterministic
+  shell-owned writer scans
+  the complete operator-provided fact, normalizes surrounding whitespace and a
+  final newline, and atomically confines it to
+  `vault/memory/shared/` or `vault/wiki/`; the command payload is redacted from
+  the transcript and session log before validation.
+- Eval and meta-eval remain provider-backed read-only model turns, while their
+  reports remain local under `~/.sherman/evals/`; the shell
+  never copies model/session-derived recommendations into the synchronized
+  Vault inbox.
+- Both commands reject malformed paths, symlink escapes, PHI, secrets, prompt
+  injection, and unsafe active content, and write nothing on rejection. The
+  fail-closed PHI gate covers lowercase Unicode multiword person-linked clinical
+  prose, while Markdown destinations containing encoded entities are rejected
+  before they can disguise active URI schemes.
+- Normal Codex and OpenCode model turns now read the vault without being able to
+  mutate it. Codex no longer adds the vault as a writable root; OpenCode denies
+  vault edits and the `apply_patch` move-path bypass. Existing vault skills now
+  offer complete operator-reviewed commands instead of writing directly.
+- Model-side browser/desktop control and inherited MCP servers are denied on
+  ordinary turns because those host capabilities bypass filesystem sandboxing.
+  Codex discovers inherited servers through the effective `CODEX_HOME`, not a
+  hard-coded default config path.
+  The optional personal LLMWiki MCP is admitted only by the host-tagged explicit
+  `/research-wiki` skill invocation.
+- `/learn` and `/wiki` run only when the operator provides the complete fact.
+  Rejected commands write nothing and are never retried implicitly at exit. This
+  prevents untrusted session prose from silently becoming authoritative
+  company memory while preserving the secure, intentional capture path. The
+  same read-only/explicit-only contract is assembled into each runtime adapter;
+  it contains no direct or private-memory write instructions.
+- `/wiki` now means the Sherman company vault wiki. The separately provisioned
+  personal LLMWiki MCP remains optional and is used only on an explicit
+  `/research-wiki` skill invocation; ordinary turns cannot access its tools.
 
 ## 2026-08-10 — Added: navigate rides every turn as the blue globe; pet claims verified
 

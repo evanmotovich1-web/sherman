@@ -60,6 +60,11 @@ test('OpenCode permissions allow only the named vault outside the workspace', ()
     assert.equal(normal.share, 'disabled');
     assert.equal(normal.permission.bash, 'deny');
     assert.equal(normal.permission.task, 'deny');
+    assert.equal(normal.permission.apply_patch, 'deny');
+    assert.deepEqual(normal.permission.edit, {
+        '*': 'allow',
+        '/tmp/sherman-test/vault/**': 'deny',
+    });
     assert.equal(normal.default_agent, 'sherman');
     assert.deepEqual(normal.agent.sherman.permission, normal.permission);
 
@@ -101,7 +106,17 @@ test('OpenCode receives the exact validated Sherman MCP connectors', () => {
             headers: { Authorization: 'test-placeholder' },
         });
         assert.equal(Object.hasOwn(mcp, '__proto__'), false);
-        assert.deepEqual(JSON.parse(openCodeConfigForMode({ ...config, workspacePath: workspace })).mcp, mcp);
+        const ordinary = JSON.parse(openCodeConfigForMode(
+            { ...config, workspacePath: workspace }, 'normal', mcp, 'chat'
+        ));
+        assert.equal(ordinary.mcp, undefined);
+        assert.equal(ordinary.permission['llmwiki_*'], 'deny');
+        assert.equal(ordinary.permission['exa_*'], 'deny');
+        const explicitWiki = JSON.parse(openCodeConfigForMode(
+            { ...config, workspacePath: workspace }, 'normal', mcp, 'skill:research-wiki'
+        ));
+        assert.deepEqual(explicitWiki.mcp, { llmwiki: mcp.llmwiki });
+        assert.equal(explicitWiki.permission['exa_*'], 'deny');
         const readOnly = JSON.parse(openCodeConfigForMode(
             { ...config, workspacePath: workspace },
             'read-only',
@@ -230,9 +245,9 @@ console.log(JSON.stringify({ type: 'step_finish', sessionID: 'ses_transport', pa
         assert.deepEqual(calls[1].argv.slice(-3), ['--session', 'ses_transport', 'second']);
         assert.equal(calls[0].config.share, 'disabled');
         assert.equal(calls[0].config.permission.bash, 'deny');
-        assert.equal(calls[0].config.mcp.safe.command[0], '/bin/true');
-        assert.equal(calls[1].config.mcp.safe.command[0], '/bin/true');
-        assert.equal(calls[1].config.mcp.injected, undefined);
+        assert.equal(calls[0].config.mcp, undefined);
+        assert.equal(calls[1].config.mcp, undefined);
+        assert.equal(calls[0].config.permission['safe_*'], 'deny');
         assert.match(calls[0].xdgConfigHome, /sherman-opencode-config-/);
         assert.equal(calls[0].configDir, calls[0].xdgConfigHome);
 
@@ -262,6 +277,56 @@ console.log(JSON.stringify({ type: 'step_finish', sessionID: 'ses_transport', pa
         if (previousMcpDigest === undefined) delete process.env.SHERMAN_MCP_CONFIG_SHA256;
         else process.env.SHERMAN_MCP_CONFIG_SHA256 = previousMcpDigest;
         delete process.env.SHERMAN_OPENCODE_TEST_MALFORMED;
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+// The stall detector. Seen live: an OpenCode child that hung before its first
+// byte of stdout left the shell showing "initializing agent" for 37 minutes,
+// because the transport waits on stdout with no heartbeat. A turn that
+// produces nothing within the window is now killed and NAMED — the error
+// carries the repairs, most common first — instead of being waited on
+// forever. The window covers only the time before the first output line;
+// the healthy-transport test above proves a talking child is never touched.
+test('a turn that produces no output is stopped and named, not waited on forever', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sherman-opencode-stall-'));
+    const stub = join(dir, 'opencode');
+    writeFileSync(stub, `#!/usr/bin/env node
+// Hang silently: no stdout, no exit — the observed failure mode.
+setInterval(() => {}, 1000);
+`);
+    chmodSync(stub, 0o755);
+    const runtimeConfig = {
+        ...config,
+        workspacePath: dir,
+        vaultPath: join(dir, 'vault'),
+    };
+    mkdirSync(runtimeConfig.vaultPath);
+
+    const previousPath = process.env.PATH;
+    const previousStall = process.env.SHERMAN_OPENCODE_STALL_MS;
+    process.env.PATH = `${dir}${delimiter}${previousPath}`;
+    process.env.SHERMAN_OPENCODE_STALL_MS = '250';
+    try {
+        const session = new OpenCodeSession(runtimeConfig);
+        const events = [];
+        const started = Date.now();
+        for await (const event of session.send('hang')) events.push(event);
+        const waited = Date.now() - started;
+
+        const stall = events.find((event) => event.kind === 'error');
+        assert.ok(stall, JSON.stringify(events));
+        assert.match(stall.message, /produced no output for \ds and was stopped/);
+        assert.match(stall.message, /opencode auth login/);
+        assert.match(stall.message, /resend the prompt to retry/);
+        // The stall is the whole story: no turn-end pretending the turn ran,
+        // and the wait was the configured window, not a human noticing.
+        assert.equal(events.some((event) => event.kind === 'turn-end'), false);
+        assert.ok(waited < 5000, `stall detection took ${waited}ms`);
+    } finally {
+        process.env.PATH = previousPath;
+        if (previousStall === undefined) delete process.env.SHERMAN_OPENCODE_STALL_MS;
+        else process.env.SHERMAN_OPENCODE_STALL_MS = previousStall;
         rmSync(dir, { recursive: true, force: true });
     }
 });

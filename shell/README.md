@@ -223,7 +223,7 @@ measurements arm it early; the compaction turn still runs at the turn boundary,
 the earliest safe point). Smoke check 18 pins the gate's arithmetic, and
 `test/compact.test.js` pins that neither an estimate nor the bill ever compacts.
 
-## Permissions: the engine is sealed inside the vault
+## Permissions: models read the vault but never author it directly
 
 This is the §4 company-data boundary enforced at the engine, and it is the same
 posture for every user.
@@ -235,7 +235,6 @@ drift — carries:
 --json
 --skip-git-repo-check
 -c sandbox_mode="workspace-write"
--c sandbox_workspace_write.writable_roots=["<vault path>"]
 -c approval_policy="never"
 ```
 
@@ -256,24 +255,19 @@ vault and the requirement to forbid shell execution are, on this engine, in
 direct conflict.
 
 So the boundary is implemented where it is genuinely enforceable: the macOS
-seatbelt sandbox. Shell commands may run, but the kernel denies every read and
-write outside the permitted roots and blocks network egress. That is a *stronger*
-boundary than an allow-list of tool names, because the model cannot talk its way
-past the kernel — no prompt injection, no clever rephrasing, no "the user said it
-was fine."
+seatbelt sandbox. Shell commands may run and read the vault, but writes remain
+inside the disposable workspace because the vault is not a writable root.
+Authoritative `/learn` and `/wiki` writes bypass the model entirely and go
+through the shell-owned deterministic validator and writer.
 
-### What was actually proven
-
-Not asserted — tested, with the real engine:
+### What the tests pin
 
 | Test | Result |
 |---|---|
-| Write a file **inside** the vault | Succeeded |
-| Write a file **outside** the vault and workspace (`$HOME`) | **Denied** — "outside the permitted writable project roots" |
-| `curl https://example.com` | **Denied** — exit 6, DNS could not resolve |
-
-The engine did run `/bin/zsh -lc` during the first test. That is the point: shell
-ran, and the write outside the roots was still refused.
+| Normal Codex posture adds the vault as `writable_roots` | **No** |
+| Normal OpenCode file tools may edit the vault | **Denied** |
+| OpenCode `apply_patch` move-path bypass is available | **Denied** |
+| `/learn` or `/wiki` writes without a model turn | **Yes** |
 
 Re-run these if you change any flag above. A posture claim that has not been
 tested since the last change is not a posture claim.
@@ -303,8 +297,8 @@ model call.
 
 **A related constraint:** cwd stays `~/.sherman/workspace`, because Codex reads
 `AGENTS.md` from its cwd and that file is Sherman's assembled system prompt.
-Pointing cwd at the vault would seal the sandbox correctly and orphan the
-persona. The vault becomes writable through `writable_roots` instead.
+The workspace is model-writable; the vault is readable but not a model write
+root. The shell owns every authoritative memory/wiki mutation.
 
 ## The contract 04-02 builds against
 

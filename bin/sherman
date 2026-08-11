@@ -766,11 +766,11 @@ run_update() {
                 if "$wiki_py" "$wiki_dir/llmwiki" --help >/dev/null 2>&1; then
                     echo "LLM Wiki repaired (verified: its CLI answers from its own venv)"
                 else
-                    echo "NOTE: the LLM Wiki still does not answer; /wiki stays off." \
+                    echo "NOTE: the optional personal research LLM Wiki still does not answer." \
                          "Re-run install.sh for the full provisioning report."
                 fi
             else
-                echo "NOTE: could not create the wiki's venv (is python3-venv installed?); /wiki stays off."
+                echo "NOTE: could not create the optional personal research wiki's venv (is python3-venv installed?)."
             fi
         fi
     fi
@@ -907,33 +907,29 @@ assemble_adapter() {
 
 # Your knowledge base
 
-Two directories, both shared with every other person's Sherman:
+These authoritative directories are shared with every other person's Sherman:
 
 - \`$vault/wiki\` — the company knowledge base: procedures, SOPs, formats,
   policies, how things are done here.
-- \`$vault/memory/shared\` — business memory. Every user's Sherman reads it and
-  every user's Sherman writes to it.
+- \`$vault/memory/shared\` — durable shared business memory.
 
 **Search both before answering any question about this company.** Cite the file
 you used.
 
-When you learn a durable new fact about the business, write it there: one fact
-per file, named the way a person would search for it.
+Models read these directories but never modify them directly. When a complete,
+durable company fact should be retained, offer a complete operator-reviewed
+\`/wiki <name> | <fact>\` command. For a complete durable behavioral lesson,
+offer a complete operator-reviewed \`/learn <name> | <lesson>\` command. The
+operator decides whether to submit it; do not run the command yourself or omit
+its complete content.
 
 # Private memory for this user
 
 - \`$vault/memory/private/$user\` — private to $user.
 
-Personal context for $user goes there and **NOWHERE else**. Never write $user's
-personal context into the shared knowledge base, and never read another
-person's private memory directory.
-
-# Memory attribution
-
-Every fact file you write to shared or private memory ends with this exact
-line, so any fact can be traced to who learned it and when:
-
-— $user · $session · $sdate
+You may read this user's private context when relevant, but never read another
+person's private memory directory. There is no validated private-memory
+retention command yet, so do not propose or perform private-memory writes.
 
 ---
 
@@ -944,6 +940,16 @@ Your company skills travel with this workspace — \`.agents/skills\` for Codex,
 \`SKILL.md\`. Before company work (vault lookups, SOPs, documents, anything
 near the PHI boundary), read the matching skill and follow it: the skills are
 how company work gets done the same way twice.
+
+# Your own source
+
+Sherman's source code lives at \`$ROOT\`. This workspace is generated from it
+fresh on every launch and is disposable — never edit files here to change
+Sherman; the change would not survive the next launch.
+
+When asked to fix, improve, or extend Sherman itself, read the \`self-edit\`
+skill and follow it: work in the source repo, verify with \`./smoke.sh\`,
+commit on a branch, and never push — changes take effect on the next launch.
 
 # HARD RULE — restated, because it is the floor
 

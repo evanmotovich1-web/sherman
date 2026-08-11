@@ -89,7 +89,11 @@ contract is unchanged by that: `SKILL.md` is still what the loader reads.
 
 `session-eval` and `capability-gap` are driven by `/eval`, which also runs
 automatically when a session that had turns ends. That turn is read-only by
-construction: it judges and proposes, and a person decides what gets written.
+construction. `/learn <name> | <lesson>` and `/wiki <name> | <fact>` are
+explicit operator-authored commands; no model rereads the session or proposes
+their content. The shell redacts the command payload from the transcript,
+validates it, and confines one accepted fact to `vault/memory/shared/` or
+`vault/wiki/`.
 
 `commons` governs the separate external publication and adoption boundary. It
 uses closed-world post kinds, agent-for-owner attribution, and concrete local

@@ -6,7 +6,7 @@
 #   2. The first-run flow, driven with piped answers and a stub engine on PATH
 #      under an overridden HOME, writes a valid config.json.
 #   3. The assembled adapter carries the vault path, the user name, the no-PHI
-#      and autonomy rules, and the session-id memory-attribution rule — and the
+#      autonomy rules, and the explicit-only retention boundary — and the
 #      workspace carries every repo skill at both engine conventions.
 #   4. The shell entry point launches and exits clean on --version.
 #   5. Backend selection follows config.json's engine field.
@@ -193,15 +193,21 @@ else
         pass "contains the no-PHI and autonomy rules"
     fi
 
-    # The attribution rule and its session id. The id must be the launcher's
-    # (format YYYYMMDD_HHMMSS_ + 6 hex), not a placeholder.
-    grep -qE '[0-9]{8}_[0-9]{6}_[0-9a-f]{6}' "$ADAPTER" \
-        && pass "contains a session id" \
-        || fail "session id missing from adapter"
+    if grep -qF 'offer a complete operator-reviewed' "$ADAPTER" \
+        && grep -qF '`/wiki <name> | <fact>` command' "$ADAPTER" \
+        && grep -qF 'There is no validated private-memory' "$ADAPTER"; then
+        pass "contains explicit operator-reviewed retention guidance"
+    else
+        fail "explicit operator-reviewed retention guidance missing"
+    fi
 
-    grep -qE "— $SMOKE_USER · [0-9]{8}_[0-9]{6}_[0-9a-f]{6} · [0-9]{4}-[0-9]{2}-[0-9]{2}" "$ADAPTER" \
-        && pass "contains the memory-attribution line" \
-        || fail "memory-attribution line missing from adapter"
+    if ! grep -qF "every user's Sherman writes to it" "$ADAPTER" \
+        && ! grep -qF 'Every fact file you write to shared or private memory' "$ADAPTER" \
+        && ! grep -qF 'When you learn a durable new fact about the business, write it there' "$ADAPTER"; then
+        pass "contains no direct or private-memory write instruction"
+    else
+        fail "assembled adapter still instructs direct authoritative writes"
+    fi
 
     grep -qF '{{SHERMAN_BODY}}' "$ADAPTER" \
         && fail "splice token still present -- template copied, not assembled" \
@@ -868,14 +874,17 @@ const fullReplyLines = renderToString(
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
-// One gutter column, then the two-cell rule indent. The signature stands on
-// its own row sharing the rule's left edge, and the reply ends when its text
-// ends — no bottom border, and no trailing blank row either, because the next
-// user turn carries the air between turns.
+// One gutter column, then the two-cell frame indent. The signature is
+// embedded in the top border, the body stands between the side rules, and the
+// box's own bottom border closes it — no trailing blank row after it,
+// because the next user turn carries the air between turns. (That apostrophe
+// is load-bearing: bash 3.2 scans $(...) heredocs for quote pairs, and this
+// comment must keep the same single-quote parity the old text had.)
 if (
-    fullReplyLines.length !== 2 ||
-    fullReplyLines[0] !== '   Sherman' ||
-    fullReplyLines[1] !== '   │ reply body'
+    fullReplyLines.length !== 3 ||
+    !/^ {3}╭─ Sherman ─+╮$/.test(fullReplyLines[0]) ||
+    !/^ {3}│ reply body +│$/.test(fullReplyLines[1]) ||
+    !/^ {3}╰─+╯$/.test(fullReplyLines[2])
 ) {
     mappingMissing.push('signed Sherman reply geometry and trailing rhythm');
 }
@@ -908,17 +917,22 @@ const longReplyLines = renderToString(
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
-// Row 0 is the signature; everything after it is body. Each body row is the
-// gutter, the two-cell indent, the rule, one padding space, then the wrapped
-// chunk — the rule repeating on EVERY row is what proves Ink painted it down
-// the measured height rather than only beside the first line. The chunks still
-// reassemble the input exactly, so no text was dropped at the wrap.
-const longBodyLines = longReplyLines.slice(1);
+// Row 0 is the titled top border and the last row is the bottom border;
+// everything between is body. Each body row is the gutter, the two-cell
+// indent, the left rule, one padding space, the wrapped chunk, then padding
+// and the right rule — the rules repeating on EVERY row is what proves Ink
+// painted the frame down the measured height rather than only beside the
+// first line. The chunks still reassemble the input exactly, so no text was
+// dropped at the wrap. (Digits only, so stripping the padded right edge can
+// never eat real content.)
+const longBodyLines = longReplyLines.slice(1, -1);
 if (
     longBodyLines.length < 3 ||
-    longBodyLines.some((line) => !line.startsWith('   │ ')) ||
+    !/^ {3}╭─ Sherman ─+╮$/.test(longReplyLines[0]) ||
+    !/^ {3}╰─+╯$/.test(longReplyLines.at(-1)) ||
+    longBodyLines.some((line) => !line.startsWith('   │ ') || !line.endsWith('│')) ||
     maxWidth(longReplyLines.join('\n')) > 80 ||
-    longBodyLines.map((line) => line.slice(5)).join('') !== longReplyInput
+    longBodyLines.map((line) => line.slice(5).replace(/ *│$/, '')).join('') !== longReplyInput
 ) {
     mappingMissing.push('long Sherman reply wraps without overflow or dropped text');
 }
@@ -1055,11 +1069,11 @@ const poll = setInterval(() => {
             if (sent.length !== 1 || !sent[0].startsWith('read\nthe sop')) {
                 missing.push('multi-line paste preserved until Enter');
             }
-            // The signature is back on a row of its own, standing above the
-            // rule at the shared left edge, with the body beside the rule under
-            // it. Both rows are asserted: a signature with no ruled body under
-            // it would mean the frame collapsed to a bare label.
-            if (!/\n {3}Sherman\n {3}│ /.test(plain)) missing.push('Sherman reply label');
+            // The signature lives inside the top border again, with the body
+            // between the side rules under it. Both rows are asserted: a
+            // titled border with no framed body under it would mean the box
+            // collapsed to a bare label.
+            if (!/\n {3}╭─ Sherman ─.*\n {3}│ /.test(plain)) missing.push('Sherman reply label');
             // The completed tool COMMITS to the transcript now — glyph, padded
             // category tag, label, measured duration — so it is asserted on the
             // final screen, where a permanent row must still be. No ✓ on a

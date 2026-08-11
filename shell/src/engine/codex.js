@@ -106,7 +106,7 @@ export function mcpServerKeysFromToml(text) {
 
 function configuredMcpServerKeys() {
     try {
-        const text = readFileSync(join(homedir(), '.codex', 'config.toml'), 'utf8');
+        const text = readFileSync(join(codexHome(), 'config.toml'), 'utf8');
         return mcpServerKeysFromToml(text);
     } catch {
         return [];
@@ -217,9 +217,9 @@ export function latestTokenCount(path) {
 }
 
 // Filesystem sandboxing does not govern Codex host-side tools. Planning and
-// isolated workers disable those capabilities explicitly instead of claiming
-// to be read-only while inherited MCP/apps could still mutate external state.
-// Ordinary chat turns keep the operator's configured tools.
+// every turn disables those capabilities explicitly instead of claiming a
+// Vault boundary while inherited MCP/apps could still mutate external state.
+// The one reviewed exception is the explicitly invoked personal research wiki.
 const ISOLATED_TOOL_OVERRIDES = Object.freeze([
     'orchestrator.mcp.enabled=false',
     'orchestrator.skills.enabled=false',
@@ -239,16 +239,6 @@ const ISOLATED_TOOL_OVERRIDES = Object.freeze([
     'features.plugins=false',
     'features.remote_plugin=false',
     'features.tool_suggest=false',
-]);
-
-// Codex 0.146.0 exposes these as stable host tools. Force them on for normal
-// turns and the email flow's browser-enabled/filesystem-read-only posture so a
-// machine gains Chrome and computer use from `sherman update` without a config
-// edit. Ordinary read-only and isolated turns keep them off.
-const NORMAL_HOST_TOOL_OVERRIDES = Object.freeze([
-    'features.browser_use=true',
-    'features.browser_use_external=true',
-    'features.computer_use=true',
 ]);
 
 const DISABLED_HOST_TOOL_OVERRIDES = Object.freeze([
@@ -347,7 +337,7 @@ export class CodexSession extends EngineSession {
      * Never add --dangerously-bypass-approvals-and-sandbox or
      * --dangerously-bypass-hook-trust. They defeat the entire posture.
      */
-    _postureArgs(mode = 'normal') {
+    _postureArgs(mode = 'normal', source = 'chat') {
         const readOnly = mode === 'read-only'
             || mode === 'isolated-read-only'
             || mode === 'browser-read-only';
@@ -360,16 +350,11 @@ export class CodexSession extends EngineSession {
             // auto-approved: a denied action simply fails and the model is told.
             '-c', 'approval_policy="never"',
         ];
-        if (!readOnly) {
-            // cwd is writable under workspace-write already; this adds the
-            // vault, which is the only durable destination.
-            args.push(
-                '-c',
-                `sandbox_workspace_write.writable_roots=["${this._config.vaultPath}"]`
-            );
-        }
+        // Normal turns may edit the disposable workspace, but the vault is not
+        // a writable root. Authoritative memory/wiki writes belong exclusively
+        // to the shell-owned /learn and /wiki validator/writer path.
         if (mode === 'normal' || mode === 'browser-read-only') {
-            for (const override of NORMAL_HOST_TOOL_OVERRIDES) {
+            for (const override of DISABLED_HOST_TOOL_OVERRIDES) {
                 args.push('-c', override);
             }
         } else if (mode === 'isolated-read-only') {
@@ -387,6 +372,10 @@ export class CodexSession extends EngineSession {
             for (const override of DISABLED_HOST_TOOL_OVERRIDES) {
                 args.push('-c', override);
             }
+        }
+        for (const key of this._configuredMcpServerKeys) {
+            const admitted = source === 'skill:research-wiki' && key === 'llmwiki';
+            if (!admitted) args.push('-c', `mcp_servers.${key}.enabled=false`);
         }
         return args;
     }
@@ -415,7 +404,10 @@ export class CodexSession extends EngineSession {
     /** Turn 1 opens a thread; later turns resume it by id. */
     _argsFor(request) {
         const normalized = normalizeRequest(request);
-        const shared = [...this._postureArgs(normalized.mode), ...this._streamArgs()];
+        const shared = [
+            ...this._postureArgs(normalized.mode, normalized.source),
+            ...this._streamArgs(),
+        ];
         if (normalized.source === 'subagent') {
             // Shell workers are deliberately one-turn and should leave no
             // resumable Codex session file behind after App disposes them.

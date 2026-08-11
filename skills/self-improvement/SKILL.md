@@ -1,8 +1,8 @@
 ---
 name: self-improvement
 category: agent
-summary: record a durable lesson about how Sherman should work, learned from being corrected
-description: Record a durable lesson about how Sherman should work, learned from being corrected. Use when the user corrects Sherman's behavior, a format it used, or a fact it asserted.
+summary: identify a durable correction and offer an explicit /learn command
+description: Identify a durable correction to Sherman's behavior and offer a shell-validated /learn command for the operator to enter. Never write shared memory directly.
 ---
 
 # Record what you learned about working here
@@ -28,9 +28,14 @@ Use it when the session produced a durable lesson about Sherman's own conduct:
 - a refusal that turned out to be wrong, or one that turned out to be right for
   a reason worth writing down
 
-Do not ask whether to remember a correction. The correction is the decision;
-search for an existing lesson, apply it now, and record it when it passes the
-durability test below.
+Identify the durable lesson, but do not persist it yourself. Offer one complete
+`/learn <name> | <lesson>` command for the operator to review and enter.
+
+`/learn <name> | <lesson>` is explicit-only; exit runs the read-only eval but
+never starts an authoritative retention command. No model rereads the session or
+generates the lesson. The shell validates the complete operator-provided text,
+normalizes surrounding whitespace and a final newline, and confines an accepted
+file to shared memory.
 
 Do not use it for:
 
@@ -42,7 +47,7 @@ Do not use it for:
 
 ## The test
 
-Write it only if it would change what a Sherman who never saw this session
+Recommend it only if it would change what a Sherman who never saw this session
 would DO. If the lesson cannot be stated as a behavior, it is an observation,
 and observations do not go in the vault.
 
@@ -52,17 +57,15 @@ the totals are already on the dashboard."
 
 ## How
 
-1. **Search first.** A lesson that contradicts one already recorded is the more
-   important write: correct the old file rather than adding a second one that
-   disagrees with it. Two files disagreeing about how to work here is worse
-   than neither.
-2. **One lesson per file**, in `vault/memory/shared/`. Name it for the behavior
-   it changes, not for the session it came from — `weekly-ops-summary-opens-
-   with-exceptions.md`, never `session-notes-july-28.md`.
-3. **Record the correction, not the conclusion alone.** What was done, what was
-   wrong with it, what to do instead. The reasoning is what lets a later
-   Sherman tell whether the lesson still applies.
-4. **Say you wrote it**, and where, so the operator can disagree.
+1. **Search first.** If a lesson already exists, propose its filename so the
+   operator intentionally replaces it rather than creating a duplicate.
+2. **One lesson per command.** Name it for the behavior it changes, not for the
+   session it came from — `weekly-ops-summary-opens-with-exceptions`, never
+   `session-notes-july-28`.
+3. **State the correction, not the conclusion alone.** Explain what to do and
+   why, without quoting the session.
+4. **Offer the command; do not execute it.** Never write directly to
+   `vault/memory/shared/`, invoke `vault-write`, or claim the lesson was saved.
 
 ## What must never go in
 
@@ -75,8 +78,9 @@ illustrative example. If the correction concerned a request that contained PHI,
 record the *shape* of the lesson and state that the specifics were omitted for
 that reason. See `phi-boundary`.
 
-## Attribution
+## Stored form
 
-A lesson is a claim about how this company wants its work done, so it carries
-the same attribution the vault uses elsewhere: who corrected you, the session
-id, and the date. A lesson nobody can trace is a lesson nobody can overturn.
+The shell stores only the complete lesson the operator submits, normalized for
+surrounding whitespace and a final newline. It does not append attribution or
+other model-authored metadata, so include any durable context that belongs in
+the fact itself before offering the command.

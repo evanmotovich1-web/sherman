@@ -1,8 +1,8 @@
 ---
 name: research-wiki
 category: vault
-summary: fold each session's durable learnings into the personal LLM Wiki over MCP, and know what belongs there
-description: Maintain the operator's personal LLM Wiki — the research memory that compounds across sessions — through the llmwiki MCP tools. Use for /wiki, at session end after the eval, or when asked to record research findings, decisions, or lessons that are not company vault facts.
+summary: maintain optional personal research notes separately from the Sherman vault wiki
+description: Maintain the optional personal research LLM Wiki through llmwiki MCP tools. Invoke /research-wiki explicitly to admit those tools; Sherman's /wiki writes to vault/wiki instead.
 ---
 
 # The research wiki: what a session learned, kept
@@ -17,13 +17,11 @@ shell installs it at `~/.sherman/llmwiki` with its workspace at
 
 ## When this runs
 
-- **At the end of every session with turns, automatically** — the shell runs
-  `/wiki` after the exit eval. The two are deliberately separate turns: the
-  eval judges and stays read-only; the capture records and writes only
-  through the wiki's MCP. Judgment first, preservation second.
-- **On `/wiki`, any time** — a deliberate mid-session capture, which also
-  satisfies the exit's.
-- **On request** — "put that in my wiki", "save this research".
+- **Only through an explicit `/research-wiki <request>` invocation.** Ordinary
+  turns cannot access the personal wiki MCP tools.
+- **Never for `/wiki`.** `/wiki <name> | <fact>` validates and writes the exact
+  operator-provided company fact to `vault/wiki/`; no model rereads the session,
+  and exit never starts authoritative retention automatically.
 
 ## How to capture
 
@@ -45,11 +43,12 @@ that was not performed is not described as performed.
 
 ## What belongs where
 
-- **Wiki**: research, reasoning, working knowledge, lessons — the operator's
+- **Personal research wiki**: research, reasoning, working knowledge — the operator's
   intellectual trail.
-- **Vault, not wiki**: company procedures, formats, policies, decisions that
-  other people's work depends on. Those go through `vault-write` in their
-  own deliberate turn, so shared truth never depends on a personal store.
+- **Sherman vault wiki**: company procedures, formats, policies, decisions that
+  other people's work depends on. `/wiki <name> | <fact>` validates and writes
+  only the complete operator-authored fact supplied in that command, with
+  surrounding whitespace and the final newline normalized by the shell.
 - **Neither, ever**: credentials, secrets, and patient-identifying data. The
   no-PHI rule binds the wiki exactly as it binds everything else — describe
   shapes, withhold specifics. See `phi-boundary`.

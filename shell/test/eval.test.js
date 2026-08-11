@@ -9,7 +9,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -77,12 +77,15 @@ test('the closed framing judges a past session, with the same contract', () => {
 
 function harness() {
     const home = mkdtempSync(join(tmpdir(), 'sherman-eval-test-'));
+    const vaultPath = join(home, 'vault');
+    mkdirSync(join(vaultPath, 'memory', 'shared'), { recursive: true });
+    mkdirSync(join(vaultPath, 'wiki'));
     const requests = [];
     let disposed = 0;
-    const session = {
+    const makeSession = (worker = false) => ({
         info: {
             engine: 'fake', model: 'fake-model', user: 'test-user',
-            vaultPath: '/tmp/sherman/vault', threadId: null, contextWindow: 100000,
+            vaultPath, threadId: null, contextWindow: 100000,
         },
         usage: zeroUsage(),
         async *send(request) {
@@ -92,8 +95,10 @@ function harness() {
             yield { kind: 'turn-end', usage: { ...zeroUsage(), input: 10, total: 10 } };
         },
         interrupt() {},
-        dispose() { disposed += 1; },
-    };
+        dispose() { if (!worker) disposed += 1; },
+    });
+    const session = makeSession();
+    const sessionFactory = () => makeSession(true);
 
     const stdin = new PassThrough();
     stdin.isTTY = true;
@@ -107,7 +112,7 @@ function harness() {
     stdout.on('data', (chunk) => { captured += chunk.toString(); });
 
     return {
-        home, requests, session, stdin, stdout,
+        home, requests, session, sessionFactory, stdin, stdout,
         disposed: () => disposed,
         captured: () => plain(captured),
     };
@@ -120,7 +125,7 @@ test('exiting an empty session runs no eval and just leaves', async () => {
     const oldHome = process.env.HOME;
     process.env.HOME = h.home;
     const instance = render(
-        React.createElement(App, { session: h.session, sessionId: '20260728_010000_eval00' }),
+        React.createElement(App, { session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260728_010000_eval00' }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );
     try {
@@ -142,7 +147,7 @@ test('exiting a session with turns runs the eval once, then leaves', async () =>
     const oldHome = process.env.HOME;
     process.env.HOME = h.home;
     const instance = render(
-        React.createElement(App, { session: h.session, sessionId: '20260728_010000_eval01' }),
+        React.createElement(App, { session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260728_010000_eval01' }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );
     try {
@@ -154,14 +159,18 @@ test('exiting a session with turns runs the eval once, then leaves', async () =>
         await new Promise((resolve) => setTimeout(resolve, 100));
 
         h.stdin.write('\x03');
-        await until(() => h.requests.length === 2);
-        const evalReq = h.requests[1];
+        await until(() => h.requests.length >= 2);
+        const evalReq = h.requests.find((request) => request?.source === 'eval');
         assert.equal(evalReq.source, 'eval');
         assert.equal(evalReq.mode, 'read-only');
         assert.match(evalReq.text, /20260728_010000_eval01\.jsonl/);
 
         await until(() => h.disposed() > 0);
-        assert.equal(h.requests.length, 2, 'the eval ran more than once');
+        assert.equal(
+            h.requests.filter((request) => request?.source === 'eval').length,
+            1,
+            'the eval ran more than once'
+        );
         assert.match(h.captured(), /evaluating this session before exit/);
         assert.match(h.captured(), /ctrl\+c to skip/, 'the escape hatch was not announced');
     } finally {
@@ -171,6 +180,7 @@ test('exiting a session with turns runs the eval once, then leaves', async () =>
     }
 });
 
+
 // /eval marks the session as graded: quitting afterwards must not grade it a
 // second time. One session, one judgment.
 test('a manual /eval satisfies the exit eval', async () => {
@@ -178,7 +188,7 @@ test('a manual /eval satisfies the exit eval', async () => {
     const oldHome = process.env.HOME;
     process.env.HOME = h.home;
     const instance = render(
-        React.createElement(App, { session: h.session, sessionId: '20260728_010000_eval02' }),
+        React.createElement(App, { session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260728_010000_eval02' }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );
     try {
@@ -192,13 +202,19 @@ test('a manual /eval satisfies the exit eval', async () => {
         h.stdin.write('/eval');
         await new Promise((resolve) => setTimeout(resolve, 30));
         h.stdin.write('\r');
-        await until(() => h.requests.length === 2);
-        assert.equal(h.requests[1].source, 'eval');
+        await until(() => h.requests.some((request) => request?.source === 'eval'));
+        assert.equal(h.requests.find((request) => request?.source === 'eval').source, 'eval');
         await new Promise((resolve) => setTimeout(resolve, 100));
 
         h.stdin.write('\x03');
         await until(() => h.disposed() > 0);
-        assert.equal(h.requests.length, 2, 'exit re-ran an eval the operator already ran');
+        assert.equal(
+            h.requests.filter((request) => request?.source === 'eval').length,
+            1,
+            'exit re-ran an eval the operator already ran'
+        );
+        assert.equal(h.requests.some((request) => ['learn', 'wiki'].includes(request?.source)), false,
+            'explicit retention ran automatically at exit');
     } finally {
         instance.unmount();
         process.env.HOME = oldHome;
@@ -227,7 +243,12 @@ function checkpointHarness() {
             async *send(request) {
                 workerRequests.push(request);
                 yield { kind: 'turn-start' };
-                yield { kind: 'message', text: 'CHECKPOINT VERDICT: on track.' };
+                yield {
+                    kind: 'message',
+                    text: ['learn', 'wiki'].includes(request?.source)
+                        ? '{"operations":[]}'
+                        : 'CHECKPOINT VERDICT: on track.',
+                };
                 yield { kind: 'turn-end', usage: zeroUsage() };
             },
             interrupt() {},
@@ -247,8 +268,8 @@ test('the checkpoint eval grades new turns on a worker, once, in the background'
 
     const instance = render(
         React.createElement(App, {
-            session: h.session, sessionId: '20260729_040000_ckpt01',
-            sessionFactory: h.sessionFactory, evalEveryMs: 120,
+            session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260729_040000_ckpt01',
+            evalEveryMs: 120,
         }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );
@@ -306,8 +327,8 @@ test('working past a checkpoint still gets the exit eval for the tail', async ()
 
     const instance = render(
         React.createElement(App, {
-            session: h.session, sessionId: '20260731_060000_ckpt03',
-            sessionFactory: h.sessionFactory, evalEveryMs: 120,
+            session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260731_060000_ckpt03',
+            evalEveryMs: 120,
         }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );
@@ -352,8 +373,8 @@ test('an untouched session is never checkpoint-graded', async () => {
 
     const instance = render(
         React.createElement(App, {
-            session: h.session, sessionId: '20260729_050000_ckpt02',
-            sessionFactory: h.sessionFactory, evalEveryMs: 60,
+            session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260729_050000_ckpt02',
+            evalEveryMs: 60,
         }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );
@@ -368,49 +389,51 @@ test('an untouched session is never checkpoint-graded', async () => {
     }
 });
 
-// ------------------------------------------------------------ wiki capture --
-//
-// The end of a session preserves as well as judges: after the exit eval, a
-// second, separate turn folds the session's learnings into the LLM Wiki over
-// MCP. Separate on purpose — the eval stays read-only — and gated on the
-// wiki actually being installed: a machine without one exits exactly as
-// before, and /wiki says so rather than pretending.
+// --------------------------------------------------------- explicit retention --
 
-test('the wiki capture turn reads the log, writes only via MCP, and refuses PHI', async () => {
-    const { wikiCaptureRequest, wikiAvailable } = await import('../src/commands.js');
-    const request = wikiCaptureRequest('/home/x/.sherman/sessions/abc.jsonl');
-    assert.equal(request.source, 'wiki');
-    assert.equal(request.mode, 'normal');
-    assert.match(request.text, /abc\.jsonl/);
-    assert.match(request.text, /llmwiki MCP tools/);
-    assert.match(request.text, /research-wiki skill/);
-    assert.match(request.text, /vault-write/);
-    assert.match(request.text, /patient-identifying/);
-    assert.match(request.text, /do not simulate a capture/);
-    assert.equal(wikiCaptureRequest(''), null);
-
-    // Availability is the installed CLI plus its venv, not hope.
-    const { mkdirSync, writeFileSync } = await import('node:fs');
-    const home = mkdtempSync(join(tmpdir(), 'sherman-wiki-avail-'));
-    try {
-        assert.equal(wikiAvailable({ home }), false);
-        mkdirSync(join(home, '.sherman', 'llmwiki', '.venv', 'bin'), { recursive: true });
-        writeFileSync(join(home, '.sherman', 'llmwiki', 'llmwiki'), '#!/usr/bin/env python3\n');
-        assert.equal(wikiAvailable({ home }), false, 'a CLI without a venv python is not installed');
-        writeFileSync(join(home, '.sherman', 'llmwiki', '.venv', 'bin', 'python'), '');
-        assert.equal(wikiAvailable({ home }), true);
-    } finally {
-        rmSync(home, { recursive: true, force: true });
-    }
-});
-
-test('exit runs the eval, then the wiki capture, then leaves — wiki off changes nothing', async () => {
+test('manual wiki writes only the explicit shell-validated fact and redacts its command payload', async () => {
     const h = harness();
     const oldHome = process.env.HOME;
     process.env.HOME = h.home;
     const instance = render(
         React.createElement(App, {
-            session: h.session, sessionId: '20260731_090000_wiki01', wiki: true,
+            session: h.session, sessionFactory: h.sessionFactory,
+            sessionId: '20260810_121000_wiki05', wiki: true,
+        }),
+        { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        h.stdin.write('/wiki approved-company-format | The approved format is versioned.');
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        h.stdin.write('\r');
+        const file = join(h.home, 'vault', 'wiki', 'approved-company-format.md');
+        await until(() => {
+            try { return readFileSync(file, 'utf8').includes('versioned'); } catch { return false; }
+        });
+        assert.equal(
+            readFileSync(file, 'utf8'),
+            'The approved format is versioned.\n'
+        );
+        assert.equal(h.requests.length, 0, 'retention must not invoke a model');
+        assert.doesNotMatch(h.captured(), /approved format is versioned/);
+        const logPath = join(h.home, '.sherman', 'sessions', '20260810_121000_wiki05.jsonl');
+        assert.doesNotMatch(readFileSync(logPath, 'utf8'), /approved format is versioned/);
+        assert.match(readFileSync(logPath, 'utf8'), /fact text redacted/);
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(h.home, { recursive: true, force: true });
+    }
+});
+
+test('exit runs read-only eval but never automatic authoritative retention', async () => {
+    const h = harness();
+    const oldHome = process.env.HOME;
+    process.env.HOME = h.home;
+    const instance = render(
+        React.createElement(App, {
+            session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260731_090000_wiki01', wiki: true,
         }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );
@@ -428,45 +451,11 @@ test('exit runs the eval, then the wiki capture, then leaves — wiki off change
         // off-TTY painter, so screen text past the eval notice is not
         // asserted here.
         const sources = h.requests.map((r) => r?.source);
-        assert.deepEqual(sources.slice(1), ['eval', 'wiki'], 'exit must judge first, then preserve');
-    } finally {
-        instance.unmount();
-        process.env.HOME = oldHome;
-        rmSync(h.home, { recursive: true, force: true });
-    }
-});
-
-test('a machine without the wiki exits exactly as before, and /wiki says so', async () => {
-    const h = harness();
-    const oldHome = process.env.HOME;
-    process.env.HOME = h.home;
-    const instance = render(
-        React.createElement(App, {
-            session: h.session, sessionId: '20260731_100000_wiki02', wiki: false,
-        }),
-        { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
-    );
-    try {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        h.stdin.write('a question');
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        h.stdin.write('\r');
-        await until(() => h.requests.length === 1);
-        await new Promise((resolve) => setTimeout(resolve, 80));
-
-        h.stdin.write('/wiki');
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        h.stdin.write('\r');
-        await new Promise((resolve) => setTimeout(resolve, 80));
-        assert.equal(h.requests.length, 1, '/wiki sent an engine request with no wiki installed');
-
-        h.stdin.write('\x03');
-        await until(() => h.disposed() > 0);
-        const sources = h.requests.map((r) => r?.source);
-        assert.equal(sources.filter((s) => s === 'wiki').length, 0, 'exit ran a capture with no wiki installed');
-        assert.equal(sources.filter((s) => s === 'eval').length, 1, 'the exit eval must still run');
-        // Frames flush at exit off a TTY, so the refusal is asserted here.
-        assert.match(h.captured(), /not installed on this machine/);
+        assert.deepEqual(
+            sources.slice(1),
+            ['eval', 'meta-eval'],
+            'exit must judge without automatically writing authoritative memory'
+        );
     } finally {
         instance.unmount();
         process.env.HOME = oldHome;
@@ -524,8 +513,8 @@ test('a launch catches up the newest dead ungraded session, and only that one', 
 
     const instance = render(
         React.createElement(App, {
-            session: h.session, sessionId: '20260731_080000_catch05',
-            sessionFactory: h.sessionFactory, evalEveryMs: 0, catchUpDelayMs: 40,
+            session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260731_080000_catch05',
+            evalEveryMs: 0, catchUpDelayMs: 40,
         }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );
@@ -616,53 +605,20 @@ test('no verdict is no meta turn, and a missing log path is tolerated', async ()
     assert.doesNotMatch(request.text, /session log the eval graded is at/);
 });
 
-// The recommendation pair lands in the vault INBOX — the review queue — one
-// file per session, latest verdict wins, quiet on failure like the store.
-test('recommendations file into the vault inbox with the meta grade attached', async () => {
-    const { writeRecommendation } = await import('../src/evalstore.js');
-    const { readFileSync, existsSync } = await import('node:fs');
-
-    const vault = mkdtempSync(join(tmpdir(), 'sherman-vault-'));
-    try {
-        const file = writeRecommendation({
-            vaultPath: vault,
-            sessionId: '20260802_090000_cd34',
-            evalText: 'Vault-first: missed — turn 2 asserted uncited.',
-            metaText: 'Citations spot-checked.\nGRADE: B\nNEXT: none',
-        });
-        assert.equal(file, join(vault, 'inbox', 'eval-recommendations', '20260802_090000_cd34.md'));
-        const written = readFileSync(file, 'utf8');
-        assert.match(written, /awaiting review/);
-        assert.match(written, /## The eval's verdict/);
-        assert.match(written, /turn 2 asserted uncited/);
-        assert.match(written, /## The meta-eval's grade/);
-        assert.match(written, /GRADE: B/);
-        assert.match(written, /sherman sync/);
-
-        // A re-grade overwrites: the file is the LATEST recommendation.
-        writeRecommendation({
-            vaultPath: vault,
-            sessionId: '20260802_090000_cd34',
-            evalText: 'Exit verdict supersedes.',
-        });
-        const second = readFileSync(file, 'utf8');
-        assert.match(second, /Exit verdict supersedes\./);
-        assert.doesNotMatch(second, /turn 2 asserted uncited/);
-        // No meta text, no empty meta section pretending one ran.
-        assert.doesNotMatch(second, /## The meta-eval's grade/);
-
-        // A vault that does not exist is never conjured into existence: the
-        // launch screen's vault probe must keep reading the truth off disk.
-        const ghost = join(vault, 'no-such-vault');
-        assert.equal(writeRecommendation({ vaultPath: ghost, sessionId: 'id', evalText: 'x' }), null);
-        assert.equal(existsSync(ghost), false);
-
-        // Nothing to file, nothing filed, no crash — and no stray directory.
-        assert.equal(writeRecommendation({ vaultPath: vault, sessionId: '', evalText: 'x' }), null);
-        assert.equal(writeRecommendation({ vaultPath: vault, sessionId: 'id', evalText: '  ' }), null);
-        assert.equal(writeRecommendation({ vaultPath: '', sessionId: 'id', evalText: 'x' }), null);
-        assert.equal(existsSync(join(vault, 'inbox', 'eval-recommendations', 'id.md')), false);
-    } finally {
-        rmSync(vault, { recursive: true, force: true });
-    }
+// Eval output may remain in the local operational eval store, but model- and
+// session-derived bytes must never be copied into the synchronized Vault.
+test('eval store exposes no path that files model output into the vault', async () => {
+    const evalstore = await import('../src/evalstore.js');
+    const appSource = readFileSync(new URL('../src/ui/app.js', import.meta.url), 'utf8');
+    const skillSource = readFileSync(new URL('../../skills/meta-eval/SKILL.md', import.meta.url), 'utf8');
+    assert.equal(evalstore.writeRecommendation, undefined);
+    assert.doesNotMatch(appSource, /writeRecommendation|eval-recommendations/);
+    assert.doesNotMatch(skillSource, /vault\/inbox|eval-recommendations/);
+    assert.match(skillSource, /never enters a synchronized Vault/);
+    const legacyLane = new URL('../../vault/inbox/eval-recommendations', import.meta.url);
+    assert.deepEqual(
+        existsSync(legacyLane) ? readdirSync(legacyLane) : [],
+        [],
+        'legacy synchronized eval-recommendations lane must contain no artifacts'
+    );
 });

@@ -44,7 +44,12 @@ function fakeSession(requests, label = 'main') {
         async *send(request) {
             requests.push(request);
             yield { kind: 'turn-start' };
-            yield { kind: 'message', text: `${label} response` };
+            yield {
+                kind: 'message',
+                text: ['learn', 'wiki'].includes(request?.source)
+                    ? '{"operations":[]}'
+                    : `${label} response`,
+            };
             yield { kind: 'turn-end', usage: zeroUsage() };
         },
         interrupt() {},
@@ -715,15 +720,16 @@ test('/exit on an untouched session leaves without an eval turn', async () => {
     }
 });
 
-// With turns in the session, /exit grades first: the eval request goes out
-// read-only, and only after it completes does the shell dispose and leave.
-test('/exit runs the end-of-session eval before leaving a used session', async () => {
+// With turns in the session, /exit grades read-only and never starts an
+// authoritative retention flow without an explicit /learn or /wiki command.
+test('/exit runs eval without automatic retention for a used session', async () => {
     const home = mkdtempSync(join(tmpdir(), 'sherman-exit-eval-'));
     const oldHome = process.env.HOME;
     process.env.HOME = home;
 
     const requests = [];
     const session = fakeSession(requests, 'main');
+    const sessionFactory = () => fakeSession(requests, 'retention-worker');
 
     const stdin = new PassThrough();
     stdin.isTTY = true;
@@ -737,7 +743,7 @@ test('/exit runs the end-of-session eval before leaving a used session', async (
     stdout.on('data', () => {});
 
     const instance = render(
-        React.createElement(App, { session, sessionId: '20260729_030000_exit02' }),
+        React.createElement(App, { session, sessionFactory, sessionId: '20260729_030000_exit02' }),
         { stdin, stdout, exitOnCtrlC: false, patchConsole: false }
     );
 
@@ -748,9 +754,11 @@ test('/exit runs the end-of-session eval before leaving a used session', async (
         type(stdin, '/exit', 0);
         await instance.waitUntilExit();
 
-        assert.equal(requests.length, 2, '/exit on a used session must run exactly one eval turn');
+        assert.equal(requests.length, 3, '/exit on a used session must run only chat, eval, and meta-eval');
         assert.equal(requests[1].source, 'eval');
         assert.equal(requests[1].mode, 'read-only');
+        assert.equal(requests[2].source, 'meta-eval');
+        assert.equal(requests.some((request) => ['learn', 'wiki'].includes(request?.source)), false);
         assert.equal(session.disposed(), 1);
     } finally {
         instance.unmount();
@@ -962,7 +970,7 @@ test('/win judges the recorded sessions into a local page', async () => {
 });
 
 // A slash that names a SKILL is an invocation, not a typo. The request must
-// ride the normal prompt path (string, goal envelope rules apply), name the
+// ride the normal prompt path (goal envelope rules apply), name the
 // skill's own SKILL.md, and carry the operator's arguments verbatim — and a
 // bare typed skill name must SUBMIT on Enter, not get re-completed into
 // itself forever. A slash that names neither a command nor a skill still
@@ -1010,11 +1018,11 @@ test('App dispatches slash-skill invocations and still rejects unknown commands'
         await new Promise((resolve) => setTimeout(resolve, 450));
         instance.unmount();
 
-        assert.equal(typeof mainRequests[0], 'string');
-        assert.match(mainRequests[0], /skills\/seed\/SKILL\.md/);
-        assert.equal(typeof mainRequests[1], 'string');
-        assert.match(mainRequests[1], /skills\/vault-search\/SKILL\.md/);
-        assert.match(mainRequests[1], /where is the fax SOP/);
+        assert.equal(mainRequests[0].source, 'skill:seed');
+        assert.match(mainRequests[0].text, /skills\/seed\/SKILL\.md/);
+        assert.equal(mainRequests[1].source, 'skill:vault-search');
+        assert.match(mainRequests[1].text, /skills\/vault-search\/SKILL\.md/);
+        assert.match(mainRequests[1].text, /where is the fax SOP/);
         assert.equal(mainRequests.length, 2);
         assert.match(plain(captured), /Unknown command \/nosuchskill/);
     } finally {
