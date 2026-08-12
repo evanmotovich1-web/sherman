@@ -23,6 +23,7 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // $HOME resolved live on every call, config.js's reason: smoke.sh overrides
 // HOME to sandbox its run, and a value captured at import time would read the
@@ -171,6 +172,49 @@ export function injectKeys(env = process.env, home = shermanHome()) {
     return { ok: true, injected };
 }
 
+/**
+ * CLI entry — the path SHERMAN ITSELF uses when the operator pastes a key in
+ * prose. A pasted key has already reached the model, so the storing loses no
+ * secrecy that was not already spent; what matters is that it lands in the
+ * same 0600 store the shell owns, once, instead of living only in one
+ * session's context.
+ *
+ *   node src/keys.js --set NAME        value read from stdin (preferred: it
+ *                                      stays out of argv and `ps`)
+ *   node src/keys.js --set NAME VALUE  argv fallback
+ *   node src/keys.js --list            names only, never values
+ *   node src/keys.js --remove NAME
+ *
+ * Success prints the NAME only. No path through here ever prints a value.
+ */
+async function cli(argv) {
+    const [flag, name, argValue] = argv;
+    if (flag === '--list') {
+        process.stdout.write(`${describeKeys()}\n`);
+        return 0;
+    }
+    if (flag === '--remove') {
+        const result = removeKey(name);
+        if (!result.ok) { process.stderr.write(`remove failed: ${result.reason}\n`); return 1; }
+        process.stdout.write(result.removed ? `${name} removed\n` : `${name} was not stored\n`);
+        return 0;
+    }
+    if (flag === '--set' && name) {
+        let value = argValue;
+        if (value === undefined) {
+            const chunks = [];
+            for await (const chunk of process.stdin) chunks.push(chunk);
+            value = Buffer.concat(chunks).toString('utf8');
+        }
+        const result = saveKey(name, value);
+        if (!result.ok) { process.stderr.write(`key rejected: ${result.reason}\n`); return 1; }
+        process.stdout.write(`${result.name} ${result.replaced ? 'replaced' : 'stored'} (verified: read back) · live from the next turn\n`);
+        return 0;
+    }
+    process.stderr.write('usage: keys.js --set NAME [VALUE]  (value from stdin when omitted) | --list | --remove NAME\n');
+    return 2;
+}
+
 /** What `/key` with no arguments prints. Names only — never values. */
 export function describeKeys(home = shermanHome()) {
     const store = loadKeys(home);
@@ -185,4 +229,9 @@ export function describeKeys(home = shermanHome()) {
         '',
         'Key names only — never values. /key <NAME> <value> replaces one · /key remove <NAME> deletes it.',
     ].join('\n');
+}
+
+// connectors.js's convention for a module that is both library and tool.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+    process.exitCode = await cli(process.argv.slice(2));
 }
