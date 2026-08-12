@@ -1229,6 +1229,20 @@ export function App({
             activeSessionRef.current = engine;
             turnStartRef.current = Date.now();
 
+            // The turn opens its rail the moment the prompt lands: one dim
+            // row under the ● naming which engine and model this turn runs
+            // on — factual forever, and meaningful now that workers can be
+            // routed per-model — and then the skill and tool rows continue
+            // the same rail as they happen. Prompt turns only: workers and
+            // command flows carry their own framing.
+            if (parsed.kind === 'prompt' && !isWorker) {
+                const turnTag = 'turn'.padEnd(TRACE_TAG_WIDTH);
+                const turnLabel = `${engine.info.engine} · ${engine.info.model ?? 'default'}`;
+                commit('tool', `▸ ${turnTag}  ${turnLabel}`, {
+                    trace: { glyph: '▸', tag: turnTag, label: turnLabel, outcome: '', duration: '' },
+                });
+            }
+
             // Decided inside the loop, acted on after it: compaction is another
             // turn, and starting one while this turn's stream is still open
             // would interleave two conversations on the same session.

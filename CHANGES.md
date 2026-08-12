@@ -3,6 +3,17 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Added: the turn tree — a dot on the prompt, the work railed under it
+
+- Every prompt in the transcript now anchors its turn visually: the prompt
+  carries an accent ● where history used a dim ❯, and the moment the turn
+  starts a dim rail row appears underneath naming the engine and model the
+  turn runs on — factual forever, and meaningful now that workers route
+  per-model. The skill and tool rows then continue the same │ rail as they
+  happen, so a turn reads as prompt → tree of what the prompt caused.
+- The composer's live ❯ is unchanged — the dot is history's mark, the caret
+  is input's.
+
 ## 2026-08-12 — Added: skills pop in the trace, personal skills, and the zai shell
 
 - Every skill that fires now shows in the trace: a SKILL.md the engine opens

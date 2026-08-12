@@ -759,7 +759,7 @@ test('multiline user prompts align continuation rows under the body', () => {
         }),
         { columns: 80 }
     ));
-    assert.deepEqual(output, [' ❯ line one', '   line two', '   line three']);
+    assert.deepEqual(output, [' ● line one', '   line two', '   line three']);
 });
 
 test('reply geometry is a closed box with the signature in its top border', () => {
