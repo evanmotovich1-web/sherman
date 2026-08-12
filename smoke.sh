@@ -841,7 +841,11 @@ if (patchDone[0]?.phase !== 'completed' || typeof patchDone[0]?.durationMs !== '
 if (unknown.length !== 0) mappingMissing.push('unknown Codex item silence');
 
 const composerPlain = renderToString(
-    React.createElement(Composer, { onSubmit() {}, busy: false }),
+    // columns as a PROP, not only a render option: Composer sizes its box off
+    // useWindowSize, and Windows reports the live console width even through
+    // a pipe — a 102-column PowerShell leaked into this render and failed the
+    // check on an otherwise healthy machine (widths=102,81,102).
+    React.createElement(Composer, { onSubmit() {}, busy: false, columns: 80 }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '');
 const meterPlain = renderToString(
