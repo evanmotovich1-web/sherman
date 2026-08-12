@@ -64,7 +64,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=34
+TOTAL_CHECKS=38
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -2909,6 +2909,211 @@ if ! grep -qF "commit('worker-message', verdict)" shell/src/ui/app.js \
     pass "verdicts file to the eval store; only CONCERNS earns a line"
 else
     fail "the verifier narrates to the terminal again, or stopped filing"
+fi
+
+# ----------------------------------------------------------------- check 35 --
+# The money caps are the fence around real dollars, so they live in exactly
+# one file and the gate's decision logic is a pure function this suite can
+# drive offline. A cap literal that strayed into a second file is a fence
+# with two gates; a decision function that cannot run without Stripe is a
+# fence nobody can test.
+echo
+echo "35. the money caps are pinned, single-sourced, and enforced in code"
+
+caps_pinned=1
+for pin in 'PER_TXN_CENTS: 5000,' 'PER_DAY_CENTS: 15000,' 'PER_TRAINING_RUN_CENTS: 7500,' 'FLOAT_START_CENTS: 50000,' 'FLOAT_CEILING_CENTS: 100000,'; do
+    grep -qF "$pin" shell/src/money/caps.js || caps_pinned=0
+done
+if [ "$caps_pinned" -eq 1 ]; then
+    pass "caps.js pins 5000 / 15000 / 7500 / 50000 / 100000"
+else
+    fail "shell/src/money/caps.js no longer pins the locked cap values"
+fi
+
+if grep -qF "../../shell/src/money/caps.js" gate/money-gate/decide.js; then
+    pass "the gate imports the single source of cap truth"
+else
+    fail "gate/money-gate/decide.js does not import shell/src/money/caps.js"
+fi
+
+stray_caps=$(grep -rnE '(^|[^0-9])(5000|15000|7500|50000|100000)([^0-9]|$)' shell/src/money gate 2>/dev/null | grep -v 'caps\.js')
+if [ -z "$stray_caps" ]; then
+    pass "no stray cap literal outside caps.js in money code"
+else
+    fail "cap-class literals outside caps.js: $(printf '%s' "$stray_caps" | head -2 | tr '\n' ' ')"
+fi
+
+GATE_DECIDE_JS=$(cat <<'JS'
+import assert from 'node:assert/strict';
+import { CAPS } from './src/money/caps.js';
+import { decide } from '../gate/money-gate/decide.js';
+
+// Fixture authorizations, pure and offline: the decision logic is the fence.
+assert.equal(decide({ amount_cents: 4999 }, { day_spent_cents: 0 }).approved, true,
+    'a spend just under the per-txn cap must approve');
+assert.equal(decide({ amount_cents: 5001 }, { day_spent_cents: 0 }).approved, false,
+    'a spend just over the per-txn cap must decline without an approval');
+
+// Three at the per-txn cap fill the day; the fourth must decline.
+let spent = 0;
+for (let i = 0; i < 3; i += 1) {
+    const d = decide({ amount_cents: CAPS.PER_TXN_CENTS }, { day_spent_cents: spent });
+    assert.equal(d.approved, true, 'spends inside the day cap must approve');
+    spent = d.day_spent_after_cents;
+}
+assert.equal(decide({ amount_cents: CAPS.PER_TXN_CENTS }, { day_spent_cents: spent }).approved, false,
+    'the fourth cap-sized spend of the day must decline');
+
+// The kill flag declines everything, one cent included.
+assert.equal(decide({ amount_cents: 1 }, { kill: true }).approved, false,
+    'kill must decline everything');
+
+// An approval passes exactly its pinned amount past the per-txn cap, and
+// nothing else.
+const over = CAPS.PER_TXN_CENTS + 1;
+const approval = { id: 'ap-smoke', amount_cents: over };
+assert.equal(decide({ amount_cents: over, approval_id: 'ap-smoke' }, { approval }).approved, true);
+assert.equal(decide({ amount_cents: over + 1, approval_id: 'ap-smoke' }, { approval }).approved, false);
+
+process.stdout.write('gate fixtures: under-cap approves, over-cap declines, day cap holds, kill kills');
+JS
+)
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot run the gate decision fixtures"
+else
+    gate_out=$(cd shell && node --input-type=module -e "$GATE_DECIDE_JS" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "$gate_out"
+    else
+        fail "$(printf '%s' "$gate_out" | head -3)"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 36 --
+# The ledger is append-only, checked the way it could actually rot: statically
+# (exactly one code path opens it, with the append flag, and nothing in money
+# code writes, truncates, or unlinks it) and at runtime (an append leaves
+# every earlier byte identical and adds exactly one line).
+echo
+echo "36. the money ledger is append-only"
+
+ledger_refs=$(grep -rl "ledger.jsonl" shell/src/money gate 2>/dev/null)
+if [ "$ledger_refs" = "shell/src/money/ledger.js" ]; then
+    pass "ledger.jsonl is referenced only by ledger.js"
+else
+    fail "ledger.jsonl referenced outside ledger.js: $(printf '%s' "$ledger_refs" | tr '\n' ' ')"
+fi
+
+if [ "$(grep -c "openSync(" shell/src/money/ledger.js)" = "1" ] \
+    && grep -F "openSync(" shell/src/money/ledger.js | grep -qF "'a', 0o600"; then
+    pass "the single open is append-flag, mode 0600"
+else
+    fail "ledger.js lost its single append-flag open"
+fi
+
+if grep -nE "writeFileSync|truncate|unlinkSync|rmSync|createWriteStream" shell/src/money/ledger.js >/dev/null 2>&1; then
+    fail "ledger.js gained a write, truncate, or unlink path"
+else
+    pass "ledger.js has no write, truncate, or unlink path"
+fi
+
+LEDGER_APPEND_JS=$(cat <<'JS'
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { appendLedger, ledgerPath } from './src/money/ledger.js';
+
+const dir = mkdtempSync(join(tmpdir(), 'sherman-smoke-ledger-'));
+try {
+    assert.equal(appendLedger({ type: 'collect', amount_cents: 100, currency: 'usd', result: 'approved' }, dir).ok, true);
+    const before = readFileSync(ledgerPath(dir), 'utf8');
+    assert.equal(appendLedger({ type: 'spend', amount_cents: 25, currency: 'usd', result: 'approved' }, dir).ok, true);
+    const after = readFileSync(ledgerPath(dir), 'utf8');
+    assert.equal(after.startsWith(before), true, 'an append changed earlier bytes');
+    assert.equal(after.split('\n').length, before.split('\n').length + 1, 'an append must add exactly one line');
+    process.stdout.write('two appends: line one byte-identical, exactly one line added');
+} finally {
+    rmSync(dir, { recursive: true, force: true });
+}
+JS
+)
+
+if ! command -v node >/dev/null 2>&1; then
+    fail "node not found -- cannot run the ledger append fixture"
+else
+    ledger_out=$(cd shell && node --input-type=module -e "$LEDGER_APPEND_JS" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "$ledger_out"
+    else
+        fail "$(printf '%s' "$ledger_out" | head -3)"
+    fi
+fi
+
+# ----------------------------------------------------------------- check 37 --
+# No code path may move payout destinations. The restricted-key permission
+# grids make these calls a runtime 403; this check makes writing one a red
+# build instead. Forbidden Stripe surfaces, by substring, in all money code.
+echo
+echo "37. no money code path touches a payout destination"
+
+forbidden_surfaces=$(grep -rnE "/v1/payouts|external_account|bank_account|/v1/accounts" shell/src/money gate 2>/dev/null)
+if [ -z "$forbidden_surfaces" ]; then
+    pass "no payout, external-destination, or account-mutation surface in money code"
+else
+    fail "forbidden Stripe surface referenced: $(printf '%s' "$forbidden_surfaces" | head -2 | tr '\n' ' ')"
+fi
+
+# ----------------------------------------------------------------- check 38 --
+# Key hygiene at the screen: with dummy keys in the environment and a fixture
+# ledger on disk, the money screens must render without a single key marker
+# or value in their output -- and money code must never print a key variable.
+echo
+echo "38. the money screens never print key material"
+
+MONEY_HOME=$(mktemp -d)
+if [ -z "$MONEY_HOME" ] || [ "$MONEY_HOME" = "/" ]; then
+    fail "could not create a sandbox HOME for the money screens"
+else
+    mkdir -p "$MONEY_HOME/.sherman/money"
+    printf '%s\n' '{"ts":"2026-08-10T12:00:00Z","type":"collect","amount_cents":4200,"currency":"usd","counterparty":"client","rail":"stripe-link","stripe_id":"","result":"approved","balance_after_cents":4200,"note":"fixture"}' \
+        > "$MONEY_HOME/.sherman/money/ledger.jsonl"
+
+    money_screen=$(env HOME="$MONEY_HOME" \
+        STRIPE_RESTRICTED_KEY=rk_live_smoke_dummy_collect \
+        STRIPE_ISSUING_KEY=rk_live_smoke_dummy_issuing \
+        STRIPE_WEBHOOK_SECRET=whsec_smoke_dummy_secret \
+        ./bin/sherman money 2>&1)
+    money_ledger=$(env HOME="$MONEY_HOME" \
+        STRIPE_RESTRICTED_KEY=rk_live_smoke_dummy_collect \
+        STRIPE_ISSUING_KEY=rk_live_smoke_dummy_issuing \
+        STRIPE_WEBHOOK_SECRET=whsec_smoke_dummy_secret \
+        ./bin/sherman money ledger 2>&1)
+
+    if printf '%s' "$money_screen" | grep -q "float:" \
+        && printf '%s' "$money_ledger" | grep -q "collect"; then
+        pass "both screens render against the fixture ledger"
+    else
+        fail "a money screen did not render: $(printf '%s' "$money_screen" | head -2 | tr '\n' ' ')"
+    fi
+
+    leaked=0
+    for marker in rk_live sk_live whsec_ smoke_dummy; do
+        if printf '%s\n%s' "$money_screen" "$money_ledger" | grep -q "$marker"; then
+            fail "a money screen printed key material ($marker)"
+            leaked=1
+        fi
+    done
+    [ "$leaked" -eq 0 ] && pass "no key marker or dummy value in either screen"
+
+    rm -rf "$MONEY_HOME"
+fi
+
+if grep -rnE "console\.(log|error|info|warn)\(.*STRIPE_(RESTRICTED_KEY|ISSUING_KEY|WEBHOOK_SECRET)" shell/src/money gate >/dev/null 2>&1; then
+    fail "money code prints a key variable"
+else
+    pass "no money code path prints a key variable"
 fi
 
 # -------------------------------------------------------------------- result --

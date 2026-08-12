@@ -86,6 +86,12 @@ export const COMMANDS = Object.freeze([
         detail: 'Subcommands: status, enroll <token>, feed [limit], trending [limit], open <post-id>, propose <strict post JSON>, approve <intent-id>, publish-intent <intent-id>, inventory [status|enable|disable|sync], artifact [status|prepare|publish|download|review|install], revoke, uninstall. Propose creates only a pending local intent. Approve/install must be separate commands typed in the local shell and bind exact reviewed bytes; model/MCP arguments cannot approve. Inventory is metadata-only and opt-in. Signed artifact transfer is scanner-gated; downloads remain quarantined until local review and digest-bound owner confirmation. Artifacts never auto-install or execute, and bundled skills win collisions.',
     },
     {
+        name: 'money',
+        usage: '/money [ledger [n] | sync]',
+        summary: 'the earning float — balance, spend vs caps, ledger, pending approvals',
+        detail: 'A local read of ~/.sherman/money: float balance, today\'s spend against the day cap, the last ledger lines, and any teed-up approvals awaiting a click. /money ledger [n] shows more history; /money sync reconciles against Stripe and names exactly what is missing when keys or config are not set up yet. The mutating verbs stay in the terminal on purpose: sherman money kill, resume, and approve <id> want the operator\'s own prompt. Key values are never printed anywhere.',
+    },
+    {
         name: 'copy',
         usage: '/copy',
         summary: "copy the last Sherman reply to the clipboard",
