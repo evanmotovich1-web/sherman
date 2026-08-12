@@ -330,3 +330,23 @@ setInterval(() => {}, 1000);
         rmSync(dir, { recursive: true, force: true });
     }
 });
+
+// The Coding Plan door. A Coding Plan key is a real Z.AI credential that the
+// GENERAL endpoint refuses with error 1113 — and OpenCode retries the refusal
+// silently, which presented live as an endless "initializing agent" until the
+// stall detector named it. When the operator declared the Coding Plan at
+// `sherman model`, the generated OpenCode config re-aims the SAME provider,
+// credential slot, and pinned model at the coding endpoint; on the default
+// API plan the config is byte-identical to what it always was.
+test('the coding plan re-aims the zai provider; the api plan changes nothing', () => {
+    const coding = JSON.parse(openCodeConfigForMode({ ...config, zaiPlan: 'coding' }));
+    assert.equal(
+        coding.provider.zai.options.baseURL,
+        'https://api.z.ai/api/coding/paas/v4'
+    );
+
+    const api = JSON.parse(openCodeConfigForMode({ ...config, zaiPlan: 'api' }));
+    assert.equal(api.provider, undefined);
+    const legacy = JSON.parse(openCodeConfigForMode(config));
+    assert.equal(legacy.provider, undefined);
+});

@@ -112,6 +112,14 @@ export function loadConfig() {
         workspacePath: join(home, 'workspace'),
         configPath,
         contextWindowTokens: parsed.context_window_tokens ?? null,
+        // Which Z.AI product the operator's key belongs to. 'api' is the
+        // standard pay-as-you-go API (the default, and the only behavior that
+        // existed before this field); 'coding' is the Coding Plan
+        // subscription, whose keys the general endpoint refuses with error
+        // 1113 and only the coding endpoint serves. Anything unrecognized
+        // degrades to 'api', never to an error: an old config is simply a
+        // config from before the field existed.
+        zaiPlan: parsed.zai_plan === 'coding' ? 'coding' : 'api',
         telegramToken: typeof parsed.telegram_token === 'string' ? parsed.telegram_token : '',
         telegramChat:
             typeof parsed.telegram_chat === 'string' || typeof parsed.telegram_chat === 'number'

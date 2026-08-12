@@ -3,6 +3,22 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-11 — Fixed: Coding Plan keys work — the zai engine aims at the right door
+
+- Root-caused live: the operator's Z.AI key was a Coding Plan subscription
+  key, and the general API endpoint refuses those with error 1113
+  ("insufficient balance") — which OpenCode retries silently, presenting as
+  the endless "initializing agent" the stall detector was built for. Proven
+  by probing both endpoints directly: the same key, the same glm-5.2, a
+  refusal at `paas/v4` and a completion at `coding/paas/v4`.
+- `sherman model` now asks which Z.AI product the key belongs to — asked,
+  never probed, because the launcher never touches the key's bytes — and
+  records `zai_plan` in the config. On the Coding Plan the generated
+  OpenCode config re-aims the SAME provider, credential slot, and pinned
+  model at the coding endpoint; on the API plan (and on every config from
+  before the field existed) the engine behaves byte-for-byte as it always
+  did. The stall message now leads with the plan mismatch, ahead of balance.
+
 ## 2026-08-11 — Added: Shermans work as a team; `sherman board` watches them
 
 - New `team` skill (category `method`): how several Sherman sessions on one

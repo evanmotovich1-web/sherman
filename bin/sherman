@@ -231,15 +231,40 @@ ensure_zai_auth() {
     has_zai_auth && return 0
     if [ -t 0 ]; then
         echo
-        echo "Z.AI GLM needs your standard Z.AI API key."
-        echo "Paste that key in the prompt below — not an OpenRouter key and not a Coding Plan key."
+        echo "Z.AI GLM needs your Z.AI key — from either the API or the Coding Plan."
+        echo "Paste it in the prompt below (not an OpenRouter key); you will say which"
+        echo "product it belongs to next, so Sherman aims it at the right endpoint."
         echo "OpenCode is only the local coding runtime; Sherman is opening its Z.AI-only key prompt."
         opencode auth login --pure --provider zai || return 1
         has_zai_auth && return 0
     fi
     echo "Z.AI is not signed in. Run: opencode auth login --pure --provider zai" >&2
-    echo "Paste your standard Z.AI API key there, then run sherman again." >&2
+    echo "Paste your Z.AI key there, then run sherman again." >&2
     return 1
+}
+
+# Which Z.AI product the key belongs to. ASKED, never probed: the launcher
+# deliberately never touches the key's bytes, and only the operator knows
+# what they bought. The answer matters because the two products refuse each
+# other's doors — a Coding Plan key on the general API dies as error 1113,
+# which OpenCode retries silently (seen live as an endless "initializing
+# agent"). Non-interactive runs keep whatever the config already says; the
+# shell defaults an absent field to the standard API, the only behavior that
+# existed before this field.
+ask_zai_plan() {
+    [ -t 0 ] || return 0
+    echo
+    echo "Which Z.AI product is your key from?"
+    echo "  [1] Z.AI API (pay-as-you-go credit)"
+    echo "  [2] Z.AI Coding Plan (the GLM subscription)"
+    printf "Choose a number > "
+    read -r zai_plan_pick
+    if [ "$zai_plan_pick" = "2" ]; then
+        config_set zai_plan coding
+        echo "  plan: Coding Plan — Sherman will use the coding endpoint"
+    else
+        config_set zai_plan api
+    fi
 }
 
 require_engine() {
@@ -1327,6 +1352,7 @@ run_model_picker() {
         ensure_opencode || exit 1
         ensure_zai_auth || exit 1
         config_set engine zai
+        ask_zai_plan
         echo "  provider: Z.AI"
         echo "  model: glm-5.2 (via OpenCode)"
         echo "  saved and verified. Run sherman to start."
@@ -1413,6 +1439,7 @@ if [ "${1:-}" = "model" ]; then
             ensure_opencode || exit 1
             ensure_zai_auth || exit 1
             config_set engine zai
+            ask_zai_plan
             echo "provider: Z.AI · model: glm-5.2 (verified: Sherman config)"
             exit 0 ;;
         codex)

@@ -43,10 +43,11 @@ function stallMessage(ms) {
     return (
         `OpenCode produced no output for ${Math.round(ms / 1000)}s and was stopped — the turn never started.\n` +
         'Likely causes, most common first:\n' +
-        '  1. Z.AI balance exhausted — OpenCode retries the refusal silently; check your Z.AI account and recharge.\n' +
-        '  2. Z.AI auth expired — run: opencode auth login\n' +
-        '  3. Z.AI or the network is stalled — try: opencode run --model zai/glm-5.2 "hello"\n' +
-        '  4. An MCP server is hanging at startup.\n' +
+        '  1. Wrong Z.AI plan — a Coding Plan key aimed at the general API: run `sherman model`, pick Z.AI, answer "Coding Plan".\n' +
+        '  2. Z.AI balance exhausted — OpenCode retries the refusal silently; check your Z.AI account and recharge.\n' +
+        '  3. Z.AI auth expired — run: opencode auth login\n' +
+        '  4. Z.AI or the network is stalled — try: opencode run --model zai/glm-5.2 "hello"\n' +
+        '  5. An MCP server is hanging at startup.\n' +
         'Nothing was lost; resend the prompt to retry.'
     );
 }
@@ -204,6 +205,16 @@ export function openCodeConfigForMode(
     return JSON.stringify({
         share: 'disabled',
         default_agent: 'sherman',
+        // A Coding Plan key is a real Z.AI credential the GENERAL endpoint
+        // refuses with error 1113 — and OpenCode retries that refusal
+        // silently, which read as an infinite hang until the stall detector
+        // named it. Proven live: the same key, the same model, the coding
+        // endpoint — a completion. The credential slot, provider id, and
+        // pinned model all stay the same; only the door changes, and only
+        // when the operator declared the Coding Plan at `sherman model`.
+        ...(config.zaiPlan === 'coding'
+            ? { provider: { zai: { options: { baseURL: 'https://api.z.ai/api/coding/paas/v4' } } } }
+            : {}),
         permission,
         // Agent-level rules can override global rules in OpenCode. Define and
         // select Sherman's own primary agent so project defaults cannot replace
