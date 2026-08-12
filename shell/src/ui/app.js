@@ -40,6 +40,7 @@ import {
     naturalResearchInstruction,
     navigateReminder,
     parseAgentMention,
+    parseEngineFlag,
     parseEmailResult,
     parseSubmission,
     researchTurn,
@@ -52,6 +53,7 @@ import {
 } from '../commands.js';
 import { describe as describeConnectors } from '../connectors.js';
 import { describeKeys, removeKey, saveKey, validKeyName } from '../keys.js';
+import { engineAvailable } from '../engine/index.js';
 import { customizePet, writePetState } from '../petstate.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
 import { appendEvalReport, ungradedSessions } from '../evalstore.js';
@@ -1099,18 +1101,31 @@ export function App({
 
             if (parsed.kind === 'command' && parsed.name === 'subagent') {
                 if (!parsed.args) {
-                    commit('error', 'Usage: /subagent <task>');
+                    commit('error', 'Usage: /subagent [--engine codex|claude|zai] <task>');
                     return;
                 }
                 if (!sessionFactory) {
                     commit('error', 'This shell cannot create an isolated worker session.');
                     return;
                 }
-                engine = sessionFactory();
-                request = workerRequest(parsed.args, goal);
+                // The engine override: one worker on a named model, the
+                // parent session untouched. Unknown names and absent
+                // binaries fail HERE, with the roster or the repair, never
+                // mid-turn as a spawn error.
+                const routed = parseEngineFlag(parsed.args);
+                if (routed.error) {
+                    commit('error', routed.error);
+                    return;
+                }
+                if (routed.engine && !engineAvailable(routed.engine)) {
+                    commit('error', `${routed.engine} is not installed on this machine — install and sign in to it first, or drop the --engine flag.`);
+                    return;
+                }
+                engine = sessionFactory(routed.engine);
+                request = workerRequest(routed.task, goal);
                 messageKind = 'worker-message';
                 isWorker = true;
-                commitDelegate(`${parsed.args} · isolated · read-only`);
+                commitDelegate(`${routed.task} · isolated · read-only${routed.engine ? ` · engine ${routed.engine}` : ''}`);
             }
 
             // An @-mentioned agent is the /subagent contract with a specialty:
@@ -1121,11 +1136,22 @@ export function App({
                     commit('error', 'This shell cannot create an isolated worker session.');
                     return;
                 }
-                engine = sessionFactory();
-                request = agentRequest(agentCall.agent, agentCall.task, goal);
+                // Same engine override as /subagent: `@name --engine zai
+                // <task>` runs that specialist on the named model.
+                const routedAgent = parseEngineFlag(agentCall.task);
+                if (routedAgent.error) {
+                    commit('error', routedAgent.error);
+                    return;
+                }
+                if (routedAgent.engine && !engineAvailable(routedAgent.engine)) {
+                    commit('error', `${routedAgent.engine} is not installed on this machine — install and sign in to it first, or drop the --engine flag.`);
+                    return;
+                }
+                engine = sessionFactory(routedAgent.engine);
+                request = agentRequest(agentCall.agent, routedAgent.task, goal);
                 messageKind = 'worker-message';
                 isWorker = true;
-                commitDelegate(`@${agentCall.agent.name} ${agentCall.task} · isolated · read-only`);
+                commitDelegate(`@${agentCall.agent.name} ${routedAgent.task} · isolated · read-only${routedAgent.engine ? ` · engine ${routedAgent.engine}` : ''}`);
             }
 
             // The handoff rides the first request the reset thread receives,

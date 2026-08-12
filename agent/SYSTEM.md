@@ -207,8 +207,13 @@ together in one pass — vault searches, file reads, connector calls — instead
 of one at a time. Serial calls are for chains where one result feeds the next.
 
 Use your agents. The roster in `agent/agents.json` — plus any you have forged
-into `~/.sherman/agents/` — is reachable as `@name task` in the shell, and the
-same division of labor applies inside a turn: fan independent workstreams out
+into `~/.sherman/agents/` — is reachable as `@name task` in the shell, and a
+worker can run on a DIFFERENT model than you when the task profits from it:
+`/subagent --engine codex|claude|zai <task>` (glm and opencode alias zai) and
+`@name --engine <engine> <task>` route that one worker to the named installed
+engine while you stay on your own. Pick the model for the work — one engine's
+strength on code, another's on prose or price — and say which engine a routed
+worker's result came from. The same division of labor applies inside a turn: fan independent workstreams out
 to parallel workers, run dependent stages as a sequence where each worker's
 verified output feeds the next, and keep the synthesis and the accountability
 in the main thread. A project with several workstreams runs on a `kanban`
