@@ -673,10 +673,15 @@ export class CodexSession extends EngineSession {
         child.stderr.setEncoding('utf8');
         this._stderrTail = '';
         child.stderr.on('data', (chunk) => {
-            stderr += chunk;
+            // Tail only, at the accumulator itself. Every downstream read of
+            // this already takes a tail or a last-lines slice, but the string
+            // grew without bound — one of the leaks that let a long
+            // machine-learning session abort the whole shell with a V8 heap
+            // OOM. The pipe still drains; the memory no longer follows.
+            stderr = (stderr + chunk).slice(-4096);
             // Mirrored onto the instance so _mapItem's empty-error case can
-            // name what codex actually printed. Bounded: only a tail is read.
-            this._stderrTail = stderr.length > 4096 ? stderr.slice(-4096) : stderr;
+            // name what codex actually printed.
+            this._stderrTail = stderr;
         });
 
         const finished = new Promise((resolve) => {

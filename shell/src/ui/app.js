@@ -67,6 +67,12 @@ import { applyRetentionResult } from '../retention.js';
 let seq = 0;
 const nextId = () => `i${seq++}`;
 
+// Transcript bounds (see commit). Generous on purpose: the caps exist to
+// keep a multi-day session from exhausting the heap, not to trim anything a
+// person is actually reading. The full record lives in the session log.
+const MAX_ITEM_CHARS = 64000;
+const MAX_TRANSCRIPT_ITEMS = 4000;
+
 // Resolved from THIS file, never process.cwd() — at runtime the cwd is the
 // engine's workspace, not the repo. Same reasoning as LaunchScreen.js. /update
 // launches the repo's own launcher, which owns the whole update flow.
@@ -450,8 +456,23 @@ export function App({
     // `extra` carries structured payloads for kinds whose content is not a
     // string -- currently only 'diff', whose event is stored whole so the
     // renderer reads the engine's own fields instead of a re-serialized copy.
+    //
+    // BOUNDED, both per item and in rows. The transcript is React state, and
+    // an unbounded one is a slow OOM: a days-long machine-learning session
+    // aborted the whole shell with a V8 heap exhaustion — every giant tool
+    // output of every turn held on screen forever, for a scrollback nobody
+    // was ever going to read. The session log on disk keeps every byte; the
+    // screen keeps what a person could plausibly still be looking at.
     const commit = useCallback((kind, text, extra = null) => {
-        setItems((prev) => [...prev, { id: nextId(), kind, text, ...(extra ?? {}) }]);
+        const bounded = typeof text === 'string' && text.length > MAX_ITEM_CHARS
+            ? `${text.slice(0, MAX_ITEM_CHARS)}\n… trimmed on screen · the session log holds the full text`
+            : text;
+        setItems((prev) => {
+            const next = [...prev, { id: nextId(), kind, text: bounded, ...(extra ?? {}) }];
+            return next.length > MAX_TRANSCRIPT_ITEMS
+                ? next.slice(next.length - MAX_TRANSCRIPT_ITEMS)
+                : next;
+        });
     }, []);
 
     // Copying the last reply, from the source text rather than the screen.

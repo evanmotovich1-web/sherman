@@ -3,6 +3,16 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Fixed: a long session can no longer exhaust the heap
+
+- A days-long machine-learning session aborted the whole shell with a V8
+  heap OOM (`Builtins_GrowFastSmiOrObjectElements` → GC → abort). Three
+  causes, three guards: the transcript is bounded (last 4,000 rows on
+  screen, 64k chars per item — the session log on disk keeps every byte),
+  codex stderr keeps only a 4k tail at the accumulator (opencode already
+  did), and the launcher gives V8 8GB of headroom unless the operator's own
+  NODE_OPTIONS is set. Smoke check 33 pins all three (`TOTAL_CHECKS=33`).
+
 ## 2026-08-12 — Added: the vault grows — one-keypress filing, and the judge can read
 
 - Why the vault sat at three files: 69 sessions, 16 evals, 3 proposed facts,
