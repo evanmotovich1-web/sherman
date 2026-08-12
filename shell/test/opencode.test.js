@@ -58,7 +58,9 @@ test('OpenCode permissions allow only the named vault outside the workspace', ()
         '/tmp/sherman-test/vault/**': 'allow',
     });
     assert.equal(normal.share, 'disabled');
-    assert.equal(normal.permission.bash, 'deny');
+    // Normal turns carry the shell — operator-granted parity with Codex.
+    // The wall that matters stays below: read-only turns deny bash outright.
+    assert.equal(normal.permission.bash, 'allow');
     assert.equal(normal.permission.task, 'deny');
     assert.equal(normal.permission.apply_patch, 'deny');
     assert.deepEqual(normal.permission.edit, {
@@ -244,7 +246,7 @@ console.log(JSON.stringify({ type: 'step_finish', sessionID: 'ses_transport', pa
         assert.equal(calls[0].argv.includes('--session'), false);
         assert.deepEqual(calls[1].argv.slice(-3), ['--session', 'ses_transport', 'second']);
         assert.equal(calls[0].config.share, 'disabled');
-        assert.equal(calls[0].config.permission.bash, 'deny');
+        assert.equal(calls[0].config.permission.bash, 'allow');
         assert.equal(calls[0].config.mcp, undefined);
         assert.equal(calls[1].config.mcp, undefined);
         assert.equal(calls[0].config.permission['safe_*'], 'deny');

@@ -1295,15 +1295,25 @@ export function App({
                         // engine event; the trace still never invents a line.
                         case 'tool': {
                             const done = event.phase === 'completed';
+                            // A SKILL.md the engine opened mid-turn IS a
+                            // skill firing — render it in the trace's skill
+                            // register (📚, tag skill), the same row a slash
+                            // invocation gets, so every skill that runs pops
+                            // visibly no matter how it was loaded.
+                            const skillUse = typeof event.label === 'string'
+                                ? event.label.match(/skills[\\/]([A-Za-z0-9._-]+)[\\/]SKILL\.md/)
+                                : null;
                             const entry = {
                                 id: event.id,
                                 // `line` carries the trace's own glyph prefix; `label` is
                                 // the engine's raw text, which the one-line activity
                                 // indicator uses so it does not print two glyphs for
                                 // one event.
-                                line: formatTool(event, done),
-                                label: event.label,
-                                category: event.category,
+                                line: skillUse
+                                    ? `📚 ${'skill'.padEnd(TRACE_TAG_WIDTH)}  skills/${skillUse[1]}/SKILL.md`
+                                    : formatTool(event, done),
+                                label: skillUse ? `skills/${skillUse[1]}/SKILL.md` : event.label,
+                                category: skillUse ? 'skill' : event.category,
                                 mark: done ? completionMark(event) : null,
                                 durationMs: done ? event.durationMs ?? null : null,
                             };

@@ -90,8 +90,14 @@ loop for turning a missing capability into one you have.
 
 Close the gap by the means that fits it:
 
-- **A skill you lack** — write it. `self-edit` lets you change your own source;
-  add the `SKILL.md` the work needs, verify with `./smoke.sh`, and use it.
+- **A skill you lack** — write it, and there are two speeds. The fast path:
+  forge it into `~/.sherman/skills/<name>/SKILL.md` — personal skills join
+  your workspace and the launch registry on the next launch, no merge to wait
+  for. The fleet path: `self-edit` the repo and ship it as a branch + PR via
+  `self-evolve` so every machine gets it. Forge first, use it, then ship the
+  ones that prove out. Go LOOKING for skills too — the launch registry lists
+  everything loadable, bundled and personal, and a task that matches a skill
+  you did not open is a wrong answer with extra steps.
 - **A connector or service** — `0-1`: verify it is real, wire it when no person
   is required, hand over one precise account-and-key checklist when one is.
 - **Software that is not installed** — name it and install it through the
