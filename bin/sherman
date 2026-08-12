@@ -1820,4 +1820,11 @@ if [ "$BRIEF" -eq 1 ]; then
     exec node "$ROOT/bridge/brief.js"
 fi
 
+# The shell transcript is bounded now, but a machine-learning session is
+# still allowed to be enormous; give V8 real headroom instead of its default
+# few GB. The operator's own NODE_OPTIONS always wins when already set.
+if [ -z "${NODE_OPTIONS:-}" ]; then
+    NODE_OPTIONS="--max-old-space-size=8192"
+    export NODE_OPTIONS
+fi
 exec node "$ROOT/shell/bin/sherman-shell.js" "$@"

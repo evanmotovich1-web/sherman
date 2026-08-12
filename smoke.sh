@@ -64,7 +64,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=32
+TOTAL_CHECKS=33
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -2858,6 +2858,36 @@ if grep -qF 'parseRetentionProposals(evalReply)' shell/src/ui/app.js \
     pass "filing stays behind the operator keypress and the shell validator"
 else
     fail "the one-keypress retention gate lost its keypress or its validator"
+fi
+
+# ----------------------------------------------------------------- check 33 --
+# The OOM guards. A days-long machine-learning session aborted the shell with
+# a V8 heap exhaustion: the transcript grew without bound, codex stderr
+# accumulated whole, and the heap had only its default ceiling. All three
+# guards are pinned — losing any one re-opens the crash.
+echo
+echo "33. a long session cannot exhaust the heap"
+
+if grep -qF 'const MAX_TRANSCRIPT_ITEMS' shell/src/ui/app.js \
+    && grep -qF 'const MAX_ITEM_CHARS' shell/src/ui/app.js \
+    && grep -qF 'next.slice(next.length - MAX_TRANSCRIPT_ITEMS)' shell/src/ui/app.js; then
+    pass "the transcript is bounded in rows and per-item size"
+else
+    fail "the transcript bounds are gone from app.js"
+fi
+
+if grep -qF "stderr = (stderr + chunk).slice(-4096);" shell/src/engine/codex.js \
+    && grep -qF "stderr = (stderr + chunk).slice(-4096);" shell/src/engine/opencode.js; then
+    pass "both engines keep only a stderr tail"
+else
+    fail "an engine accumulates unbounded stderr again"
+fi
+
+if grep -qF 'max-old-space-size=8192' bin/sherman \
+    && grep -qF 'NODE_OPTIONS' bin/sherman; then
+    pass "the launcher gives V8 headroom, operator NODE_OPTIONS wins"
+else
+    fail "the launcher lost its heap headroom"
 fi
 
 # -------------------------------------------------------------------- result --
