@@ -78,7 +78,8 @@
       "summary": "reach outside the company",
       "tools": [
         { "name": "web_search", "verify": "engine" },
-        { "name": "connectors", "verify": "command" }
+        { "name": "connectors", "verify": "command" },
+        { "name": "key", "verify": "command" }
       ]
     },
     {

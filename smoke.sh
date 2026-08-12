@@ -64,7 +64,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=30
+TOTAL_CHECKS=31
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -2657,6 +2657,104 @@ if [ "$install_usage_status" -ne 0 ] \
     pass "install prints usage bare and refuses a name carrying shell metacharacters"
 else
     fail "sherman install lost its usage or its name gate (usage=$install_usage_status reject=$install_reject_status)"
+fi
+
+# ----------------------------------------------------------------- check 31 --
+# The key store is how the operator hands Sherman an API key once. The claims
+# that make it safe are the ones checked: 0600 on the store, atomic write with
+# read-back before "stored" is claimed, an env-var-shaped name gate a shell
+# fragment cannot pass, injection that never clobbers an explicit export, the
+# /key submission redacted before transcript or log, and names-only output.
+echo
+echo "31. the key store keeps its secrecy and injection promises"
+
+KEYS_JS=$(cat <<'JS'
+import { strict as assert } from 'node:assert';
+import { statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+const home = join(process.env.HOME, '.sherman');
+const { saveKey, loadKeys, removeKey, injectKeys, describeKeys, keysPath, validKeyName } =
+    await import('./src/keys.js');
+const { parseSubmission, submissionRecordText } = await import('./src/commands.js');
+
+// Fresh store: absent file is ordinary, not an error.
+assert.deepEqual(loadKeys(home), { ok: true, keys: {} });
+
+// Round-trip with read-back, and the file is 0600.
+const saved = saveKey('SMOKE_API_KEY', 'sk-live-abc123', home);
+assert.equal(saved.ok, true, 'save failed');
+assert.equal(saved.replaced, false);
+assert.equal(loadKeys(home).keys.SMOKE_API_KEY, 'sk-live-abc123');
+assert.equal(statSync(keysPath(home)).mode & 0o777, 0o600, 'store is not 0600');
+
+// Replacing reports itself as a replace.
+assert.equal(saveKey('SMOKE_API_KEY', 'sk-live-def456', home).replaced, true);
+
+// The name gate: shell metacharacters, spaces, and leading digits never
+// become names. (The dollar-paren case is written split so the heredoc
+// scanner never sees a command substitution opener.)
+const dollarParen = '$' + '(id)';
+for (const bad of ['foo; rm -rf /', 'a b', '1KEY', dollarParen, '', 'x'.repeat(65)]) {
+    assert.equal(validKeyName(bad), false, 'accepted bad name: ' + bad);
+    assert.equal(saveKey(bad, 'value', home).ok, false);
+}
+// Multi-line values are refused — a key is one line.
+assert.equal(saveKey('OK_NAME', 'line1\nline2', home).ok, false);
+
+// Injection: the store lands in env, but an explicit export outranks it.
+const env = { SMOKE_API_KEY: 'from-export' };
+const injected = injectKeys(env, home);
+assert.equal(injected.ok, true);
+assert.equal(env.SMOKE_API_KEY, 'from-export', 'clobbered an explicit export');
+const env2 = {};
+injectKeys(env2, home);
+assert.equal(env2.SMOKE_API_KEY, 'sk-live-def456', 'stored key did not inject');
+
+// The listing carries names and never values.
+const listing = describeKeys(home);
+assert.ok(listing.includes('SMOKE_API_KEY'), 'listing lost the name');
+assert.ok(!listing.includes('def456'), 'listing leaked a value');
+
+// The /key submission is redacted before transcript or log see it; the
+// remove form (no secret) and the bare form pass through untouched.
+const record = submissionRecordText('/key STRIPE_KEY sk-live-secret');
+assert.equal(record, '/key STRIPE_KEY «redacted»');
+assert.ok(!record.includes('sk-live-secret'));
+assert.equal(submissionRecordText('/key remove STRIPE_KEY'), '/key remove STRIPE_KEY');
+assert.equal(submissionRecordText('/key'), '/key');
+assert.equal(parseSubmission('/key A_B c').name, 'key');
+
+// Removal round-trips and reports the difference between removed and absent.
+assert.deepEqual(removeKey('SMOKE_API_KEY', home), { ok: true, removed: true });
+assert.deepEqual(removeKey('SMOKE_API_KEY', home), { ok: true, removed: false });
+
+// A corrupt store degrades to a named error that does not quote the file.
+mkdirSync(home, { recursive: true });
+writeFileSync(keysPath(home), '{oops sk-live-leaky', { mode: 0o600 });
+const corrupt = loadKeys(home);
+assert.equal(corrupt.ok, false);
+assert.ok(!String(corrupt.reason).includes('sk-live-leaky'), 'error quoted the store');
+JS
+)
+
+KEYSHOME=$(mktemp -d 2>/dev/null || mktemp -d -t shermankeys)
+keys_err=$(cd shell && env HOME="$KEYSHOME" FORCE_COLOR=0 node --input-type=module -e "$KEYS_JS" 2>&1)
+keys_status=$?
+if [ "$keys_status" -eq 0 ]; then
+    pass "store is 0600 with read-back, name gate holds, exports outrank, log is redacted, names-only listing"
+else
+    fail "key store: $(printf '%s' "$keys_err" | head -3)"
+fi
+
+# The persona must teach the hand-over: Sherman asks with the exact /key
+# command and never asks for a key as prose. Both halves are load-bearing --
+# losing either quietly reopens the paste-a-secret-into-the-transcript path.
+if grep -qF '/key NAME <value>' agent/SYSTEM.md \
+    && grep -qF 'Never ask for a key pasted as' agent/SYSTEM.md; then
+    pass "SYSTEM.md teaches the /key hand-over and forbids keys as prose"
+else
+    fail "SYSTEM.md lost the /key hand-over contract"
 fi
 
 # -------------------------------------------------------------------- result --

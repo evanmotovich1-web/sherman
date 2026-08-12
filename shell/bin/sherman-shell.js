@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../src/config.js';
+import { injectKeys } from '../src/keys.js';
 import { selectBackend } from '../src/engine/index.js';
 import { emptyUsage } from '../src/engine/session.js';
 
@@ -91,6 +92,10 @@ function renderEvent(event) {
 
 async function probe(prompts) {
     const config = loadConfig();
+    // Same environment contract as the shell path: stored keys ride into the
+    // probe's engine too, or --probe would debug a different machine than the
+    // one the shell runs on.
+    injectKeys();
     const session = selectBackend(config);
     const info = session.info;
 
@@ -204,6 +209,14 @@ async function startShell() {
     try {
         loadIn.step('reading config…');
         config = loadConfig();
+
+        // The operator's stored keys (~/.sherman/keys.json) become engine
+        // environment BEFORE the backend exists: both engines inherit
+        // process.env at spawn, so this one call is what makes every stored
+        // key available to every turn. Explicit exports outrank the store
+        // (injectKeys never clobbers), and a corrupt store degrades to a
+        // launch without keys rather than no launch — /key will name the fix.
+        injectKeys();
 
         loadIn.step('preparing engine…');
         session = selectBackend(config);

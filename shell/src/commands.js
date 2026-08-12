@@ -74,6 +74,12 @@ export const COMMANDS = Object.freeze([
         detail: 'A local read of the committed catalog (agent/connectors.json) and this machine\'s enablement file (~/.sherman/connectors.json). Prints secret NAMES and never values. Three headings — Connected, Needs a key, Available — and an empty one is omitted rather than printed. Changes take effect on the next launch, because the launcher is what renders engine config. Ask /0-1 to add a connector for you.',
     },
     {
+        name: 'key',
+        usage: '/key [NAME <value> | remove <NAME>]',
+        summary: 'hand Sherman an API key once — stored outside the repo, redacted from the log',
+        detail: 'The shell stores the key in ~/.sherman/keys.json (chmod 600, never committed, never synced, never in the vault) and injects it into the engine environment immediately — this turn and every future session simply have it. The value is redacted from the transcript and the session log before either is written; the model never handles it. Bare /key lists stored key NAMES only, never values. When a stored name matches a catalogued connector\'s missing secret, the connector wires itself on the next launch.',
+    },
+    {
         name: 'commons',
         usage: '/commons <subcommand>',
         summary: 'use the opt-in Sherman Commons local client',
@@ -151,6 +157,15 @@ export function submissionRecordText(value, parsed = parseSubmission(value)) {
     }
     if (parsed?.kind === 'command' && ['learn', 'wiki'].includes(parsed.name)) {
         return `/${parsed.name} «fact text redacted»`;
+    }
+    if (parsed?.kind === 'command' && parsed.name === 'key') {
+        // The NAME is safe to keep — it is the readable part of the record —
+        // but anything after it could be the secret, so it never lands in the
+        // transcript or the session log. `remove NAME` carries no secret.
+        const match = parsed.args.match(/^([A-Za-z][A-Za-z0-9_]*)\s+\S/);
+        if (match && match[1].toLowerCase() !== 'remove') {
+            return `/key ${match[1]} «redacted»`;
+        }
     }
     return value;
 }
