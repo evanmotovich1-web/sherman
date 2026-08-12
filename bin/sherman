@@ -925,6 +925,30 @@ assemble_adapter() {
 
     body="$WORKSPACE/.sherman-body.$$"
 
+    # The operator profile: ~/.sherman/user.md — the third file of the trio
+    # (SYSTEM.md is the soul, the vault is the memory, this is the user).
+    # Machine-local on purpose and never synced: each machine's Sherman
+    # knows ITS operator, which is the profile-level version of the
+    # operator-identity fix. First launch writes a short template the
+    # operator (or Sherman, at the operator's word) fills in; every launch
+    # splices the current contents into the adapter.
+    user_md="$SHERMAN_HOME/user.md"
+    if [ ! -f "$user_md" ]; then
+        cat > "$user_md" <<USERMD
+# Who $user is
+
+Fill this in (or tell Sherman a fact about yourself and it will offer to
+add it here). Sherman reads this file at every launch, on this machine
+only — it is never synced, committed, or shared.
+
+- Role:
+- Working on:
+- Reply style preferences:
+- Standing preferences:
+USERMD
+    fi
+    user_profile=$(cat "$user_md" 2>/dev/null)
+
     # The memory index. Every session used to start amnesiac — the vault
     # existed but nothing said what was IN it, so a session that did not
     # think to search never found the fact. Built here, name by name, so the
@@ -970,6 +994,16 @@ attribution lines, other machines' operators, colleagues. Those say who
 WROTE a fact, never who is in front of you now. Calling $user by a
 colleague's name found in memory or in an example is a conduct bug —
 misidentifying the person you work for — not a nicety to shrug off.
+
+## The operator's profile — \`~/.sherman/user.md\`, this machine only
+
+$user_profile
+
+Treat the profile as standing context from $user directly. When $user tells
+you something durable about themselves — role, preference, how they want
+replies — offer the exact line to add to \`~/.sherman/user.md\` (or edit it
+when asked); it is $user's file on $user's machine, never the vault's. Never
+copy another person's profile into it, and never sync it anywhere.
 
 ---
 
