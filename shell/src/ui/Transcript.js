@@ -19,10 +19,11 @@
 // the clip needs. Proven against ink 7.1.1 before this shipped.
 //
 // Turn structure: the user's line carries the same `❯` as the composer, the work
-// the engine reported commits as a factual trace under it, and Sherman's reply
-// arrives closed inside a titled box — the speaker's name embedded in the top
-// border, all four sides drawn. The trace renders ONLY what the
-// engine actually emitted — an activity line that never happened is a lie in
+// the engine reported commits as a factual trace under it — each row hanging on
+// the dotted rail — and Sherman's reply arrives under a titled top rule: the
+// speaker's name embedded in the border, both corner tips turned down, and the
+// body flowing OPEN beneath it, the Hermes register. The trace renders ONLY what
+// the engine actually emitted — an activity line that never happened is a lie in
 // the transcript, and one invented line poisons trust in all of them.
 
 import React, { useEffect, useRef } from 'react';
@@ -38,6 +39,22 @@ import { Diff } from './Diff.js';
 // Width of the speaker gutter for notice/error rows. A fixed column means
 // wrapped lines hang under the text rather than under the label.
 const GUTTER = 9;
+
+// The trace rail: dotted, the Hermes register. One glyph so every railed row
+// (trace, self-talk, diff) shares the same left edge by construction.
+export const RAIL = '┊';
+
+// The exit glitch. While the shell grades itself and files what it learned on
+// the way out, the rail is the ONLY announcement: its glyphs churn through
+// this alphabet for a few seconds and no text is printed. Deterministic per
+// (tick, row) — the same frame renders the same garbage, so fixtures can pin
+// it and nothing here needs a random source.
+const GLITCH = ['▓', '▒', '░', '█', '╳', '╎', '┇', '⌇'];
+
+function railGlyph(glitch, row) {
+    if (!glitch) return RAIL;
+    return GLITCH[(glitch + row) % GLITCH.length];
+}
 const DISPLAY_KINDS = new Set([
     'launch', 'banner', 'user', 'selftalk', 'reasoning', 'tool',
     'message', 'worker-message', 'notice', 'error', 'diff',
@@ -142,70 +159,45 @@ function TitledTopBorder({ width, label, labelColor }) {
     );
 }
 
-// The reply frame: a closed box, the signature embedded in its top border.
+// The reply frame: a titled top rule and an OPEN body, the Hermes register.
 //
 //     ╭─ Sherman ────────────────╮
-//     │ The vault stores one     │
-//     │ durable fact per file.   │
-//     ╰──────────────────────────╯
+//     The vault stores one
+//     durable fact per file.
 //
-// The left border sits at the SAME offset as the diff, self-talk and tool
-// rows, whose prefix is the literal `  │ ` two cells in. That alignment still
-// carries the transcript's one left edge: the box's left side continues the
-// trace rule above it, and a frame that stood a cell off would read as a
-// different kind of object rather than the same conversation concluding.
+// The two corner tips turn down and nothing else encloses the reply: no side
+// rules, no bottom border. The rule spans the transcript's full width, and
+// the body flows flush beneath it, exactly as Hermes prints its own replies.
+// The closed four-sided box this replaces was retired on the operator's
+// instruction (2026-08-12): the tips ARE the frame.
 //
 // The top row is hand-built by `TitledTopBorder` so the name can live inside
-// the border; the sides and bottom are Ink's own border machinery with only
-// the top switched off, NOT per-line `│` prefixes the way Diff.js draws.
-// Diff rows are `wrap:'truncate'` single lines, so a prefix is exact there.
-// Replies wrap, and the number of rows a reply occupies is known only after
-// Yoga has measured it — Ink paints the border down whatever height the box
-// ends up being, so the frame closes at every width by construction.
-const RULE_INDENT = 2;
-
+// the border; the body is plain wrapped text with no border machinery at all.
 function ShermanMessage({ text, width, worker = false }) {
     const safeText = safeTerminalText(text, { preserveNewlines: true });
-    // Below this there is no room for indent + two borders + padding + a cell
-    // of text, and a box with no interior is worse than no box.
-    if (width < RULE_INDENT + 5) {
+    // Below this there is no room for the corners, a dash, and a cell of
+    // label, and a rule with no interior is worse than no rule.
+    if (width < 5) {
         return React.createElement(Text, { wrap: 'truncate' }, safeText);
     }
     const labelColor = worker ? color.secondary : color.accent;
-    const frameWidth = width - RULE_INDENT;
     return React.createElement(
         Box,
         { flexDirection: 'column', width: Math.max(1, width) },
-        React.createElement(
-            Box,
-            { marginLeft: RULE_INDENT },
-            React.createElement(TitledTopBorder, {
-                width: frameWidth,
-                // The flanking spaces are part of the label by the Hermes
-                // convention: embedTextInBorder adds no padding of its own.
-                label: worker ? ' ◇ Worker 01 ' : ' Sherman ',
-                labelColor,
-            })
-        ),
-        React.createElement(
-            Box,
-            {
-                borderStyle: 'round',
-                borderColor: color.frame,
-                borderTop: false,
-                marginLeft: RULE_INDENT,
-                width: frameWidth,
-                paddingX: 1,
-                // Yoga stretches this body to its explicit-width parent. Keep
-                // horizontal overflow visible so geometry errors fail loudly.
-            },
-            React.createElement(Text, { wrap: 'wrap' }, safeText)
-        )
+        React.createElement(TitledTopBorder, {
+            width,
+            // The flanking spaces are part of the label by the Hermes
+            // convention: embedTextInBorder adds no padding of its own.
+            label: worker ? ' ◇ Worker 01 ' : ' Sherman ',
+            labelColor,
+        }),
+        React.createElement(Text, { wrap: 'wrap' }, safeText)
     );
 }
 
-/** One committed transcript item. */
-function Item({ item, width, rows }) {
+/** One committed transcript item. `rail` is this row's rail glyph — the
+ *  dotted `┊` normally, a glitch glyph while the exit flow runs. */
+function Item({ item, width, rows, rail = RAIL }) {
     switch (item.kind) {
         case 'launch':
             return React.createElement(LaunchScreen, {
@@ -226,7 +218,7 @@ function Item({ item, width, rows }) {
             // User prompts may wrap inside the explicit-width transcript. The
             // two-space newline indent aligns continuations under the body.
             // The ● is the turn's anchor: the accent dot marks where a turn
-            // begins, and the │-railed work rows that follow hang under it —
+            // begins, and the ┊-railed work rows that follow hang under it —
             // prompt, then the tree of what the prompt caused.
             return React.createElement(
                 Text,
@@ -248,7 +240,7 @@ function Item({ item, width, rows }) {
             return React.createElement(
                 Text,
                 { color: color.secondary, wrap: 'truncate' },
-                `  │ ⋯ summary: ${safeTerminalText(item.text)}`
+                `  ${rail} ⋯ summary: ${safeTerminalText(item.text)}`
             );
 
         // The committed activity trace, sourced only from normalized engine
@@ -266,7 +258,7 @@ function Item({ item, width, rows }) {
                 return React.createElement(
                     Text,
                     { wrap: 'truncate' },
-                    React.createElement(Text, { color: color.tertiary }, '  │ '),
+                    React.createElement(Text, { color: color.tertiary }, `  ${rail} `),
                     React.createElement(
                         Text,
                         { color: color.secondary },
@@ -284,7 +276,7 @@ function Item({ item, width, rows }) {
             return React.createElement(
                 Text,
                 { color: color.tertiary, wrap: 'truncate' },
-                `  │ ${safeTerminalText(item.text)}`
+                `  ${rail} ${safeTerminalText(item.text)}`
             );
 
         // A file change, in the lines that changed. The payload is the engine's
@@ -341,9 +333,13 @@ function Item({ item, width, rows }) {
 // a measured fact about the frame on screen, not a model of it.
 
 /**
- * @param {{items: Array<{id: string, kind: string, text?: string}>, columns?: number, offset?: number, onWindow?: (window: {total: number, viewport: number, below: number, following: boolean}) => void}} props
+ * @param {{items: Array<{id: string, kind: string, text?: string}>, columns?: number, offset?: number, glitch?: number, onWindow?: (window: {total: number, viewport: number, below: number, following: boolean}) => void}} props
  *
  * `columns` is injectable for off-TTY fixtures (D17); live, the hook wins.
+ *
+ * `glitch` is 0 (off) or the shell's exit-flow tick: while non-zero every
+ * rail glyph churns through the glitch alphabet, one step per tick — the
+ * silent signal that the exit eval and retention are running.
  *
  * `offset` is rows above the live tail — 0 follows it, which is the default and
  * the only state an off-TTY render can reach, so fixtures see exactly the
@@ -352,7 +348,7 @@ function Item({ item, width, rows }) {
  * `onWindow` reports the measured window upward so the shell can clamp its own
  * offset and print a true count. The measurement is reported, never recomputed.
  */
-export function Transcript({ items, columns, offset = 0, onWindow }) {
+export function Transcript({ items, columns, offset = 0, glitch = 0, onWindow }) {
     const size = useWindowSize();
     const viewportWidth = typeof columns === 'number' ? columns : size.columns;
     const gutter = viewportWidth >= 4 ? 1 : 0;
@@ -408,7 +404,7 @@ export function Transcript({ items, columns, offset = 0, onWindow }) {
                 // number of older rows come into view at the top.
                 marginBottom: -window.offset,
             },
-            displayItems.map((item) =>
+            displayItems.map((item, row) =>
                 React.createElement(
                     Box,
                     {
@@ -426,7 +422,12 @@ export function Transcript({ items, columns, offset = 0, onWindow }) {
                         // item off the top of the clip.
                         marginBottom: 0,
                     },
-                    React.createElement(Item, { item, width, rows: size.rows })
+                    React.createElement(Item, {
+                        item,
+                        width,
+                        rows: size.rows,
+                        rail: railGlyph(glitch, row),
+                    })
                 )
             )
         )

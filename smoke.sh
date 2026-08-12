@@ -918,39 +918,40 @@ const fullReplyLines = renderToString(
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
-// One gutter column, then the two-cell frame indent. The signature is
-// embedded in the top border, the body stands between the side rules, and the
-// box's own bottom border closes it — no trailing blank row after it,
+// One gutter column, then the Hermes register: the signature is embedded in
+// the top rule, both corner tips turn down, and the body flows OPEN beneath
+// it — no side rules, no bottom border, no trailing blank row after it,
 // because the next user turn carries the air between turns. (That apostrophe
 // is load-bearing: bash 3.2 scans $(...) heredocs for quote pairs, and this
 // comment must keep the same single-quote parity the old text had.)
 if (
-    fullReplyLines.length !== 3 ||
-    !/^ {3}╭─ Sherman ─+╮$/.test(fullReplyLines[0]) ||
-    !/^ {3}│ reply body +│$/.test(fullReplyLines[1]) ||
-    !/^ {3}╰─+╯$/.test(fullReplyLines[2])
+    fullReplyLines.length !== 2 ||
+    !/^ ╭─ Sherman ─+╮$/.test(fullReplyLines[0]) ||
+    fullReplyLines[1].trimEnd() !== ' reply body'
 ) {
     mappingMissing.push('signed Sherman reply geometry and trailing rhythm');
 }
 
-// The rule must stand in the same column as the trace rows above it. Diff,
-// tool and self-talk hard-code the prefix `  │ `; the reply's rule is an Ink
-// border. Different machinery, one left edge — a drift here is a bug.
+// Every railed row hangs on the same dotted rail column. Diff, tool and
+// self-talk each build their own prefix — different machinery, one left
+// edge, and a drift here is a bug. The reply carries no rail at all now;
+// its titled rule opening at the gutter is asserted with the geometry above.
 const alignmentLines = renderToString(
     React.createElement(Transcript, {
         items: [
             { id: 'align-tool', kind: 'tool', text: 'read vault/wiki/index.md' },
+            { id: 'align-talk', kind: 'selftalk', text: 'checking the index' },
             { id: 'align-reply', kind: 'message', text: 'aligned' },
         ],
         columns: 80,
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
-const ruleColumns = new Set(
-    alignmentLines.filter((line) => line.includes('│')).map((line) => line.indexOf('│'))
+const railColumns = new Set(
+    alignmentLines.filter((line) => line.includes('┊')).map((line) => line.indexOf('┊'))
 );
-if (ruleColumns.size !== 1) {
-    mappingMissing.push('reply rule aligned with the activity trace gutter');
+if (railColumns.size !== 1) {
+    mappingMissing.push('trace rows aligned on one dotted rail column');
 }
 
 const longReplyInput = '0123456789'.repeat(20);
@@ -961,22 +962,18 @@ const longReplyLines = renderToString(
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
-// Row 0 is the titled top border and the last row is the bottom border;
-// everything between is body. Each body row is the gutter, the two-cell
-// indent, the left rule, one padding space, the wrapped chunk, then padding
-// and the right rule — the rules repeating on EVERY row is what proves Ink
-// painted the frame down the measured height rather than only beside the
-// first line. The chunks still reassemble the input exactly, so no text was
-// dropped at the wrap. (Digits only, so stripping the padded right edge can
-// never eat real content.)
-const longBodyLines = longReplyLines.slice(1, -1);
+// Row 0 is the titled top rule; every row after it is open body. The frame
+// has nothing to close now, so what a wrap must prove is that no enclosure
+// glyph reappears below the rule, no row escapes the width, and the wrapped
+// chunks still reassemble the input exactly — no text dropped at the wrap.
+// (Digits only, so trimming the row edges can never eat real content.)
+const longBodyLines = longReplyLines.slice(1).filter((line) => line.trim() !== '');
 if (
-    longBodyLines.length < 3 ||
-    !/^ {3}╭─ Sherman ─+╮$/.test(longReplyLines[0]) ||
-    !/^ {3}╰─+╯$/.test(longReplyLines.at(-1)) ||
-    longBodyLines.some((line) => !line.startsWith('   │ ') || !line.endsWith('│')) ||
+    longBodyLines.length < 2 ||
+    !/^ ╭─ Sherman ─+╮$/.test(longReplyLines[0]) ||
+    longBodyLines.some((line) => /[╰│]/.test(line)) ||
     maxWidth(longReplyLines.join('\n')) > 80 ||
-    longBodyLines.map((line) => line.slice(5).replace(/ *│$/, '')).join('') !== longReplyInput
+    longBodyLines.map((line) => line.trim()).join('') !== longReplyInput
 ) {
     mappingMissing.push('long Sherman reply wraps without overflow or dropped text');
 }
@@ -1113,11 +1110,11 @@ const poll = setInterval(() => {
             if (sent.length !== 1 || !sent[0].startsWith('read\nthe sop')) {
                 missing.push('multi-line paste preserved until Enter');
             }
-            // The signature lives inside the top border again, with the body
-            // between the side rules under it. Both rows are asserted: a
-            // titled border with no framed body under it would mean the box
-            // collapsed to a bare label.
-            if (!/\n {3}╭─ Sherman ─.*\n {3}│ /.test(plain)) missing.push('Sherman reply label');
+            // The signature lives inside the top rule, tips turned down, and
+            // the body flows open beneath it. The rule is asserted here; the
+            // body text is already asserted above, so together they prove the
+            // reply did not collapse to a bare label.
+            if (!/\n ╭─ Sherman ─/.test(plain)) missing.push('Sherman reply label');
             // The completed tool COMMITS to the transcript now — glyph, padded
             // category tag, label, measured duration — so it is asserted on the
             // final screen, where a permanent row must still be. No ✓ on a

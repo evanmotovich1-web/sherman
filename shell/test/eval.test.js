@@ -147,7 +147,7 @@ test('exiting a session with turns runs the eval once, then leaves', async () =>
     const oldHome = process.env.HOME;
     process.env.HOME = h.home;
     const instance = render(
-        React.createElement(App, { session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260728_010000_eval01' }),
+        React.createElement(App, { session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260728_010000_eval01', exitGlitchMs: 0 }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );
     try {
@@ -171,8 +171,9 @@ test('exiting a session with turns runs the eval once, then leaves', async () =>
             1,
             'the eval ran more than once'
         );
-        assert.match(h.captured(), /evaluating this session before exit/);
-        assert.match(h.captured(), /ctrl\+c to skip/, 'the escape hatch was not announced');
+        // Silent by design (2026-08-12): the exit eval announces itself with
+        // the glitching rail, never with text.
+        assert.doesNotMatch(h.captured(), /evaluating this session/, 'the exit eval announced itself in text');
     } finally {
         instance.unmount();
         process.env.HOME = oldHome;
@@ -340,7 +341,7 @@ test('working past a checkpoint still gets the exit eval for the tail', async ()
     const instance = render(
         React.createElement(App, {
             session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260731_060000_ckpt03',
-            evalEveryMs: 120,
+            evalEveryMs: 120, exitGlitchMs: 0,
         }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );
@@ -439,13 +440,19 @@ test('manual wiki writes only the explicit shell-validated fact and redacts its 
     }
 });
 
-test('exit runs read-only eval but never automatic authoritative retention', async () => {
+// Exit retention files eval proposals automatically now (operator's
+// instruction, 2026-08-12) — but those writes are LOCAL, through the same
+// shell validation as a hand-typed /wiki. What this test pins is the part
+// that must never change: no retention path invokes a model. The engine
+// request list stays eval + meta-eval, nothing else.
+test('exit runs read-only eval and no retention path ever invokes a model', async () => {
     const h = harness();
     const oldHome = process.env.HOME;
     process.env.HOME = h.home;
     const instance = render(
         React.createElement(App, {
             session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260731_090000_wiki01', wiki: true,
+            exitGlitchMs: 0,
         }),
         { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
     );

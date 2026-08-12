@@ -40,7 +40,7 @@ export function Diff({ diff }) {
         React.createElement(
             Text,
             { key: 'head', wrap: 'truncate' },
-            React.createElement(Text, { color: color.tertiary }, '  │ '),
+            React.createElement(Text, { color: color.tertiary }, '  ┊ '),
             React.createElement(Text, { color: color.accent, bold: true }, word),
             React.createElement(Text, { color: color.value }, ` ${path}`),
             diff.available
@@ -57,7 +57,7 @@ export function Diff({ diff }) {
             React.createElement(
                 Text,
                 { key: 'unavailable', color: color.muted, wrap: 'truncate' },
-                `  │   line detail unavailable${diff.reason ? ` (${safeTerminalText(diff.reason)})` : ''}`
+                `  ┊   line detail unavailable${diff.reason ? ` (${safeTerminalText(diff.reason)})` : ''}`
             )
         );
         return column(rows);
@@ -73,7 +73,7 @@ export function Diff({ diff }) {
                     color: added ? color.diffAdded : color.diffRemoved,
                     wrap: 'truncate',
                 },
-                `  │ ${added ? '+' : '-'} ${safeTerminalText(line.text)}`
+                `  ┊ ${added ? '+' : '-'} ${safeTerminalText(line.text)}`
             )
         );
     }
@@ -85,7 +85,7 @@ export function Diff({ diff }) {
             React.createElement(
                 Text,
                 { key: 'more', color: color.muted, wrap: 'truncate' },
-                `  │   +${diff.more} more lines`
+                `  ┊   +${diff.more} more lines`
             )
         );
     }

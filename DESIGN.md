@@ -79,15 +79,19 @@ patient records, named-patient results, or any other PHI.
 
 Every non-empty graceful session exit runs the provider-backed, read-only conduct
 eval. Its report is stored only under local `~/.sherman/evals/` and never copied
-into a synchronized Vault lane. Authoritative
-retention is operator-gated: the explicit `/learn <name> | <lesson>` and
-`/wiki <name> | <fact>` commands, plus a per-fact approval box after each eval
-in which the operator files an eval-proposed fact with one keypress or skips
-it — nothing files without that keypress, and the accepted text goes through
-the same shell validation as a hand-typed command. Models still cannot write
-the vault directly; a proposal only becomes real through the operator. A deterministic shell-owned writer rejects unsafe
-operator-provided content and atomically confines an accepted replacement to
-`memory/shared/` or `wiki/`. The command payload is redacted from the transcript
+into a synchronized Vault lane. The exit run is silent by the operator's
+standing instruction (2026-08-12): no notice announces it — the transcript
+rail glitches for a few seconds instead — and the facts the eval proposes
+file automatically on the way out. Interactive authoritative retention stays
+operator-gated: the explicit `/learn <name> | <lesson>` and
+`/wiki <name> | <fact>` commands, plus a per-fact approval box after a
+hand-typed `/eval` in which the operator files an eval-proposed fact with one
+keypress or skips it. Every path — keypress, command, or exit auto-file —
+goes through the same deterministic shell-owned writer, which rejects unsafe
+content and atomically confines an accepted replacement to `memory/shared/`
+or `wiki/`; no retention path ever invokes a model, and normal engine turns
+still cannot write the vault at all. The command payload is redacted from the
+transcript
 and session log before validation, so a rejected fact is not persisted there.
 Normal Codex and OpenCode turns cannot mutate the vault; durable proposals must
 return to the operator as complete commands for explicit review.
