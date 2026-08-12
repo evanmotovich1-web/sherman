@@ -930,6 +930,20 @@ assemble_adapter() {
 
 ---
 
+# Who you are speaking with
+
+The operator of THIS machine is **$user**. Every reply is addressed to
+$user — greetings, recaps, anything that carries a name carries $user's,
+in every session on this machine, always.
+
+Other people's names run all through the shared vault and memory:
+attribution lines, other machines' operators, colleagues. Those say who
+WROTE a fact, never who is in front of you now. Calling $user by a
+colleague's name found in memory or in an example is a conduct bug —
+misidentifying the person you work for — not a nicety to shrug off.
+
+---
+
 # Your knowledge base
 
 These authoritative directories are shared with every other person's Sherman:

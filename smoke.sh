@@ -185,6 +185,19 @@ else
         && pass "contains the user name" \
         || fail "user name missing from adapter"
 
+    # Identity must be DECLARED, not merely mentioned. The persona once
+    # carried a hardcoded example name and a second machine's Sherman
+    # addressed its operator by that name (seen live). The assembled body
+    # must name THIS machine's operator explicitly, and the shared persona
+    # file must carry no operator name of its own for an example to leak.
+    if grep -qF "Who you are speaking with" "$ADAPTER" \
+        && grep -qF "The operator of THIS machine is **$SMOKE_USER**" "$ADAPTER" \
+        && ! grep -q "Evan" agent/SYSTEM.md; then
+        pass "declares this machine's operator by name; the persona hardcodes none"
+    else
+        fail "operator identity section missing, or the shared persona carries a hardcoded name"
+    fi
+
     if ! grep -qF "patient" "$ADAPTER"; then
         fail "no-PHI rule missing from adapter"
     elif ! grep -qF "Default to execution, not interviewing." "$ADAPTER"; then

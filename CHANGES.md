@@ -3,6 +3,19 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-11 — Fixed: Sherman addresses the person in front of it, not the example
+
+- Seen live on a second machine: Sherman called its operator "Evan" — the
+  recap register in the shared persona carried Evan's name as its example,
+  and an example in a system prompt is an instruction wearing a costume.
+  The persona now shows the register with a `[their name]` placeholder and
+  carries no operator name at all, and every assembled workspace opens with
+  a **Who you are speaking with** section naming THIS machine's operator —
+  with the rule that names in shared memory and attribution lines say who
+  wrote a fact, never who is present. Smoke now asserts both: the identity
+  section names the configured user, and the shared persona hardcodes no
+  name for an example to leak.
+
 ## 2026-08-11 — Fixed: Coding Plan keys work — the zai engine aims at the right door
 
 - Root-caused live: the operator's Z.AI key was a Coding Plan subscription
