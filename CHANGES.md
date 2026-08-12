@@ -3,6 +3,16 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Fixed: the work verifier is silent unless it found something
+
+- The deep-work verifier was the last machinery still narrating to the
+  terminal: after a heavy turn its whole verdict committed to the screen as
+  worker text. It now follows the eval loop's contract — the verdict files
+  to the session log and `~/.sherman/evals/` (visible via `/win`), and the
+  terminal gets nothing, except one line when the verdict is CONCERNS or
+  CANNOT VERIFY, which names where the full detail lives. Smoke check 34
+  pins it (`TOTAL_CHECKS=34`).
+
 ## 2026-08-12 — Fixed: a long session can no longer exhaust the heap
 
 - A days-long machine-learning session aborted the whole shell with a V8
