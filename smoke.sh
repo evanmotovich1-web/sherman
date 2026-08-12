@@ -3183,6 +3183,15 @@ else
     fail "SYSTEM.md lost the memory-layers teaching"
 fi
 
+# Skills fire silently: the trace row is the announcement, prose narration
+# of machinery is noise the operator asked to be rid of.
+if grep -qF 'they fire SILENTLY' agent/SYSTEM.md \
+    && grep -qF 'opening the SKILL.md is the announcement' agent/SYSTEM.md; then
+    pass "the contract forbids narrating skill use in prose"
+else
+    fail "SYSTEM.md lost the silent-skill-fire rule"
+fi
+
 # -------------------------------------------------------------------- result --
 echo
 echo "$PASSES passed, $SKIPPED skipped, $FAILURES failed."

@@ -3,6 +3,14 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Fixed: skills fire silently — the globe is the announcement
+
+- Sherman was narrating its machinery ("I'm using `navigate` to…") in prose
+  on top of the trace already showing the globe/book row for every skill a
+  turn touches. The contract now forbids it: skills fire silently, opening
+  the SKILL.md is the announcement, and the reply carries findings, not
+  machinery. Smoke pins the rule.
+
 ## 2026-08-12 — Added: mnemosyne — long-term memory for every Sherman
 
 - Every Sherman now carries mnemosyne (github.com/mnemosyne-oss/mnemosyne,
