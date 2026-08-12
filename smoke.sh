@@ -622,11 +622,11 @@ FAILING_SMOKE
     update_bad_status=$?
 
     if [ "$update_ok_status" -eq 0 ] \
-        && printf '%s' "$update_ok_out" | grep -q 'Updated:' \
+        && printf '%s' "$update_ok_out" | grep -q 'Updated:\|Already current:' \
         && [ "$update_bad_status" -ne 0 ] \
         && printf '%s' "$update_bad_out" | grep -q 'simulated verification failed' \
         && printf '%s' "$update_bad_out" | grep -q 'did not pass verification' \
-        && ! printf '%s' "$update_bad_out" | grep -q 'Updated:'; then
+        && ! printf '%s' "$update_bad_out" | grep -q 'Updated:\|Already current:'; then
         pass "passing verification earns Updated; failed verification exits non-zero with its diagnostic"
     else
         fail "update status propagation broke (pass=$update_ok_status, fail=$update_bad_status): $(printf '%s' "$update_bad_out" | tail -3)"
@@ -669,10 +669,10 @@ FAKE_NPM_FAIL
     if [ "$reconcile_status" -eq 0 ] \
         && [ -f "$npm_marker" ] \
         && grep -q '^ci ' "$npm_marker" \
-        && printf '%s' "$reconcile_out" | grep -q 'Updated:' \
+        && printf '%s' "$reconcile_out" | grep -q 'Updated:\|Already current:' \
         && [ "$badnpm_status" -ne 0 ] \
         && printf '%s' "$badnpm_out" | grep -q 'could not be reconciled' \
-        && ! printf '%s' "$badnpm_out" | grep -q 'Updated:'; then
+        && ! printf '%s' "$badnpm_out" | grep -q 'Updated:\|Already current:'; then
         pass "update reconciles deps with npm ci before verifying; a failed reconcile stops it"
     else
         fail "reconcile path broke (ok=$reconcile_status, bad=$badnpm_status): $(printf '%s' "$badnpm_out" | tail -3)"

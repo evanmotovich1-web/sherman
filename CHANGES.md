@@ -3,6 +3,15 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Fixed: an up-to-date update says so, plainly
+
+- On a machine already at the latest, `sherman update` ended by comparing a
+  version to itself — which read as "the update did nothing," and on a
+  machine whose operator just shipped work, as "nothing was pushed." It now
+  reports the true state: "Already current: vX at <commit> — verified
+  healthy," and reminds that running sessions keep their old code until
+  relaunched. Both update smoke checks accept the honest line.
+
 ## 2026-08-12 — Fixed: skills fire silently — the globe is the announcement
 
 - Sherman was narrating its machinery ("I'm using `navigate` to…") in prose
