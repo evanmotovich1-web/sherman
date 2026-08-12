@@ -51,7 +51,7 @@ import {
     workerRequest,
 } from '../commands.js';
 import { describe as describeConnectors } from '../connectors.js';
-import { describeKeys, removeKey, saveKey } from '../keys.js';
+import { describeKeys, removeKey, saveKey, validKeyName } from '../keys.js';
 import { customizePet, writePetState } from '../petstate.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
 import { appendEvalReport, ungradedSessions } from '../evalstore.js';
@@ -904,7 +904,14 @@ export function App({
                     }
                     const result = saveKey(pair[1], pair[2]);
                     if (!result.ok) {
-                        commit('error', `key rejected · nothing stored · ${result.reason}`);
+                        // The one mistake operators actually make is pasting
+                        // the value first; the name-gate message alone reads
+                        // like a riddle from inside that mistake, so name the
+                        // argument order in the same breath.
+                        const hint = validKeyName(pair[1])
+                            ? ''
+                            : ' · the NAME comes first, then the value — e.g. /key SERVICE_API_KEY <the key you pasted>';
+                        commit('error', `key rejected · nothing stored · ${result.reason}${hint}`);
                         return;
                     }
                     // Live immediately: both engines inherit process.env, so

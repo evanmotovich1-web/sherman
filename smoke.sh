@@ -2723,6 +2723,10 @@ assert.equal(record, '/key STRIPE_KEY «redacted»');
 assert.ok(!record.includes('sk-live-secret'));
 assert.equal(submissionRecordText('/key remove STRIPE_KEY'), '/key remove STRIPE_KEY');
 assert.equal(submissionRecordText('/key'), '/key');
+// The malformed submission — value pasted first — redacts wholesale: the
+// name gate will reject it, so whatever was typed may BE the secret.
+assert.equal(submissionRecordText('/key 1lwdSecretValue its a polygon key'), '/key «redacted»');
+assert.equal(submissionRecordText('/key just-one-token'), '/key «redacted»');
 assert.equal(parseSubmission('/key A_B c').name, 'key');
 
 // Removal round-trips and reports the difference between removed and absent.
