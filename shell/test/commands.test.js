@@ -49,7 +49,7 @@ test('registry drives suggestions and help', () => {
     assert.deepEqual(
         suggestionsFor('/').map((c) => c.name),
         ['goal', 'plan', 'subagent', 'agents', 'compact', 'eval', 'email', 'win', 'learn', 'wiki',
-            'connectors', 'key', 'commons', 'copy', 'select', 'customize', 'update', 'clear', 'help', 'exit']
+            'connectors', 'key', 'commons', 'money', 'copy', 'select', 'customize', 'update', 'clear', 'help', 'exit']
     );
     // /compact, /connectors, /copy, and /clear share a prefix, so none may
     // swallow another — and /co now has four claimants, which is exactly the

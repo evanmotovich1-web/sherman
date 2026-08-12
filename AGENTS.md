@@ -17,6 +17,9 @@ The skills and vault knowledge are the product; the launcher, shell, and engine 
   roadmap. Command-backed entries are verified by smoke check 17.
 - `bin/` — the installed `sherman` launcher and wizard entry point.
 - `docs/` — setup, onboarding, and operator documentation.
+- `gate/` — the money engine's per-purchase authorization gate
+  (`gate/money-gate/`), a Cloudflare Worker the operator deploys per its
+  README; its caps are imported from `shell/src/money/caps.js`.
 - `logo/` — plain and ANSI terminal banners.
 - `pet/` — the floating macOS desktop companion, compiled locally by
   `sherman pet`; it renders `~/.sherman/pet/state.json`, which the shell

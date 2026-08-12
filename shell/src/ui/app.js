@@ -60,6 +60,7 @@ import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
 import { appendEvalReport, ungradedSessions } from '../evalstore.js';
 import { collectWinSources, renderWinHtml, winRequest, writeWinSite } from '../win.js';
 import { runCommonsCommand } from '../commons/command.js';
+import { moneyCommand } from '../money/cli.js';
 import { applyRetentionResult } from '../retention.js';
 
 // Monotonic ids. React list keys must be stable per item, and array index is
@@ -898,6 +899,14 @@ export function App({
                 if (command.name === 'commons') {
                     const commons = await commonsCommand(parsed.args);
                     commit(commons.ok ? 'notice' : 'error', commons.text);
+                    return;
+                }
+                if (command.name === 'money') {
+                    // Local, like /connectors: the ledger and approvals under
+                    // ~/.sherman/money own the whole answer, and sync degrades
+                    // to a named message when Stripe is not set up yet.
+                    const money = await moneyCommand(parsed.args);
+                    commit(money.ok ? 'notice' : 'error', money.text);
                     return;
                 }
                 if (command.name === 'key') {

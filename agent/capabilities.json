@@ -83,6 +83,13 @@
       ]
     },
     {
+      "name": "money",
+      "summary": "the capped earning float — ledger, spend caps, approvals",
+      "tools": [
+        { "name": "money", "verify": "command" }
+      ]
+    },
+    {
       "name": "mail",
       "summary": "draft email into your browser, ready to send",
       "tools": [

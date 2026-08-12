@@ -16,6 +16,7 @@
 #   sherman telegram  the Telegram bridge, same adapter and engine layer as the shell
 #   sherman brief     one headless morning-brief turn; delivers to Telegram when paired
 #   sherman pet       the floating desktop companion (macOS); pet stop ends it
+#   sherman money     the earning float: balance, ledger, approvals, kill switch
 #
 # Target shell: macOS system bash 3.2. No ${var,,}, no associative arrays,
 # no readlink -f.
@@ -1528,6 +1529,25 @@ run_board() {
 if [ "${1:-}" = "board" ]; then
     shift
     run_board "$@"
+fi
+
+# `money` -- the operator's window into the earning float (see the
+# money-engine skill and docs/money-setup.md). Same split as `board`: this
+# script owns the bash 3.2 dispatch, shell/src/money/cli.js owns the logic.
+# Needs no engine and no Sherman config -- the ledger, approvals queue, and
+# kill switch live under ~/.sherman/money and must stay reachable even when
+# nothing else is set up.
+run_money() {
+    if ! command -v node >/dev/null 2>&1; then
+        echo "sherman money needs Node.js 22 or newer, and node is not on your PATH." >&2
+        exit 1
+    fi
+    exec node "$ROOT/shell/src/money/cli.js" "$@"
+}
+
+if [ "${1:-}" = "money" ]; then
+    shift
+    run_money "$@"
 fi
 
 # `install` is Sherman's approved path to a capability that is a piece of

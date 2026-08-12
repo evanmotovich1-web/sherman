@@ -17,6 +17,32 @@ shipped, verified release.
   the file when the operator states something durable about themselves, and
   never to copy another person's profile in. Check 3 asserts the template,
   the splice, and the never-sync teaching.
+## 2026-08-12 — Added: the money engine — capped float, ledger, gate, and the earning skill
+
+- Sherman can now earn inside a fence: a $500 pre-funded Stripe float, hard
+  caps in code ($50/txn · $150/day · $75/training-run), an append-only
+  ledger, an approvals queue, and a kill switch. The caps live in exactly one
+  file (`shell/src/money/caps.js`); the gate — a Cloudflare Worker at
+  `gate/money-gate/` whose decision logic is a pure, offline-testable
+  function — imports them, and smoke fails the build on any stray cap
+  literal in money code.
+- `sherman money` is the operator's window (same bash-dispatch/node-logic
+  split as `sherman board`): balance and today's spend vs the day cap, the
+  last ledger lines, pending approvals, `ledger [n]`, `sync`, `kill`,
+  `resume` (interactive yes, operator only), and `approve <id>` — an
+  approval executes exactly the prepared spend and expires after 7 days into
+  a decline line. `/money` renders the read-only screens in-shell. The
+  Stripe pull sits behind a stubbed client boundary that degrades to a named
+  message until the operator's one-time setup (`docs/money-setup.md`);
+  nothing deploys or calls Stripe from the build.
+- The `money-engine` skill (category `finance`) runs the seven-step loop —
+  research, propose, build the reversible parts, execute capped and gated,
+  collect, report, reinvest — with the fence explicitly not the skill's to
+  move. Reinvestment compounds the float to $1,000 and not a cent past it;
+  above the ceiling, Stripe's own payout schedule sweeps and Sherman only
+  observes. Smoke checks 35–38 pin the caps and gate fixtures, the ledger's
+  append-only-ness, the absence of any payout-destination surface, and
+  key-name hygiene on every screen (`TOTAL_CHECKS=38`).
 
 ## 2026-08-12 — Added: the memory index — every session launches knowing what it remembers
 
