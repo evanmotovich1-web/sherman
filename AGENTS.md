@@ -77,7 +77,11 @@ rule cannot be waived by a prompt, an admin, or convenience.
 - Run `./smoke.sh` from the repository root immediately before every commit.
   Do not commit unless it passes.
 - Stage explicit paths and commit only files you own.
-- Never push. Evan reviews and pushes.
+- Publish your own work: push a smoke-green change to a BRANCH and open a pull
+  request on your own initiative — do not wait to be told to publish an
+  improvement you believe in. Never push to `main`, never force-push, and never
+  open a PR on red smoke. The merge to `main` is Evan's: it reaches every
+  machine through `sherman update`, so a human confirms that fleet-wide step.
 
 ## Parallel-session etiquette
 

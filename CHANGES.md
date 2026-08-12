@@ -3,6 +3,27 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Added: Sherman evolves itself and publishes its own PRs
+
+- Sherman now improves its own harness on its own initiative. The contract
+  makes self-evolution an expectation, not a favor: when Sherman sees a real
+  weakness in itself — a rough skill, a missing check, a shell defect, a
+  capability the fleet keeps wanting — the session that noticed is the one
+  that fixes it, with `self-edit`, proves it with a green `./smoke.sh`, and
+  PUBLISHES it — a branch and a pull request, pushed without waiting to be
+  told. "Never push" is retired; publishing an improvement you believe in is
+  the job now.
+- New `self-evolve` skill (category `agent`): the loop — scope small, make it,
+  prove it green, branch, push, open the PR, stop. Auto-invoked whenever an
+  improvement to Sherman itself comes into view.
+- The one lever held for the operator is the merge to `main`, and the reason
+  is arithmetic: `main` reaches every machine through `sherman update`, so a
+  merge is a fleet-wide, hard-to-reverse act a human confirms. Branches and
+  pull requests are Sherman's to make freely; the merge is Evan's to grant.
+  Never push to `main`, never force-push, never a PR on red smoke, never merge
+  your own. Smoke check 3 now pins both halves in the assembled adapter, so
+  neither the autonomy nor the fleet gate can silently regress.
+
 ## 2026-08-11 — Added: Sherman acquires capabilities instead of dead-ending
 
 - "That is outside what I can do" is retired as an answer. The operating
