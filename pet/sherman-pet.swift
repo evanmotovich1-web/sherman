@@ -85,6 +85,64 @@ func palette(_ name: String) -> (base: NSColor, shade: NSColor) {
     return (entry.base, entry.shade)
 }
 
+func blendColor(_ from: NSColor, toward to: NSColor, amount: CGFloat) -> NSColor {
+    let start = from.usingColorSpace(.deviceRGB) ?? from
+    let end = to.usingColorSpace(.deviceRGB) ?? to
+    let t = min(max(amount, 0), 1)
+    return NSColor(
+        calibratedRed: start.redComponent + (end.redComponent - start.redComponent) * t,
+        green: start.greenComponent + (end.greenComponent - start.greenComponent) * t,
+        blue: start.blueComponent + (end.blueComponent - start.blueComponent) * t,
+        alpha: start.alphaComponent + (end.alphaComponent - start.alphaComponent) * t
+    )
+}
+
+func smoothstep(_ t: CGFloat) -> CGFloat {
+    t * t * (3 - 2 * t)
+}
+
+func emotionPalette(_ preferred: (base: NSColor, shade: NSColor), status: String)
+    -> (base: NSColor, shade: NSColor) {
+    let target: (base: NSColor, shade: NSColor, amount: CGFloat)
+    switch status {
+    case "working":
+        target = (
+            NSColor(calibratedRed: 0.96, green: 0.72, blue: 0.24, alpha: 1),
+            NSColor(calibratedRed: 0.74, green: 0.47, blue: 0.12, alpha: 1),
+            0.58
+        )
+    case "done":
+        target = (
+            NSColor(calibratedRed: 0.32, green: 0.80, blue: 0.42, alpha: 1),
+            NSColor(calibratedRed: 0.20, green: 0.61, blue: 0.30, alpha: 1),
+            0.62
+        )
+    case "failed":
+        target = (
+            NSColor(calibratedRed: 0.91, green: 0.30, blue: 0.32, alpha: 1),
+            NSColor(calibratedRed: 0.70, green: 0.18, blue: 0.20, alpha: 1),
+            0.72
+        )
+    case "waiting":
+        target = (
+            NSColor(calibratedRed: 0.38, green: 0.62, blue: 0.96, alpha: 1),
+            NSColor(calibratedRed: 0.24, green: 0.42, blue: 0.78, alpha: 1),
+            0.58
+        )
+    case "offline":
+        return (
+            NSColor(calibratedWhite: 0.42, alpha: 1),
+            NSColor(calibratedWhite: 0.33, alpha: 1)
+        )
+    default: // idle and unknown states keep the preferred coat unchanged
+        return preferred
+    }
+    return (
+        blendColor(preferred.base, toward: target.base, amount: target.amount),
+        blendColor(preferred.shade, toward: target.shade, amount: target.amount)
+    )
+}
+
 func readPrefs() -> PetPrefs {
     let url = petDir.appendingPathComponent("prefs.json")
     guard let data = try? Data(contentsOf: url),
@@ -261,19 +319,38 @@ func focusSherman(_ state: PetState) {
 
 final class PetView: NSView {
     var state = PetState(status: "offline", detail: "", terminal: "", updatedAt: 0)
-    var pulse = false          // toggled by the tick while working, for a live feel
     var prefs = readPrefs()
     private var downAt: NSPoint?
     private var moved = false
+    private var previousVisualStatus = "offline"
+    private var currentVisualStatus = "offline"
+    private var transitionStartedAt = Date().timeIntervalSince1970
 
-    // Everything animated derives from the wall clock, so the motion needs no
-    // state machine: the bob is a sine of now, a blink happens when now lands
-    // in the first beat of its cycle, and the sip plays in the first ~2.8s of
-    // every 15-second cycle.
+    // Every animation derives from the wall clock: bob and transition lift are
+    // curves of now, blinking lands in the first beat of its cycle, and the
+    // sip plays in the first ~2.8s of every 15-second cycle.
     var now: Double { Date().timeIntervalSince1970 }
 
     static let SIP_PERIOD = 15.0
     static let SIP_LENGTH = 2.8
+    static let STATE_TRANSITION_LENGTH = 0.24
+
+    var transitionProgress: CGFloat {
+        let elapsed = max(0, now - transitionStartedAt)
+        return min(1, CGFloat(elapsed / PetView.STATE_TRANSITION_LENGTH))
+    }
+
+    var easedTransitionProgress: CGFloat {
+        smoothstep(transitionProgress)
+    }
+
+    func synchronizeVisualStatus() {
+        let next = shownStatus
+        guard next != currentVisualStatus else { return }
+        previousVisualStatus = currentVisualStatus
+        currentVisualStatus = next
+        transitionStartedAt = now
+    }
 
     /// 0..1 while the sip animation plays, nil the rest of the cycle.
     var sipProgress: CGFloat? {
@@ -419,6 +496,127 @@ final class PetView: NSView {
 
     // ----------------------------------------------------------- drawing --
 
+    func drawExpression(status: String, alpha: CGFloat, centerX cx: CGFloat,
+                        face: NSRect, petHeight h: CGFloat) {
+        guard alpha > 0 else { return }
+        let color = (status == "offline"
+            ? NSColor(calibratedWhite: 0.65, alpha: 1)
+            : NSColor(calibratedRed: 0.62, green: 0.93, blue: 0.87, alpha: 1))
+            .withAlphaComponent(alpha)
+        color.setStroke()
+        color.setFill()
+
+        let eyeY = face.midY + h * 0.025
+        let eyeDX = face.width * 0.20
+        let lineWidth = max(2.0, h * 0.028)
+        for side in [-1.0, 1.0] {
+            let ex = cx + CGFloat(side) * eyeDX
+            if blinking && status != "failed" && status != "offline" {
+                let lid = NSBezierPath()
+                lid.lineWidth = lineWidth
+                lid.lineCapStyle = .round
+                lid.move(to: NSPoint(x: ex - h * 0.045, y: eyeY))
+                lid.line(to: NSPoint(x: ex + h * 0.045, y: eyeY))
+                lid.stroke()
+                continue
+            }
+            switch status {
+            case "working":
+                let r = h * 0.044
+                NSBezierPath(ovalIn: NSRect(
+                    x: ex - r, y: eyeY - r, width: r * 2, height: r * 2
+                )).fill()
+            case "done":
+                let arc = NSBezierPath()
+                arc.lineWidth = lineWidth
+                arc.lineCapStyle = .round
+                arc.appendArc(
+                    withCenter: NSPoint(x: ex, y: eyeY - h * 0.01), radius: h * 0.045,
+                    startAngle: 20, endAngle: 160
+                )
+                arc.stroke()
+            case "failed":
+                let r = h * 0.035
+                for flip in [-1.0, 1.0] {
+                    let stroke = NSBezierPath()
+                    stroke.lineWidth = lineWidth
+                    stroke.lineCapStyle = .round
+                    stroke.move(to: NSPoint(x: ex - r, y: eyeY - r * CGFloat(flip)))
+                    stroke.line(to: NSPoint(x: ex + r, y: eyeY + r * CGFloat(flip)))
+                    stroke.stroke()
+                }
+            case "waiting":
+                let r = h * 0.045
+                let ring = NSBezierPath(ovalIn: NSRect(
+                    x: ex - r, y: eyeY - r, width: r * 2, height: r * 2
+                ))
+                ring.lineWidth = lineWidth
+                ring.stroke()
+            default: // idle and offline
+                let arc = NSBezierPath()
+                arc.lineWidth = lineWidth
+                arc.lineCapStyle = .round
+                arc.appendArc(
+                    withCenter: NSPoint(x: ex, y: eyeY + h * 0.02), radius: h * 0.045,
+                    startAngle: 200, endAngle: 340
+                )
+                arc.stroke()
+            }
+        }
+
+        let mouthY = face.minY + face.height * 0.17
+        switch status {
+        case "working":
+            let mouth = NSBezierPath()
+            mouth.lineWidth = lineWidth * 0.80
+            mouth.lineCapStyle = .round
+            mouth.move(to: NSPoint(x: cx - h * 0.042, y: mouthY))
+            mouth.line(to: NSPoint(x: cx + h * 0.042, y: mouthY))
+            mouth.stroke()
+        case "done":
+            NSColor(calibratedRed: 1, green: 0.48, blue: 0.58, alpha: 0.55 * alpha).setFill()
+            let cheekR = h * 0.025
+            for side in [-1.0, 1.0] {
+                NSBezierPath(ovalIn: NSRect(
+                    x: cx + CGFloat(side) * face.width * 0.31 - cheekR,
+                    y: mouthY - cheekR * 0.20,
+                    width: cheekR * 2, height: cheekR * 1.15
+                )).fill()
+            }
+            color.setStroke()
+            let smile = NSBezierPath()
+            smile.lineWidth = lineWidth
+            smile.lineCapStyle = .round
+            smile.appendArc(
+                withCenter: NSPoint(x: cx, y: mouthY + h * 0.045), radius: h * 0.055,
+                startAngle: 200, endAngle: 340
+            )
+            smile.stroke()
+        case "failed":
+            let frown = NSBezierPath()
+            frown.lineWidth = lineWidth
+            frown.lineCapStyle = .round
+            frown.appendArc(
+                withCenter: NSPoint(x: cx, y: mouthY - h * 0.025), radius: h * 0.055,
+                startAngle: 20, endAngle: 160
+            )
+            frown.stroke()
+        case "waiting":
+            let rx = h * 0.025
+            let ry = h * 0.032
+            NSBezierPath(ovalIn: NSRect(
+                x: cx - rx, y: mouthY - ry, width: rx * 2, height: ry * 2
+            )).fill()
+        default: // idle and offline
+            let mouth = NSBezierPath()
+            mouth.lineWidth = lineWidth * 0.75
+            mouth.lineCapStyle = .round
+            mouth.move(to: NSPoint(x: cx - h * 0.025, y: mouthY))
+            mouth.line(to: NSPoint(x: cx + h * 0.025, y: mouthY))
+            mouth.stroke()
+        }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.clear(bounds)
@@ -426,19 +624,28 @@ final class PetView: NSView {
         let shown = shownStatus
         let h = petHeight
         let cx = bounds.midX
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let transition = easedTransitionProgress
+        let reactionProgress = transitionProgress
+        let reactionLift = reduceMotion || reactionProgress >= 1
+            ? 0
+            : h * 0.025 * CGFloat(sin(Double.pi * Double(reactionProgress)))
         // The whole creature rides the breathing bob; the speech bubble stays
         // anchored so the text does not wobble while being read.
-        let baseY = bounds.minY + 4 + h * (shown == "offline" ? 0 : bob)
-        let sip = sipProgress
+        let breathingLift = reduceMotion || shown == "offline" ? 0 : h * bob
+        let baseY = bounds.minY + 4 + breathingLift + reactionLift
+        let sip = reduceMotion ? nil : sipProgress
 
-        // The coat comes from the color pref; the face panel stays dark and
-        // the eyes stay mint whatever the coat. Offline dims everything.
+        // The preferred coat remains the identity underneath a transient
+        // semantic tint. Body and expression share one 240ms crossfade.
         let offline = shown == "offline"
         let coat = palette(prefs.color)
-        let body = offline ? NSColor(calibratedWhite: 0.42, alpha: 1) : coat.base
-        let bodyDark = offline ? NSColor(calibratedWhite: 0.33, alpha: 1) : coat.shade
+        let previousCoat = emotionPalette(coat, status: previousVisualStatus)
+        let currentCoat = emotionPalette(coat, status: currentVisualStatus)
+        let body = blendColor(previousCoat.base, toward: currentCoat.base, amount: transition)
+        let bodyDark = blendColor(previousCoat.shade, toward: currentCoat.shade, amount: transition)
         let panel = NSColor(calibratedRed: 0.078, green: 0.078, blue: 0.11, alpha: 1)
-        let eye = offline
+        let eye = currentVisualStatus == "offline"
             ? NSColor(calibratedWhite: 0.65, alpha: 1)
             : NSColor(calibratedRed: 0.62, green: 0.93, blue: 0.87, alpha: 1)
 
@@ -519,63 +726,16 @@ final class PetView: NSView {
         panel.setFill()
         NSBezierPath(roundedRect: face, xRadius: faceH * 0.30, yRadius: faceH * 0.30).fill()
 
-        // Eyes, by state. A blink flattens whatever face is showing for a
-        // beat — except the failed ×, which does not blink away a failure.
-        eye.setStroke()
-        eye.setFill()
-        let eyeY = face.midY
-        let eyeDX = faceW * 0.20
-        let lineWidth = max(2.0, h * 0.028)
-        for side in [-1.0, 1.0] {
-            let ex = cx + CGFloat(side) * eyeDX
-            if blinking && shown != "failed" && shown != "offline" {
-                let lid = NSBezierPath()
-                lid.lineWidth = lineWidth
-                lid.lineCapStyle = .round
-                lid.move(to: NSPoint(x: ex - h * 0.045, y: eyeY))
-                lid.line(to: NSPoint(x: ex + h * 0.045, y: eyeY))
-                lid.stroke()
-                continue
-            }
-            switch shown {
-            case "working":
-                let r = h * (pulse ? 0.048 : 0.040)
-                NSBezierPath(ovalIn: NSRect(x: ex - r, y: eyeY - r, width: r * 2, height: r * 2)).fill()
-            case "done":
-                let arc = NSBezierPath()
-                arc.lineWidth = lineWidth
-                arc.lineCapStyle = .round
-                arc.appendArc(
-                    withCenter: NSPoint(x: ex, y: eyeY - h * 0.01), radius: h * 0.045,
-                    startAngle: 20, endAngle: 160
-                )
-                arc.stroke()
-            case "failed":
-                let r = h * 0.035
-                for flip in [-1.0, 1.0] {
-                    let stroke = NSBezierPath()
-                    stroke.lineWidth = lineWidth
-                    stroke.lineCapStyle = .round
-                    stroke.move(to: NSPoint(x: ex - r, y: eyeY - r * CGFloat(flip)))
-                    stroke.line(to: NSPoint(x: ex + r, y: eyeY + r * CGFloat(flip)))
-                    stroke.stroke()
-                }
-            case "waiting":
-                let r = h * 0.045
-                let ring = NSBezierPath(ovalIn: NSRect(x: ex - r, y: eyeY - r, width: r * 2, height: r * 2))
-                ring.lineWidth = lineWidth
-                ring.stroke()
-            default: // idle, offline: the reference's sleepy arcs
-                let arc = NSBezierPath()
-                arc.lineWidth = lineWidth
-                arc.lineCapStyle = .round
-                arc.appendArc(
-                    withCenter: NSPoint(x: ex, y: eyeY + h * 0.02), radius: h * 0.045,
-                    startAngle: 200, endAngle: 340
-                )
-                arc.stroke()
-            }
+        if transition < 1 {
+            drawExpression(
+                status: previousVisualStatus, alpha: 1 - transition,
+                centerX: cx, face: face, petHeight: h
+            )
         }
+        drawExpression(
+            status: currentVisualStatus, alpha: transition,
+            centerX: cx, face: face, petHeight: h
+        )
 
         // The sip: every fifteen seconds the right arm rises with a little
         // amber medicine bottle, tips it at the face for a pretend drink, and
@@ -583,18 +743,17 @@ final class PetView: NSView {
         if let p = sip {
             let restPoint = NSPoint(x: cx + torsoW * 0.62, y: torsoY + torsoH * 0.35)
             let mouthPoint = NSPoint(x: cx + faceW * 0.16, y: face.minY + faceH * 0.22)
-            let ease = { (t: CGFloat) -> CGFloat in t * t * (3 - 2 * t) } // smoothstep
             let lift: CGFloat
             let tilt: CGFloat
             if p < 0.3 {
-                lift = ease(p / 0.3)
+                lift = smoothstep(p / 0.3)
                 tilt = lift * 0.9
             } else if p < 0.7 {
                 lift = 1
                 // A little wobble mid-sip: the glug.
                 tilt = 0.9 + 0.12 * CGFloat(sin(Double(p) * 34))
             } else {
-                lift = ease((1 - p) / 0.3)
+                lift = smoothstep((1 - p) / 0.3)
                 tilt = lift * 0.9
             }
             let hand = NSPoint(
@@ -753,16 +912,14 @@ panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 panel.contentView = view
 panel.orderFrontRegardless()
 
-// The animation loop: ~12 frames a second, which is plenty for a bob, a
-// blink, and a sip, and costs nothing measurable for a view this small. The
-// state file is re-read every ~0.7s inside the same loop rather than on its
-// own timer, so there is exactly one clock in the program.
+// The animation loop runs at 30fps so state crossfades have enough frames to
+// read smoothly. State and preferences still poll only every ~0.67s, leaving
+// one clock in the program without doing file I/O on every drawing frame.
 var frame = 0
-Timer.scheduledTimer(withTimeInterval: 1.0 / 12.0, repeats: true) { _ in
+Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { _ in
     frame += 1
-    if frame % 8 == 0 {
+    if frame % 20 == 0 {
         view.state = readState()
-        if view.shownStatus == "working" { view.pulse.toggle() }
         // /customize edits prefs.json from the shell; pick the changes up
         // live. Size and color only — position belongs to dragging, and
         // re-applying a stored origin here would fight the operator's hand.
@@ -775,6 +932,9 @@ Timer.scheduledTimer(withTimeInterval: 1.0 / 12.0, repeats: true) { _ in
             view.applySize()
         }
     }
+    // Check every frame because `done` becomes `idle` from the wall clock,
+    // independently of state-file polling.
+    view.synchronizeVisualStatus()
     view.needsDisplay = true
 }
 
