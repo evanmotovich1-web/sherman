@@ -827,6 +827,46 @@ run_update() {
         fi
     fi
 
+    # ----------------------------------------------------------- mnemosyne --
+    # Same contract as the wiki repair: healthy costs one --help probe and
+    # prints nothing; a machine that never provisioned it GROWS it on update
+    # (pinned version), and every failure degrades to an honest NOTE.
+    mnemo_dir="$HOME/.sherman/mnemosyne"
+    mnemo_pin="mnemosyne-memory==3.15.1"
+    mnemo_bin="$mnemo_dir/.venv/bin/mnemosyne"
+    [ -x "$mnemo_bin" ] || mnemo_bin="$mnemo_dir/.venv/Scripts/mnemosyne.exe"
+    # SHERMAN_NO_FETCH opts out (tests, air-gapped machines) — provisioning
+    # is a network act, the same convention the vault sync honors.
+    if [ -z "${SHERMAN_NO_FETCH:-}" ] \
+        && ! { [ -x "$mnemo_bin" ] && "$mnemo_bin" --help >/dev/null 2>&1; }; then
+        if ! command -v python3 >/dev/null 2>&1; then
+            echo "NOTE: mnemosyne needs python3, which is missing, so it was not provisioned."
+        else
+            echo "provisioning mnemosyne — Sherman's long-term memory"
+            mkdir -p "$mnemo_dir/data"
+            mnemo_py="$mnemo_dir/.venv/bin/python"
+            [ -x "$mnemo_py" ] || mnemo_py="$mnemo_dir/.venv/Scripts/python.exe"
+            [ -x "$mnemo_py" ] || python3 -m venv "$mnemo_dir/.venv" >/dev/null 2>&1 || true
+            mnemo_py="$mnemo_dir/.venv/bin/python"
+            [ -x "$mnemo_py" ] || mnemo_py="$mnemo_dir/.venv/Scripts/python.exe"
+            if [ -x "$mnemo_py" ]; then
+                "$mnemo_py" -m pip --version >/dev/null 2>&1 \
+                    || "$mnemo_py" -m ensurepip --upgrade >/dev/null 2>&1 || true
+                mnemo_pip_out=$("$mnemo_py" -m pip install --quiet "$mnemo_pin" 2>&1) \
+                    || echo "NOTE: pip could not install mnemosyne: $(printf '%s\n' "$mnemo_pip_out" | tail -1)"
+                mnemo_bin="$mnemo_dir/.venv/bin/mnemosyne"
+                [ -x "$mnemo_bin" ] || mnemo_bin="$mnemo_dir/.venv/Scripts/mnemosyne.exe"
+                if [ -x "$mnemo_bin" ] && "$mnemo_bin" --help >/dev/null 2>&1; then
+                    echo "mnemosyne ready (verified: its CLI answers from its own venv)"
+                else
+                    echo "NOTE: mnemosyne still does not answer. Re-run install.sh for the full report."
+                fi
+            else
+                echo "NOTE: could not create mnemosyne's venv (is python3-venv installed?)."
+            fi
+        fi
+    fi
+
     # -------------------------------------------------------- agent reach --
     # The same provisioner install.sh runs, so an existing machine GROWS the
     # capability on update rather than only new installs getting it. It is
