@@ -64,7 +64,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=28
+TOTAL_CHECKS=29
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -2568,6 +2568,62 @@ if grep -q "Run sherman again to redo setup" bin/sherman; then
 else
     fail "the wizard write has no read-back refusal"
 fi
+
+# ----------------------------------------------------------------- check 29 --
+# `sherman board` renders a team board. Piped (no TTY) it must print the board
+# bytes verbatim so a transcript captures the truth; the factory floor is the
+# TTY-only animation over the SAME honest counts. Both are checked against a
+# fixture board through the real launcher.
+echo
+echo "29. sherman board reads a team board and reports honest counts"
+
+BOARDHOME=$(mktemp -d 2>/dev/null || mktemp -d -t shermanboard)
+mkdir -p "$BOARDHOME/.sherman/workspace/boards"
+cat > "$BOARDHOME/.sherman/workspace/boards/team-smoke.md" <<'BOARD'
+# smoke — team board
+
+## Agents
+
+| session | engine | working on | last seen |
+|---------|--------|------------|-----------|
+| 20260811_zzz111 | codex | #2 | now |
+
+## Cards
+
+| # | card | owner | status | done means |
+|---|------|-------|--------|------------|
+| 1 | alpha | 20260811_zzz111 | done | x |
+| 2 | beta | 20260811_zzz111 | in-progress | y |
+| 3 | gamma | — | blocked: waiting | z |
+BOARD
+
+# Piped: verbatim bytes, no escapes, every row present.
+board_piped=$(HOME="$BOARDHOME" ./bin/sherman board smoke 2>&1)
+if printf '%s' "$board_piped" | grep -qF 'blocked: waiting' \
+    && printf '%s' "$board_piped" | grep -qF 'alpha' \
+    && ! printf '%s' "$board_piped" | grep -q "$(printf '\033')"; then
+    pass "piped board prints the table verbatim with no escape codes"
+else
+    fail "piped board dropped rows or leaked escapes"
+fi
+
+# The factory renderer is byte-safe on this awk: drive it directly (color off)
+# and assert it counted the fixture — 1 done, 1 in-progress, 1 blocked — and
+# drew the floor. This is the same awk the launcher runs; a byte-width bug
+# would misalign but not miscount, so the counts are what we pin.
+board_factory=$(SHERMAN_BOARD_TEST_FRAME=0 NO_COLOR=1 HOME="$BOARDHOME" \
+    ./bin/sherman board --factory-once smoke 2>&1)
+if printf '%s' "$board_factory" | grep -qF 'SHERMAN SOFTWARE FACTORY' \
+    && printf '%s' "$board_factory" | grep -qF '1 shipped' \
+    && printf '%s' "$board_factory" | grep -qF '1 on the line' \
+    && printf '%s' "$board_factory" | grep -qF 'LINE STOPPED' \
+    && printf '%s' "$board_factory" | grep -qF '1 bot on shift'; then
+    pass "the factory floor renders honest counts from the board and flags the block"
+else
+    fail "factory render miscounted or lost the floor: $(printf '%s' "$board_factory" | tr '\n' ' ' | cut -c1-120)"
+fi
+
+rm -rf "$BOARDHOME"
 
 # -------------------------------------------------------------------- result --
 echo

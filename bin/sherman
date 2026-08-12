@@ -1250,7 +1250,22 @@ fi
 # all it does; the sessions own the writes.
 run_board() {
     boards_dir="$WORKSPACE/boards"
-    pick="${1:-}"
+
+    # --plain drops the factory and shows the raw table; anything else is the
+    # board name. The factory is the default on a TTY because watching a team
+    # should feel like watching a floor, not reading a spreadsheet.
+    # --factory-once renders one factory frame and exits, off a TTY too: the
+    # non-looping path the smoke check drives.
+    plain_view=0
+    factory_once=0
+    pick=""
+    for arg in "$@"; do
+        case "$arg" in
+            --plain) plain_view=1 ;;
+            --factory-once) factory_once=1 ;;
+            *) [ -z "$pick" ] && pick="$arg" ;;
+        esac
+    done
 
     board_file=""
     if [ -n "$pick" ]; then
@@ -1277,7 +1292,7 @@ run_board() {
         fi
     fi
 
-    render_board() {
+    render_plain() {
         # Light ink, honest content: headings and statuses colored, every
         # byte of the board shown as written. NO_COLOR drops the tint.
         if [ -n "${NO_COLOR:-}" ]; then
@@ -1294,12 +1309,142 @@ run_board() {
         fi
     }
 
-    if [ -t 1 ]; then
+    # The factory floor. Reads the same board file the sessions write and
+    # renders it as a running plant: four stations (intake / assembly / QA /
+    # shipping) fed by the card statuses, the agents as bots on shift, a
+    # conveyor and smokestacks animated off FRAME so the floor breathes even
+    # when nothing changed, and a red klaxon when any card is blocked. It
+    # INVENTS nothing — every crate is a real card, every bot a real session;
+    # the animation is chrome over honest counts. NO_COLOR strips the ink and
+    # keeps the shapes.
+    render_factory() {
+        frame="$1"
+        color=1
+        [ -n "${NO_COLOR:-}" ] && color=0
+        # macOS /usr/bin/awk is byte-oriented: length()/substr() count BYTES,
+        # so a 3-byte box glyph breaks any right-aligned padding. The layout
+        # is therefore a LEFT rule with full-width horizontal separators, and
+        # every variable-width Unicode run (crates, bots, conveyor) trails at
+        # the END of its line where nothing needs to align after it. Only
+        # ASCII gets padded. That is byte-safe on every awk and matches the
+        # transcript's own one-left-edge look.
+        awk -v frame="$frame" -v color="$color" '
+            function ink(code, s) { return color ? "\033[" code "m" s "\033[0m" : s }
+            function padA(s, n,   r) { r = s; while (length(r) < n) r = r " "; return r }
+            function rule(n,   r, i) { r = ""; for (i = 0; i < n; i++) r = r "─"; return r }
+            function crates(count, glyph,   r, i, cap) {
+                if (count == 0) return "·"
+                cap = count > 8 ? 8 : count; r = ""
+                for (i = 0; i < cap; i++) r = r glyph " "
+                if (count > 8) r = r "+" (count - 8)
+                return r
+            }
+            BEGIN { section = ""; nb = 0; np = 0; nv = 0; nd = 0; nbk = 0; na = 0; W = 60 }
+            /^## *Agents/  { section = "agents"; next }
+            /^## *Cards/   { section = "cards";  next }
+            /^## *Messages/{ section = "msg";    next }
+            /^#/ { next }
+            # Table rows only: a leading pipe, minus the header and |---| rule.
+            /^\|/ {
+                if ($0 ~ /^\| *-+/) next
+                if ($0 ~ /session *\| *engine/) next
+                if ($0 ~ /card *\| *owner/) next
+                n = split($0, c, "|")
+                for (i = 1; i <= n; i++) { gsub(/^ +| +$/, "", c[i]) }
+                if (section == "agents" && c[2] != "") {
+                    if (na < 12) { asid[na] = c[2]; aeng[na] = c[3]; awork[na] = c[4]; na++ }
+                } else if (section == "cards" && c[2] != "") {
+                    st = c[5]
+                    if (st ~ /blocked/) { nbk++; blk[nbk] = c[2] }
+                    else if (st ~ /done/) nd++
+                    else if (st ~ /in-progress/) np++
+                    else if (st ~ /verify/) nv++
+                    else nb++
+                }
+                next
+            }
+            END {
+                spin = substr("|/-\\", (frame % 4) + 1, 1)
+                puff[0]="  .  "; puff[1]=" .:. "; puff[2]=".:o:."; puff[3]=" :o: "
+                p1 = puff[frame % 4]; p2 = puff[(frame+2) % 4]; p3 = puff[(frame+1) % 4]
+                belt = ""; for (i = 0; i < 46; i++) belt = belt ((i + frame) % 6 == 0 ? "▸" : "═")
+
+                print ""
+                bots = na " bot" (na == 1 ? "" : "s") " on shift"
+                print "  " ink("1;97", "⚙  SHERMAN SOFTWARE FACTORY") "   " ink("2", spin "  " bots)
+                print "  " ink("1;90", rule(W))
+                # Smokestacks, hand-spaced so the Unicode stacks sit at fixed
+                # columns without any padding math.
+                print "  " ink("90", "      " p1 "        " p2 "        " p3)
+                print "  " ink("90", "      ▟█▙        ▟█▙        ▟█▙")
+                print "  " ink("1;90", rule(W))
+
+                # One station per line: ASCII label + status padded (byte-safe),
+                # then the crate glyphs trailing. Active stations carry a spinner.
+                sp_p = (np > 0) ? " " spin : ""
+                sp_v = (nv > 0) ? " " spin : ""
+                station("INTAKE",   "backlog",     "37",   crates(nb, "▢"), nb " queued", "")
+                station("ASSEMBLY", "in-progress", "1;33", crates(np, "▣"), np " on the line", sp_p)
+                station("Q.A. BAY", "verify",      "1;35", crates(nv, "◈"), nv " in QA", sp_v)
+                station("SHIPPING", "done",        "1;32", crates(nd, "■"), nd " shipped", "")
+
+                print ""
+                print "  " ink("33", belt)
+
+                if (nbk > 0) {
+                    dot = (frame % 2 == 0) ? "◉" : "○"
+                    print "  " ink("1;31", dot " LINE STOPPED") "  " ink("31", nbk " blocked — card #" blk[1] (nbk > 1 ? " (+" nbk-1 " more)" : ""))
+                }
+
+                print "  " ink("1;90", rule(W))
+                print "  " ink("1;96", "BOTS ON SHIFT")
+                if (na == 0) {
+                    print "  " ink("2", "(no sessions clocked in — start one and it joins the roster)")
+                } else {
+                    for (i = 0; i < na; i++) {
+                        sid = asid[i]; short = length(sid) > 9 ? "…" substr(sid, length(sid)-5) : sid
+                        arm = (i % 2 == frame % 2) ? "🤖" : "🤖"
+                        print "  " arm "  " ink("1;37", padA(short, 9)) "  " ink("36", padA(aeng[i], 6)) "  " ink("2", "→ " awork[i])
+                    }
+                }
+                print ""
+            }
+            function station(label, status, code, crate, count, spinner) {
+                printf "  %s  %s  %s%s\n",
+                    ink("1;96", padA(label, 9)),
+                    ink("2", padA(status, 13)),
+                    ink(code, crate),
+                    ink("2", "   " count spinner)
+            }
+        ' "$board_file"
+    }
+
+    if [ "$factory_once" -eq 1 ]; then
+        # One frame, no loop, no cursor tricks — for tests and for piping a
+        # single snapshot. Frame is fixed unless a test pins it.
+        render_factory "${SHERMAN_BOARD_TEST_FRAME:-0}"
+        exit 0
+    fi
+
+    if [ -t 1 ] && [ "$plain_view" -eq 0 ]; then
+        # Hide the cursor for the animation; restore it however we leave.
+        printf '\033[?25l'
+        trap 'printf "\033[?25h\n"; exit 0' INT TERM
+        frame=0
+        while :; do
+            printf '\033[H\033[2J'
+            render_factory "$frame"
+            printf '%s\n' "$(printf '\033[2m  %s · %s · sherman board --plain for the table · ctrl+c to leave the floor\033[0m' \
+                "$board_file" "$(date '+%H:%M:%S')")"
+            frame=$((frame + 1))
+            sleep 1
+        done
+    elif [ -t 1 ]; then
         while :; do
             printf '\033[H\033[2J'
             printf '\033[2m%s · refreshed %s · ctrl+c to stop watching\033[0m\n\n' \
                 "$board_file" "$(date '+%H:%M:%S')"
-            render_board
+            render_plain
             sleep 2
         done
     else

@@ -3,6 +3,29 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-11 — Added: `sherman board` runs a live software-factory floor
+
+- The team-board watcher got a floor. On a TTY, `sherman board` now renders
+  the shared board as an animated software factory: four stations (INTAKE /
+  ASSEMBLY / Q.A. BAY / SHIPPING) fed by the card statuses, crates per card,
+  a scrolling conveyor, puffing smokestacks, a spinner on the active
+  stations, the sessions as bots on shift, and a blinking red LINE STOPPED
+  klaxon naming the first blocked card. It invents nothing — every crate is
+  a real card, every bot a real session; the animation is chrome over honest
+  counts. `sherman board --plain` keeps the raw coloured table; piped output
+  is still verbatim bytes.
+- Built byte-safe on purpose: macOS `/usr/bin/awk` counts bytes, so the
+  layout is a left rule with full-width separators and every variable-width
+  Unicode run trailing where nothing needs to align after it — no right
+  border to drift. Smoke check 29 drives the real launcher over a fixture
+  board and asserts both the verbatim pipe and the factory's honest counts,
+  including the block flag.
+- **Not built, and it won't be:** a request to have the board escape the
+  sandbox and silently install whatever it wants was declined. `sherman
+  board` is a read-only viewer, and a deliberate sandbox-escape hatch would
+  turn every one of Sherman's isolation guarantees into a lie. Capability a
+  session genuinely needs goes through the visible, approved `0-1` path.
+
 ## 2026-08-11 — Fixed: Sherman addresses the person in front of it, not the example
 
 - Seen live on a second machine: Sherman called its operator "Evan" — the
