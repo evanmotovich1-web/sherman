@@ -895,7 +895,17 @@ run_update() {
         exit 1
     fi
 
-    echo "Updated: v$old_version -> v$(shell_version)"
+    if [ "$old_version" = "$(shell_version)" ]; then
+        # An up-to-date machine used to end on a line comparing a version to
+        # itself, which read as "the update did nothing" — and on a machine
+        # whose operator just shipped work, as "nothing was pushed." Say the
+        # true thing instead: current, at which commit, and that RUNNING
+        # sessions still need a relaunch to load what the disk already has.
+        echo "Already current: v$(shell_version) at $(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo 'unknown') — verified healthy."
+        echo "Running sessions keep their old code until relaunched."
+    else
+        echo "Updated: v$old_version -> v$(shell_version)"
+    fi
     exit 0
 }
 
