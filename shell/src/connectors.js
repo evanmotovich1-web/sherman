@@ -32,6 +32,8 @@ import { delimiter as pathDelimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir, tmpdir } from 'node:os';
 
+import { loadKeys } from './keys.js';
+
 // Resolved from THIS file, never process.cwd() — at runtime the cwd is the
 // engine's workspace, not the repo. Same reasoning as registry.js.
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -209,20 +211,45 @@ export function resolve(catalog, enablement, options = {}) {
     const known = [];
     const secrets = [];
 
+    // The operator's generic key store (keys.js) backfills connector secrets:
+    // a key handed over once with /key serves every catalogued connector that
+    // requires that name, so nobody stores the same secret twice under two
+    // spellings of the same intent. Per-connector enablement secrets win —
+    // they are the more specific statement.
+    const extra = options.extraSecrets && typeof options.extraSecrets === 'object'
+        ? options.extraSecrets
+        : {};
+    const has = (map, name) => map?.[name] !== undefined && String(map[name]).trim() !== '';
+
     for (const entry of catalog.connectors) {
         const summary = entry.summary ?? '';
         const machine = enablement.enabled?.[entry.name];
         const off = enablement.disabled?.includes(entry.name);
+        const required = Array.isArray(entry.requires) ? entry.requires : [];
+
+        // A stored key is enabling intent. A connector whose every required
+        // secret the operator has already handed over is on — handing over
+        // the key WAS the enablement — unless the disabled list says
+        // otherwise, which stays the explicit off switch.
+        const keyEnabled = required.length > 0
+            && required.every((name) => has(extra, name) || has(machine?.secrets, name));
 
         // Not enabled and not self-enabling: catalogued, nothing more.
-        if (off || (!machine && !entry.autoEnable)) {
+        if (off || (!machine && !entry.autoEnable && !keyEnabled)) {
             if (!off) known.push({ name: entry.name, summary, signup: entry.signup ?? null });
             continue;
         }
 
         // Secrets. Names only from here on unless the entry reaches `wired`.
-        const required = Array.isArray(entry.requires) ? entry.requires : [];
-        const provided = machine?.secrets && typeof machine.secrets === 'object' ? machine.secrets : {};
+        const provided = {};
+        for (const name of required) {
+            if (has(extra, name)) provided[name] = extra[name];
+        }
+        for (const [name, value] of Object.entries(
+            machine?.secrets && typeof machine.secrets === 'object' ? machine.secrets : {}
+        )) {
+            if (value !== undefined && String(value).trim() !== '') provided[name] = value;
+        }
         const missing = required.filter((name) => !provided[name] || String(provided[name]).trim() === '');
         if (missing.length > 0) {
             blocked.push({
@@ -435,7 +462,11 @@ export function render(workspace, options = {}) {
         notes.push(`connector "${name}" is malformed in agent/connectors.json and was not wired`);
     }
 
-    const { wired, blocked, secrets } = resolve(catalog, enablement, { shermanHome });
+    const keyStore = loadKeys(shermanHome);
+    const { wired, blocked, secrets } = resolve(catalog, enablement, {
+        shermanHome,
+        extraSecrets: keyStore.ok ? keyStore.keys : {},
+    });
 
     const live = [];
     for (const connector of wired) {
@@ -518,7 +549,11 @@ export function describe(options = {}) {
     const enablement = loadEnablement(shermanHome);
     if (!enablement.ok) return `Connectors unavailable: ${enablement.reason}.`;
 
-    const { blocked, known } = resolve(catalog, enablement, { shermanHome });
+    const keyStore = loadKeys(shermanHome);
+    const { blocked, known } = resolve(catalog, enablement, {
+        shermanHome,
+        extraSecrets: keyStore.ok ? keyStore.keys : {},
+    });
 
     let connected = [];
     try {

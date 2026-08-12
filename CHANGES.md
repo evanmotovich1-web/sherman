@@ -3,6 +3,31 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Added: /key — hand Sherman an API key once, it remembers
+
+- New shell command `/key <NAME> <value>`: the operator hands over an API key
+  once and every session from then on simply has it. The shell stores it in
+  `~/.sherman/keys.json` (chmod 600, atomic write, read-back verified — never
+  committed, never synced, never in the vault) and injects it into the engine
+  environment immediately, so the very next turn can use it without a
+  relaunch. Bare `/key` lists stored NAMES only; `/key remove <NAME>` deletes
+  one and un-injects it on the spot.
+- The value never reaches the model or the record: the submission is redacted
+  to `/key NAME «redacted»` before the transcript or the session log is
+  written, the same boundary `/learn` and `/commons enroll` already hold.
+  Explicit environment exports outrank the store, so a one-run override stays
+  possible.
+- Stored keys backfill connectors: a key whose name matches a catalogued
+  connector's missing secret counts as enabling intent, and the connector
+  wires itself on the next launch — handing over the key WAS the enablement.
+  The explicit disabled list still wins.
+- The operating contract now teaches the hand-over: when work needs a key
+  only the operator holds, Sherman asks with the exact `/key NAME <value>`
+  command — never as prose, never echoed back, presence checked quietly with
+  `[ -n "$NAME" ]`. New smoke check 31 pins the store's 0600 mode, the name
+  gate, the no-clobber injection, the log redaction, the names-only listing,
+  and the SYSTEM.md contract (`TOTAL_CHECKS=31`).
+
 ## 2026-08-12 — Added: Sherman evolves itself and publishes its own PRs
 
 - Sherman now improves its own harness on its own initiative. The contract

@@ -51,6 +51,7 @@ import {
     workerRequest,
 } from '../commands.js';
 import { describe as describeConnectors } from '../connectors.js';
+import { describeKeys, removeKey, saveKey } from '../keys.js';
 import { customizePet, writePetState } from '../petstate.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
 import { appendEvalReport, ungradedSessions } from '../evalstore.js';
@@ -868,6 +869,48 @@ export function App({
                 if (command.name === 'commons') {
                     const commons = await commonsCommand(parsed.args);
                     commit(commons.ok ? 'notice' : 'error', commons.text);
+                    return;
+                }
+                if (command.name === 'key') {
+                    // Shell-owned end to end, /learn's contract: the model
+                    // never handles the value. The submission was already
+                    // redacted before the transcript and log saw it
+                    // (submissionRecordText), so by the time this runs the
+                    // secret exists nowhere but the parsed args and the store.
+                    const args = parsed.args.trim();
+                    if (args === '') {
+                        commit('notice', describeKeys());
+                        return;
+                    }
+                    const removal = args.match(/^remove\s+(\S+)$/i);
+                    if (removal) {
+                        const result = removeKey(removal[1]);
+                        if (!result.ok) {
+                            commit('error', `remove failed · ${result.reason}`);
+                            return;
+                        }
+                        // Un-inject so "removed" is true for the very next
+                        // turn, not just the next launch.
+                        delete process.env[removal[1]];
+                        commit('notice', result.removed
+                            ? `${removal[1]} removed (verified: read back) · gone from the environment now`
+                            : `${removal[1]} was not stored · nothing to remove`);
+                        return;
+                    }
+                    const pair = args.match(/^(\S+)\s+([\s\S]+)$/);
+                    if (!pair) {
+                        commit('error', 'Usage: /key <NAME> <value> · /key remove <NAME> · bare /key lists stored names');
+                        return;
+                    }
+                    const result = saveKey(pair[1], pair[2]);
+                    if (!result.ok) {
+                        commit('error', `key rejected · nothing stored · ${result.reason}`);
+                        return;
+                    }
+                    // Live immediately: both engines inherit process.env, so
+                    // the very next turn can use it — no relaunch.
+                    process.env[result.name] = pair[2].trim();
+                    commit('notice', `${result.name} ${result.replaced ? 'replaced' : 'stored'} (verified: read back) · chmod 600, outside the repo and the vault · live for this and every future session · value redacted from the log`);
                     return;
                 }
                 if (command.name === 'learn' || command.name === 'wiki') {
