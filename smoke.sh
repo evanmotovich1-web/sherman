@@ -1138,7 +1138,7 @@ const poll = setInterval(() => {
 
             const width = (s) => [...s].length;
             const lines = plain.split(/\r?\n/);
-            if (!lines.includes(' ❯ read') || !lines.includes('   the sop')) {
+            if (!lines.includes(' ● read') || !lines.includes('   the sop')) {
                 missing.push('committed multiline user turn');
             }
             const statusLine = lines.find(

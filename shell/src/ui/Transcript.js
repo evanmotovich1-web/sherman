@@ -225,10 +225,13 @@ function Item({ item, width, rows }) {
         case 'user':
             // User prompts may wrap inside the explicit-width transcript. The
             // two-space newline indent aligns continuations under the body.
+            // The ● is the turn's anchor: the accent dot marks where a turn
+            // begins, and the │-railed work rows that follow hang under it —
+            // prompt, then the tree of what the prompt caused.
             return React.createElement(
                 Text,
                 null,
-                React.createElement(Text, { color: color.promptHistory, dimColor: true }, '❯ '),
+                React.createElement(Text, { color: color.accent }, '● '),
                 React.createElement(
                     Text,
                     { color: color.user },
