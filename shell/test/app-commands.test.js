@@ -372,12 +372,12 @@ test('composed busy chrome reserves activity, status, goal, and composer rows', 
                 const frameRows = frame.split('\n');
                 assert.equal(frameRows.length, terminalRows);
                 assert.equal(
-                    frameRows.filter((row) => /│ › tool-[123]/.test(row)).length,
+                    frameRows.filter((row) => /┊ › tool-[123]/.test(row)).length,
                     expectedActivityRows,
                     `${terminalRows}-row frame painted the wrong activity-row count`
                 );
                 for (const index of expectedTools) {
-                    assert.match(frame, new RegExp(`│ › tool-${index}\\b`));
+                    assert.match(frame, new RegExp(`┊ › tool-${index}\\b`));
                 }
                 // Exactly one status strip. It no longer opens with ' ─ ', so it
                 // is identified by the gutter space plus the state chip's own
@@ -526,7 +526,7 @@ test('a finished task commits to the trace; only the running copy leaves', async
         // glyph, padded category tag, the engine's label, measured duration.
         await until(() => latestFrame(writes).includes('📖 read      read scanner.js  0.9s'));
         const frame = latestFrame(writes);
-        assert.match(frame, /│ 📖 read {6}read scanner\.js {2}0\.9s/, 'the committed row lost its trace shape');
+        assert.match(frame, /┊ 📖 read {6}read scanner\.js {2}0\.9s/, 'the committed row lost its trace shape');
 
         // Success carries NO outcome mark — in a trace where nearly every row
         // succeeds, the absence is what carries information...
@@ -543,7 +543,7 @@ test('a finished task commits to the trace; only the running copy leaves', async
         await until(() => latestFrame(writes).includes('❯ Ask about company operations…'));
         assert.match(
             latestFrame(writes),
-            /│ 📖 read {6}read scanner\.js {2}0\.9s/,
+            /┊ 📖 read {6}read scanner\.js {2}0\.9s/,
             'the committed trace row did not survive the turn ending'
         );
     } finally {
@@ -612,7 +612,7 @@ test('/copy and ctrl+y both copy the last reply as plain text', async () => {
         assert.equal(copied[1], 'main response', '/copy did not copy the reply source text');
 
         for (const text of copied) {
-            assert.doesNotMatch(text, /│/, 'the rule glyph leaked into the clipboard');
+            assert.doesNotMatch(text, /[│┊]/, 'the rail glyph leaked into the clipboard');
             assert.doesNotMatch(text, /Sherman/, 'the signature line leaked into the clipboard');
             assert.doesNotMatch(text, /\x1b/, 'an ANSI escape leaked into the clipboard');
         }

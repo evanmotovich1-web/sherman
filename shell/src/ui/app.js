@@ -171,7 +171,7 @@ function formatTool(event, includeDuration) {
 }
 
 /**
- * @param {{session: import('../engine/session.js').EngineSession, sessionId: string, sessionFactory?: (() => import('../engine/session.js').EngineSession), rows?: number, evalEveryMs?: number, catchUpDelayMs?: number}} props
+ * @param {{session: import('../engine/session.js').EngineSession, sessionId: string, sessionFactory?: (() => import('../engine/session.js').EngineSession), rows?: number, evalEveryMs?: number, catchUpDelayMs?: number, exitGlitchMs?: number}} props
  */
 /**
  * `clipboard` is injectable for one concrete reason: the real implementation
@@ -193,6 +193,10 @@ export function App({
     // shell's busiest, and the backlog has already waited since that session
     // ended. Injectable for the same reason as evalEveryMs.
     catchUpDelayMs = 15_000,
+    // The floor the exit glitch holds before the shell leaves — long enough
+    // to read as a deliberate signal. Injectable so tests do not sit through
+    // five real seconds; the product value is the default.
+    exitGlitchMs = 5000,
     // Retained for caller compatibility; vault wiki capture no longer depends
     // on an external LLMWiki installation.
     wiki = null,
@@ -433,6 +437,15 @@ export function App({
     // can then be the documented force-exit without turning a single Ctrl+C
     // during an ordinary answer into process termination.
     const exitFlowRef = useRef(false);
+    // The exit glitch: 0 off, else a tick that advances every ~90ms. While it
+    // runs, the transcript's rail glyphs churn — the shell's ONLY signal that
+    // the exit eval and retention are happening. No text, by design
+    // (operator's instruction, 2026-08-12).
+    const [glitch, setGlitch] = useState(0);
+    const glitchTimerRef = useRef(null);
+    useEffect(() => () => {
+        if (glitchTimerRef.current) clearInterval(glitchTimerRef.current);
+    }, []);
 
     // What survived the last compaction, waiting for a turn to ride along with.
     // It is spent on the first request after the reset and then forgotten --
@@ -1002,8 +1015,17 @@ export function App({
                     // branch books the debt before the turn starts, so an
                     // interrupted eval does not re-run and turn one exit
                     // into two.
-                    if (turnsRef.current > lastEvalTurnRef.current && !log.failed) {
-                        commit('notice', 'evaluating this session before exit · ctrl+c to skip');
+                    //
+                    // Silent, by the operator's instruction (2026-08-12): no
+                    // notice announces the grading. The transcript rail
+                    // glitches instead — held to a five-second floor so the
+                    // signal reads as a signal even when the work is quick.
+                    const grading = turnsRef.current > lastEvalTurnRef.current && !log.failed;
+                    let glitchStart = 0;
+                    if (grading) {
+                        glitchStart = Date.now();
+                        setGlitch(1);
+                        glitchTimerRef.current = setInterval(() => setGlitch((g) => g + 1), 90);
                         await submitRef.current('/eval');
                     }
 
@@ -1016,6 +1038,13 @@ export function App({
                     // network from holding the door shut, and ctrl+c twice
                     // remains the skip-everything exit.
                     await syncVaultOnExit();
+                    if (glitchStart) {
+                        const hold = exitGlitchMs - (Date.now() - glitchStart);
+                        if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));
+                        clearInterval(glitchTimerRef.current);
+                        glitchTimerRef.current = null;
+                        setGlitch(0);
+                    }
                     session.dispose();
                     exit();
                     return true;
@@ -1106,7 +1135,11 @@ export function App({
                 // the very debt it just paid.
                 lastEvalTurnRef.current = turnsRef.current + 1;
                 isEval = true;
-                commit('notice', 'evaluating this session · read-only · judging conduct, not answers');
+                // A hand-typed /eval announces itself; the exit flow does not
+                // — there the glitching rail is the whole announcement.
+                if (!exitFlowRef.current) {
+                    commit('notice', 'evaluating this session · read-only · judging conduct, not answers');
+                }
             }
 
 
@@ -1508,14 +1541,16 @@ export function App({
 
                 // The vault-growth gate. Sixty-nine sessions produced three
                 // proposals and zero filed facts, because a proposal had to
-                // be re-typed to become real. Now each complete /learn and
-                // /wiki the verdict proposed is offered as one keypress:
-                // Enter files it, Esc skips it. The operator is still the
-                // only path to a write — nothing files without the keypress
-                // — and the write still goes through the same shell
-                // validation and confinement as a hand-typed command.
+                // be re-typed to become real. A hand-typed /eval offers each
+                // complete /learn and /wiki the verdict proposed as one
+                // keypress: Enter files it, Esc skips it. On EXIT the memory
+                // improves itself: proposals file automatically and silently
+                // (operator's instruction, 2026-08-12) — the glitching rail
+                // is the only sign, and the write still goes through the
+                // same shell validation and confinement as a hand-typed
+                // command either way.
                 for (const proposal of parseRetentionProposals(evalReply)) {
-                    const accepted = await new Promise((resolve) => {
+                    const accepted = exitFlowRef.current || await new Promise((resolve) => {
                         setRetentionChoice(0);
                         setPendingRetention({ ...proposal, resolve });
                     });
@@ -1529,9 +1564,13 @@ export function App({
                                 operations: [{ path: `${proposal.name}.md`, content: proposal.content }],
                             }),
                         });
-                        commit('notice', `${proposal.command} filed ${proposal.name} · shell-validated · publishes on the next vault sync`);
+                        if (!exitFlowRef.current) {
+                            commit('notice', `${proposal.command} filed ${proposal.name} · shell-validated · publishes on the next vault sync`);
+                        }
                     } catch (error) {
-                        commit('error', `${proposal.command} rejected · nothing written · ${error?.message ?? String(error)}`);
+                        if (!exitFlowRef.current) {
+                            commit('error', `${proposal.command} rejected · nothing written · ${error?.message ?? String(error)}`);
+                        }
                     }
                 }
             }
@@ -1652,7 +1691,7 @@ export function App({
                 await submitRef.current(steerTurn(notes), { steer: true });
             }
         },
-        [carryOver, clearLingerTimers, commit, commitDelegate, commonsCommand, compactSession, exit, goal, mouseEnabled, runMetaEval, runUpdate, session, sessionFactory, sessionId, setBusyBoth, log, slashSkills, atAgents, syncVaultOnExit]
+        [carryOver, clearLingerTimers, commit, commitDelegate, commonsCommand, compactSession, exit, exitGlitchMs, goal, mouseEnabled, runMetaEval, runUpdate, session, sessionFactory, sessionId, setBusyBoth, log, slashSkills, atAgents, syncVaultOnExit]
     );
     submitRef.current = submit;
 
@@ -1916,7 +1955,7 @@ export function App({
     return React.createElement(
         Box,
         { flexDirection: 'column', height: rows },
-        React.createElement(Transcript, { items, offset: scrollOffset, onWindow }),
+        React.createElement(Transcript, { items, offset: scrollOffset, glitch, onWindow }),
         // Only while parked above the tail, and only ever a measured count. The
         // row costs transcript height, which is the honest trade: the shell
         // says how much it is hiding from you, in the same units you scroll in.

@@ -66,7 +66,7 @@ export function Thinking({ active, activities = [], lifecycle = null, columns, r
             React.createElement(
                 Text,
                 { key: activity.id, color: color.tertiary, wrap: 'truncate' },
-                `  │ ${safeTerminalText(activity.line)}`
+                `  ┊ ${safeTerminalText(activity.line)}`
             )
         )
     );
