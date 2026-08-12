@@ -1575,8 +1575,18 @@ export function App({
                             if (event.kind === 'error') engineErrors.push(event.message);
                         }
                         if (verdict) {
-                            commit('worker-message', verdict);
+                            // Filed, not shown — the same contract the eval
+                            // loop moved to: the CLI is for the work, not the
+                            // machinery grading it. The one exception is a
+                            // verdict that found something, which earns ONE
+                            // line naming where the detail lives; a silent
+                            // CONCERNS would be worse than the old noise.
                             log.append('worker', verdict);
+                            appendEvalReport(sessionId, 'work verification', verdict);
+                            const flag = verdict.match(/\b(VERIFIED|CONCERNS|CANNOT VERIFY)\b/);
+                            if (flag && flag[1] !== 'VERIFIED') {
+                                commit('notice', `work check: ${flag[1]} · full verdict filed under ~/.sherman/evals · /win reads it`);
+                            }
                         } else if (engineErrors.length > 0) {
                             commit('error', `work check failed: ${engineErrors[engineErrors.length - 1]}`);
                         }

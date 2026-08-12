@@ -64,7 +64,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=33
+TOTAL_CHECKS=34
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -2888,6 +2888,22 @@ if grep -qF 'max-old-space-size=8192' bin/sherman \
     pass "the launcher gives V8 headroom, operator NODE_OPTIONS wins"
 else
     fail "the launcher lost its heap headroom"
+fi
+
+# ----------------------------------------------------------------- check 34 --
+# The verifier files, it does not narrate. Its verdict lands in the session
+# log and the eval store; the operator terminal gets nothing — except ONE
+# line when the verdict is CONCERNS or CANNOT VERIFY, because a problem
+# nobody sees is worse than the old noise.
+echo
+echo "34. the work verifier is silent unless it found something"
+
+if ! grep -qF "commit('worker-message', verdict)" shell/src/ui/app.js \
+    && grep -qF "appendEvalReport(sessionId, 'work verification', verdict)" shell/src/ui/app.js \
+    && grep -qF "flag[1] !== 'VERIFIED'" shell/src/ui/app.js; then
+    pass "verdicts file to the eval store; only CONCERNS earns a line"
+else
+    fail "the verifier narrates to the terminal again, or stopped filing"
 fi
 
 # -------------------------------------------------------------------- result --
