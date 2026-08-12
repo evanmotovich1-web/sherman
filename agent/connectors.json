@@ -1,7 +1,7 @@
 {
   "$comment": [
-    "The connectors Sherman knows how to reach — MCP servers and credentialed",
-    "APIs — declared as data so the launcher can render engine config without",
+    "The connectors Sherman knows how to reach \u2014 MCP servers and credentialed",
+    "APIs \u2014 declared as data so the launcher can render engine config without",
     "knowing any connector by name.",
     "",
     "This file is the CATALOG: what exists, how it launches, what it needs, and",
@@ -13,7 +13,7 @@
     "",
     "It carries capabilities.json's rule, for the same reason: an entry describes",
     "a connector that really exists and really launches this way. A speculative",
-    "entry is not a roadmap item here — it is engine config that fails at",
+    "entry is not a roadmap item here \u2014 it is engine config that fails at",
     "startup, which the operator meets as one causeless error far from its cause.",
     "The `0-1` skill is what adds entries, and it is required to verify before",
     "it writes.",
@@ -47,7 +47,7 @@
     "                     installed. Everything else waits for an entry in the",
     "                     machine's enablement file.",
     "  repair             what to run when the probe fails",
-    "  signup             { url, what } — where a human gets the credential and",
+    "  signup             { url, what } \u2014 where a human gets the credential and",
     "                     what to ask for. This is what 0-1 reads when it has to",
     "                     hand over a checklist instead of wiring silently.",
     "",
@@ -65,26 +65,45 @@
         "${SHERMAN_HOME}/llmwiki/.venv/bin/python",
         "${SHERMAN_HOME}/llmwiki/.venv/Scripts/python.exe"
       ],
-      "args": ["${SHERMAN_HOME}/llmwiki/llmwiki", "mcp", "${SHERMAN_HOME}/research"],
-      "requiresFile": ["${SHERMAN_HOME}/llmwiki/llmwiki"],
-      "probe": ["${SHERMAN_HOME}/llmwiki/llmwiki", "--help"],
-      "mkdir": ["${SHERMAN_HOME}/research"],
+      "args": [
+        "${SHERMAN_HOME}/llmwiki/llmwiki",
+        "mcp",
+        "${SHERMAN_HOME}/research"
+      ],
+      "requiresFile": [
+        "${SHERMAN_HOME}/llmwiki/llmwiki"
+      ],
+      "probe": [
+        "${SHERMAN_HOME}/llmwiki/llmwiki",
+        "--help"
+      ],
+      "mkdir": [
+        "${SHERMAN_HOME}/research"
+      ],
       "requires": [],
       "repair": "sherman update  (it repairs the wiki)",
       "signup": null
     },
     {
       "name": "agent-reach",
-      "summary": "read the public internet — search, social, code, video, feeds",
+      "summary": "read the public internet \u2014 search, social, code, video, feeds",
       "transport": "stdio",
       "autoEnable": true,
       "commandCandidates": [
         "${HOME}/.local/share/uv/tools/agent-reach/bin/python",
         "${HOME}/.local/share/uv/tools/agent-reach/Scripts/python.exe"
       ],
-      "args": ["-m", "agent_reach.integrations.mcp_server"],
-      "env": { "PATH": "${HOME}/.local/bin:${PATH}" },
-      "probe": ["-c", "import agent_reach.integrations.mcp_server"],
+      "args": [
+        "-m",
+        "agent_reach.integrations.mcp_server"
+      ],
+      "env": {
+        "PATH": "${HOME}/.local/bin:${PATH}"
+      },
+      "probe": [
+        "-c",
+        "import agent_reach.integrations.mcp_server"
+      ],
       "requires": [],
       "repair": "uv tool install --force --with 'mcp[cli]>=1.0,<2' https://github.com/Panniantong/agent-reach/archive/b4d52c46c9113cb0f653d6df4cf71ebadf4930ac.zip",
       "signup": null
@@ -97,6 +116,32 @@
       "url": "https://mcp.exa.ai/mcp",
       "requires": [],
       "repair": null,
+      "signup": null
+    },
+    {
+      "name": "mnemosyne",
+      "summary": "long-term memory over MCP \u2014 remember, recall, knowledge graph; stored locally, no cloud",
+      "transport": "stdio",
+      "autoEnable": true,
+      "commandCandidates": [
+        "${SHERMAN_HOME}/mnemosyne/.venv/bin/mnemosyne",
+        "${SHERMAN_HOME}/mnemosyne/.venv/Scripts/mnemosyne.exe"
+      ],
+      "args": [
+        "mcp"
+      ],
+      "env": {
+        "MNEMOSYNE_DATA_DIR": "${SHERMAN_HOME}/mnemosyne/data"
+      },
+      "requiresFile": [],
+      "probe": [
+        "--help"
+      ],
+      "mkdir": [
+        "${SHERMAN_HOME}/mnemosyne/data"
+      ],
+      "requires": [],
+      "repair": "sherman update  (it provisions mnemosyne)",
       "signup": null
     }
   ]

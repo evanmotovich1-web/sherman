@@ -3,6 +3,27 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Added: mnemosyne — long-term memory for every Sherman
+
+- Every Sherman now carries mnemosyne (github.com/mnemosyne-oss/mnemosyne,
+  MIT, local-first): remember/recall/knowledge-graph over MCP, stored in
+  SQLite + vectors under `~/.sherman/mnemosyne/data` — no cloud, no
+  telemetry, no secrets required. Pinned to a reviewed version
+  (`mnemosyne-memory==3.15.1`) in both the installer and `sherman update`,
+  which GROWS it onto existing machines; every failure degrades to an
+  honest NOTE, and `SHERMAN_NO_FETCH` opts out.
+- Catalogued as an auto-enabled stdio connector, so both engines wire it at
+  launch. On zai it is the one MCP normal turns keep (its reach ends at its
+  own data dir); read-only turns deny it with the rest — a judge must not
+  write memories about its own grading.
+- The contract teaches the three memory layers: mnemosyne is machine recall
+  (`recall` before re-deriving history, `remember` durable session facts —
+  never PHI or key values); the vault stays the authoritative, Obsidian-
+  readable company truth that recall never replaces; the LLM wiki stays the
+  personal research layer. Smoke check 39 pins the version, the secret-free
+  catalog shape, the fenced data dir, the normal/read-only permission split,
+  and the teaching (`TOTAL_CHECKS=39`).
+
 ## 2026-08-12 — Added: the turn tree — a dot on the prompt, the work railed under it
 
 - Every prompt in the transcript now anchors its turn visually: the prompt

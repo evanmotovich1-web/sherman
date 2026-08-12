@@ -64,7 +64,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=38
+TOTAL_CHECKS=39
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -3130,6 +3130,57 @@ if grep -rnE "console\.(log|error|info|warn)\(.*STRIPE_(RESTRICTED_KEY|ISSUING_K
     fail "money code prints a key variable"
 else
     pass "no money code path prints a key variable"
+fi
+
+# ----------------------------------------------------------------- check 39 --
+# mnemosyne — the long-term memory MCP — ships to every machine: pinned in
+# the provisioner and the update repair, catalogued as an auto-enabled local
+# stdio connector with its data dir fenced under ~/.sherman, allowed on zai
+# normal turns and re-denied on read-only turns, and taught in the contract
+# as the recall layer that never replaces the vault.
+echo
+echo "39. mnemosyne is provisioned, catalogued, permitted, and taught"
+
+if grep -qF 'mnemosyne-memory==3.15.1' install.sh \
+    && grep -qF 'mnemosyne-memory==3.15.1' bin/sherman; then
+    pass "provisioner and update repair pin the same reviewed version"
+else
+    fail "the mnemosyne version pin is missing or split"
+fi
+
+MNEMO_JS=$(cat <<'JS'
+import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+const catalog = JSON.parse(readFileSync('../agent/connectors.json', 'utf8'));
+const entry = catalog.connectors.find((c) => c.name === 'mnemosyne');
+assert.ok(entry, 'mnemosyne missing from the catalog');
+assert.equal(entry.transport, 'stdio');
+assert.equal(entry.autoEnable, true);
+assert.equal(entry.requires.length, 0, 'mnemosyne must need no secrets');
+assert.equal(entry.env.MNEMOSYNE_DATA_DIR, '${SHERMAN_HOME}/mnemosyne/data');
+
+const { openCodeConfigForMode } = await import('./src/engine/opencode.js');
+const config = { vaultPath: '/tmp/smoke-vault', workspacePath: '/tmp/smoke-home/workspace', zaiPlan: 'api' };
+const mcp = { mnemosyne: {}, other: {} };
+const normal = JSON.parse(openCodeConfigForMode(config, 'normal', mcp));
+assert.equal(normal.permission['mnemosyne_*'], undefined, 'normal turns must keep memory');
+assert.equal(normal.permission['other_*'], 'deny', 'other MCPs stay denied');
+const ro = JSON.parse(openCodeConfigForMode(config, 'read-only', mcp));
+assert.equal(ro.permission['mnemosyne_*'], 'deny', 'a judge must not write memories');
+JS
+)
+mnemo_err=$(cd shell && env FORCE_COLOR=0 node --input-type=module -e "$MNEMO_JS" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "catalogued secret-free with a fenced data dir; normal turns keep it, read-only denies it"
+else
+    fail "mnemosyne wiring: $(printf '%s' "$mnemo_err" | head -3)"
+fi
+
+if grep -qF 'an honest importance score' agent/SYSTEM.md \
+    && grep -qF 'mnemosyne recall never' agent/SYSTEM.md; then
+    pass "the contract teaches recall-first and vault-still-cites"
+else
+    fail "SYSTEM.md lost the memory-layers teaching"
 fi
 
 # -------------------------------------------------------------------- result --

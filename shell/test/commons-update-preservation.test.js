@@ -88,7 +88,11 @@ test('a stale-clone sherman update preserves Commons state and approved personal
         run('git', ['-C', source, 'commit', '-m', 'new commons client']);
         run('git', ['-C', source, 'push']);
 
-        const nestedUpdateEnv = { ...process.env, HOME: home, SHERMAN_NO_BROWSER: '1' };
+        // SHERMAN_NO_FETCH: update also provisions network-installed
+        // capabilities (mnemosyne) into ~/.sherman, which this test's
+        // byte-for-byte snapshot must not see — and a fixture has no
+        // business reaching PyPI. Same opt-out the vault sync honors.
+        const nestedUpdateEnv = { ...process.env, HOME: home, SHERMAN_NO_BROWSER: '1', SHERMAN_NO_FETCH: '1' };
         delete nestedUpdateEnv.SHERMAN_UPDATE_REEXEC;
         delete nestedUpdateEnv.SHERMAN_UPDATE_OLD_VERSION;
         const updated = run(join(stale, 'bin', 'sherman'), ['update'], {

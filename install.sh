@@ -392,6 +392,52 @@ else
 fi
 echo
 
+# ----------------------------------------------------------------- mnemosyne --
+# Long-term agent memory (github.com/mnemosyne-oss/mnemosyne, MIT): a local
+# MCP every Sherman gets — remember/recall/knowledge-graph over a SQLite +
+# vector store that lives entirely on this machine. Pinned to a reviewed
+# version; no cloud, no telemetry, data under ~/.sherman/mnemosyne/data.
+# Same degradation contract as the wiki: every failure is an honest NOTE,
+# and "installed" is claimed only after the CLI answers from its own venv.
+echo "  installing mnemosyne — Sherman's long-term memory"
+MNEMO_DIR="$HOME/.sherman/mnemosyne"
+MNEMO_PIN="mnemosyne-memory==3.15.1"
+MNEMO_BIN="$MNEMO_DIR/.venv/bin/mnemosyne"
+[ -x "$MNEMO_BIN" ] || MNEMO_BIN="$MNEMO_DIR/.venv/Scripts/mnemosyne.exe"
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "  NOTE: python3 not found, so mnemosyne was not installed."
+elif [ -n "${SHERMAN_INSTALL_NO_FETCH:-}" ] && [ ! -x "$MNEMO_BIN" ]; then
+    echo "  NOTE: network fetches are disabled, so mnemosyne was not installed."
+else
+    mkdir -p "$MNEMO_DIR/data"
+    MNEMO_PY="$MNEMO_DIR/.venv/bin/python"
+    [ -x "$MNEMO_PY" ] || MNEMO_PY="$MNEMO_DIR/.venv/Scripts/python.exe"
+    # Same two-stage venv repair as the wiki: creation can fail without
+    # python3-venv, and a half-created venv can lack pip entirely.
+    [ -x "$MNEMO_PY" ] || python3 -m venv "$MNEMO_DIR/.venv" >/dev/null 2>&1 || true
+    MNEMO_PY="$MNEMO_DIR/.venv/bin/python"
+    [ -x "$MNEMO_PY" ] || MNEMO_PY="$MNEMO_DIR/.venv/Scripts/python.exe"
+    if [ -x "$MNEMO_PY" ]; then
+        "$MNEMO_PY" -m pip --version >/dev/null 2>&1 \
+            || "$MNEMO_PY" -m ensurepip --upgrade >/dev/null 2>&1 || true
+        if [ -z "${SHERMAN_INSTALL_NO_FETCH:-}" ]; then
+            mnemo_pip_out=$("$MNEMO_PY" -m pip install --quiet "$MNEMO_PIN" 2>&1) \
+                || echo "  NOTE: pip could not install mnemosyne: $(printf '%s\n' "$mnemo_pip_out" | tail -1)"
+        fi
+        MNEMO_BIN="$MNEMO_DIR/.venv/bin/mnemosyne"
+        [ -x "$MNEMO_BIN" ] || MNEMO_BIN="$MNEMO_DIR/.venv/Scripts/mnemosyne.exe"
+        if [ -x "$MNEMO_BIN" ] && "$MNEMO_BIN" --help >/dev/null 2>&1; then
+            echo "  mnemosyne installed (verified: its CLI answers from its own venv)"
+            echo "  memory store: $MNEMO_DIR/data"
+        else
+            echo "  NOTE: mnemosyne's CLI did not answer from its venv."
+        fi
+    else
+        echo "  NOTE: could not create mnemosyne's Python venv (is python3-venv installed?)."
+    fi
+fi
+echo
+
 # --------------------------------------------------------------- desktop pet --
 # macOS only. The pet compiles from pet/sherman-pet.swift with the system
 # Swift toolchain; doing it here means `sherman pet` starts instantly on a

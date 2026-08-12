@@ -176,7 +176,13 @@ export function openCodeConfigForMode(
         task: 'deny',
     };
     for (const name of Object.keys(allMcp)) {
-        if (!(allowPersonalWiki && name === 'llmwiki')) permission[`${name}_*`] = 'deny';
+        if (allowPersonalWiki && name === 'llmwiki') continue;
+        // mnemosyne is the standing long-term memory: local store, no
+        // filesystem reach beyond its own data dir — the one MCP normal
+        // turns keep. Read-only turns re-deny every MCP below, memory
+        // included: a judge must not write memories about its own grading.
+        if (name === 'mnemosyne' && !readOnly) continue;
+        permission[`${name}_*`] = 'deny';
     }
     if (readOnly) {
         // Read-only turns keep the full wall: no shell at all, because bash
