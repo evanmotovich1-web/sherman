@@ -234,6 +234,11 @@ else
         fail "assembled adapter still instructs direct authoritative writes"
     fi
 
+    grep -qF '# What you remember' "$ADAPTER" \
+        && { grep -qF -- '- (wiki)' "$ADAPTER" || grep -qF -- '- (lesson)' "$ADAPTER" || grep -qF -- '- (empty)' "$ADAPTER"; } \
+        && pass "carries the launch-time memory index" \
+        || fail "the memory index is missing from the adapter"
+
     grep -qF '{{SHERMAN_BODY}}' "$ADAPTER" \
         && fail "splice token still present -- template copied, not assembled" \
         || pass "splice token replaced"

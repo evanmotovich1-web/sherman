@@ -3,6 +3,17 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Added: the memory index — every session launches knowing what it remembers
+
+- Every session used to start amnesiac: the vault existed, but nothing said
+  what was in it, so a session that did not think to search never found the
+  fact. The launcher now builds a "What you remember" index into the
+  assembled adapter — one line per filed wiki fact and shared lesson (name +
+  first heading), capped at 80, with an explicit empty-state line when
+  nothing is filed yet. An index, not the contents: sessions still open the
+  file before citing it. Check 3 asserts the index rides in every assembled
+  adapter.
+
 ## 2026-08-12 — Fixed: the work verifier is silent unless it found something
 
 - The deep-work verifier was the last machinery still narrating to the
