@@ -1994,4 +1994,13 @@ if [ -z "${NODE_OPTIONS:-}" ]; then
     NODE_OPTIONS="--max-old-space-size=8192"
     export NODE_OPTIONS
 fi
+# Without NODE_ENV, React loads its development build, whose per-render
+# console.createTask bookkeeping is never released — an animated TUI that
+# re-renders all day leaks until V8 aborts the shell (measured: ~1.2MB
+# retained per 1,000 renders of a single <Text>; production is flat).
+# The operator's own NODE_ENV always wins when already set.
+if [ -z "${NODE_ENV:-}" ]; then
+    NODE_ENV="production"
+    export NODE_ENV
+fi
 exec node "$ROOT/shell/bin/sherman-shell.js" "$@"

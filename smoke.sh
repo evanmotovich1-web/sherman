@@ -2911,6 +2911,13 @@ else
     fail "the launcher lost its heap headroom"
 fi
 
+if grep -qF 'NODE_ENV="production"' bin/sherman \
+    && grep -qF 'if [ -z "${NODE_ENV:-}" ]; then' bin/sherman; then
+    pass "the shell runs production React, operator NODE_ENV wins"
+else
+    fail "the launcher lost NODE_ENV=production — dev React leaks per render until V8 aborts"
+fi
+
 # ----------------------------------------------------------------- check 34 --
 # The verifier files, it does not narrate. Its verdict lands in the session
 # log and the eval store; the operator terminal gets nothing — except ONE
