@@ -3,6 +3,22 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Added: route a worker to a specific model
+
+- One worker, a named engine, the parent session untouched:
+  `/subagent --engine codex|claude|zai <task>` and `@name --engine <engine>
+  <task>` run that delegation on the chosen installed engine (glm and
+  opencode are spoken aliases for zai). The override swaps only the backend —
+  same workspace, same vault scope, same read-only isolation; a model choice
+  is a lens, never an authority upgrade.
+- Unknown engine names fail at the command with the valid roster, and an
+  engine whose binary is absent fails with the repair — never mid-turn as a
+  spawn error. The trace line names the engine a routed worker ran on.
+- The operating contract teaches the routing: pick the model for the work,
+  and say which engine a routed result came from. Providers without a wired
+  backend (grok and friends) arrive the day their engine or key is wired —
+  the flag is the interface either way.
+
 ## 2026-08-12 — Added: a pasted key IS the hand-over, and keys become skills
 
 - Pasting a key in chat now just works. The operating contract makes the

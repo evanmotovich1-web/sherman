@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
     commandFor,
+    parseEngineFlag,
     emailRequest,
     goalEnvelope,
     helpText,
@@ -43,7 +44,7 @@ test('explicit retention payloads are redacted before transcript or session logg
 });
 
 test('registry drives suggestions and help', () => {
-    assert.equal(commandFor('subagent')?.usage, '/subagent <task>');
+    assert.equal(commandFor('subagent')?.usage, '/subagent [--engine codex|claude|zai] <task>');
     assert.deepEqual(suggestionsFor('/p').map((c) => c.name), ['plan']);
     assert.deepEqual(
         suggestionsFor('/').map((c) => c.name),
@@ -168,4 +169,23 @@ test('email drafting turn is read-only and its parser refuses non-drafts', () =>
         parseEmailResult('{"error":"Mailbox history cannot be inspected without risking PHI."}'),
         { kind: 'error', error: 'Mailbox history cannot be inspected without risking PHI.' }
     );
+});
+
+test('parseEngineFlag routes one worker to a named model', () => {
+    assert.deepEqual(
+        parseEngineFlag('--engine claude summarize the SOP'),
+        { engine: 'claude', task: 'summarize the SOP', error: null }
+    );
+    // Operators say the model name; aliases land on the backend that runs it.
+    assert.equal(parseEngineFlag('--engine glm check the format').engine, 'zai');
+    assert.equal(parseEngineFlag('--engine OPENCODE t').engine, 'zai');
+    // No flag: task untouched, no engine, no error.
+    assert.deepEqual(
+        parseEngineFlag('plain task text'),
+        { engine: null, task: 'plain task text', error: null }
+    );
+    // Unknown engines error with the roster instead of silently falling through.
+    assert.ok(parseEngineFlag('--engine grok do a thing').error.includes('Valid: codex, claude, zai'));
+    // A bare flag with no task is not a routing.
+    assert.equal(parseEngineFlag('--engine claude').engine, null);
 });

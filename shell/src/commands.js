@@ -21,9 +21,9 @@ export const COMMANDS = Object.freeze([
     },
     {
         name: 'subagent',
-        usage: '/subagent <task>',
-        summary: 'run an isolated read-only worker',
-        detail: 'Starts a fresh engine session with the same Sherman identity and safety boundary. The worker sees only the explicit task and active goal.',
+        usage: '/subagent [--engine codex|claude|zai] <task>',
+        summary: 'run an isolated read-only worker, on a chosen model if named',
+        detail: 'Starts a fresh engine session with the same Sherman identity and safety boundary. The worker sees only the explicit task and active goal. --engine routes that one worker to a specific installed engine (glm and opencode are aliases for zai) while this session stays on its own; the same flag works after an @-mention. The engine must be installed and signed in on this machine.',
     },
     {
         name: 'agents',
@@ -716,6 +716,46 @@ export function parseEmailResult(text) {
     if (question && choices.length >= 2) return { kind: 'question', question, choices };
     const draft = parseEmailDraft(text);
     return draft ? { kind: 'draft', draft } : null;
+}
+
+/**
+ * The worker engine override: which model a delegated task runs on.
+ *
+ * `/subagent --engine claude <task>` (and the same flag after an @-mention)
+ * routes that one worker to a specific engine while the parent session stays
+ * on its own. The aliases map the way operators actually speak — "glm" and
+ * "opencode" both mean the zai backend, because the operator knows the model
+ * name, not the transport that carries it.
+ */
+export const WORKER_ENGINES = Object.freeze({
+    codex: 'codex',
+    claude: 'claude',
+    zai: 'zai',
+    glm: 'zai',
+    opencode: 'zai',
+});
+
+/**
+ * Split a task string into its engine override and the task itself.
+ *
+ * Returns `{engine, task, error}`. No flag → engine null, task untouched. An
+ * unknown engine name is an `error` naming the valid roster rather than a
+ * silent fall-through: a worker quietly running on the wrong model is exactly
+ * the confident-and-wrong this repo refuses elsewhere.
+ */
+export function parseEngineFlag(text) {
+    const raw = String(text ?? '').trim();
+    const match = raw.match(/^--engine\s+(\S+)\s+([\s\S]+)$/i);
+    if (!match) return { engine: null, task: raw, error: null };
+    const engine = WORKER_ENGINES[match[1].toLowerCase()] ?? null;
+    if (!engine) {
+        return {
+            engine: null,
+            task: match[2].trim(),
+            error: `Unknown engine "${match[1]}". Valid: codex, claude, zai (aliases: glm, opencode).`,
+        };
+    }
+    return { engine, task: match[2].trim(), error: null };
 }
 
 /**

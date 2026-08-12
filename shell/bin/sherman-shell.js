@@ -269,7 +269,14 @@ async function startShell() {
 
             // Every /subagent call gets a fresh engine thread with the exact
             // same config, persona workspace, vault scope, and safety posture.
-            sessionFactory: () => selectBackend(config),
+            // An engine override (//subagent --engine, @name --engine) swaps
+            // ONLY the backend: same workspace, same vault, same sandbox —
+            // a model choice is a lens, never an authority upgrade.
+            sessionFactory: (engineOverride) => selectBackend(
+                engineOverride && engineOverride !== config.engine
+                    ? { ...config, engine: engineOverride }
+                    : config
+            ),
         }),
         {
             exitOnCtrlC: false,
