@@ -2757,6 +2757,40 @@ else
     fail "SYSTEM.md lost the /key hand-over contract"
 fi
 
+# The CLI is the path Sherman itself stores a pasted key through. Value via
+# stdin (never argv), success prints the NAME only, list stays names-only.
+CLIHOME=$(mktemp -d 2>/dev/null || mktemp -d -t shermankeycli)
+cli_set=$(printf '%s' 'sk-cli-secret-789' | env HOME="$CLIHOME" node shell/src/keys.js --set SMOKE_CLI_KEY 2>&1)
+cli_set_status=$?
+cli_list=$(env HOME="$CLIHOME" node shell/src/keys.js --list 2>&1)
+cli_remove=$(env HOME="$CLIHOME" node shell/src/keys.js --remove SMOKE_CLI_KEY 2>&1)
+cli_bad=$(printf '%s' 'v' | env HOME="$CLIHOME" node shell/src/keys.js --set 'bad name' 2>&1)
+cli_bad_status=$?
+
+if [ "$cli_set_status" -eq 0 ] \
+    && printf '%s' "$cli_set" | grep -qF 'SMOKE_CLI_KEY stored (verified: read back)' \
+    && ! printf '%s' "$cli_set" | grep -qF 'sk-cli-secret-789' \
+    && printf '%s' "$cli_list" | grep -qF 'SMOKE_CLI_KEY' \
+    && ! printf '%s' "$cli_list" | grep -qF 'sk-cli-secret-789' \
+    && printf '%s' "$cli_remove" | grep -qF 'SMOKE_CLI_KEY removed' \
+    && [ "$cli_bad_status" -ne 0 ]; then
+    pass "the key CLI stores from stdin, prints names only, and keeps the name gate"
+else
+    fail "key CLI broke a promise (set=$cli_set_status bad=$cli_bad_status)"
+fi
+
+# And the persona must teach the paste flow: a pasted key IS the hand-over --
+# Sherman stores it itself through the CLI and turns it into a skill or
+# connector, instead of lecturing the operator or letting it die with the
+# session.
+if grep -qF 'hand-over, not a mistake to correct' agent/SYSTEM.md \
+    && grep -qF 'keys.js --set NAME' agent/SYSTEM.md \
+    && grep -qF 'A key is never just a string to file.' agent/SYSTEM.md; then
+    pass "SYSTEM.md teaches paste-storage through the CLI and skill-building from a new key"
+else
+    fail "SYSTEM.md lost the paste hand-over or the build-skills-from-keys contract"
+fi
+
 # -------------------------------------------------------------------- result --
 echo
 echo "$PASSES passed, $SKIPPED skipped, $FAILURES failed."

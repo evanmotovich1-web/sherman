@@ -3,6 +3,24 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Added: a pasted key IS the hand-over, and keys become skills
+
+- Pasting a key in chat now just works. The operating contract makes the
+  pasted key the hand-over itself, not a mistake to correct: Sherman stores
+  it at once through the new key CLI
+  (`printf '%s' '<value>' | node <repo>/shell/src/keys.js --set NAME`,
+  value via stdin so it stays out of argv), confirms by NAME only, and gets
+  on with the work — no lecture, no re-typing, and the value is never
+  repeated back into any reply, file, or commit.
+- A key is treated as a capability arriving, not a string to file: Sherman
+  checks what the key unlocks and, when no skill or connector covers that
+  service, builds them on the spot — `self-extend` writes the service's
+  SKILL.md, `0-1` wires the connector — so every handed-over key becomes a
+  standing, named power.
+- Smoke check 31 grew three ways: the CLI round-trip (stdin value, names-only
+  output, name gate), and the persona assertions for the paste flow and the
+  build-skills-from-keys contract.
+
 ## 2026-08-12 — Added: /key — hand Sherman an API key once, it remembers
 
 - New shell command `/key <NAME> <value>`: the operator hands over an API key
