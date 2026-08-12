@@ -41,6 +41,7 @@ import {
     navigateReminder,
     parseAgentMention,
     parseEngineFlag,
+    parseRetentionProposals,
     parseEmailResult,
     parseSubmission,
     researchTurn,
@@ -284,6 +285,11 @@ export function App({
     const [goal, setGoal] = useState('');
     const [pendingEmail, setPendingEmail] = useState(null);
     const [emailChoice, setEmailChoice] = useState(0);
+    // The one-keypress retention gate: an eval-proposed fact awaiting the
+    // operator keypress. Holds the proposal plus the promise resolver the
+    // eval flow is awaiting on; the operator remains the only path to a file.
+    const [pendingRetention, setPendingRetention] = useState(null);
+    const [retentionChoice, setRetentionChoice] = useState(0);
 
     // ------------------------------------------------------------ scrollback --
     // How many rows above the live tail the transcript is parked. 0 follows the
@@ -1445,6 +1451,35 @@ export function App({
                 // recommendation-plus-grade pair is filed for review. Awaited,
                 // so an exit's filing lands before the shell disposes.
                 await runMetaEval({ evalText: evalReply, target: sessionId, logPath: log.path });
+
+                // The vault-growth gate. Sixty-nine sessions produced three
+                // proposals and zero filed facts, because a proposal had to
+                // be re-typed to become real. Now each complete /learn and
+                // /wiki the verdict proposed is offered as one keypress:
+                // Enter files it, Esc skips it. The operator is still the
+                // only path to a write — nothing files without the keypress
+                // — and the write still goes through the same shell
+                // validation and confinement as a hand-typed command.
+                for (const proposal of parseRetentionProposals(evalReply)) {
+                    const accepted = await new Promise((resolve) => {
+                        setRetentionChoice(0);
+                        setPendingRetention({ ...proposal, resolve });
+                    });
+                    setPendingRetention(null);
+                    if (!accepted) continue;
+                    try {
+                        applyRetentionResult({
+                            vaultPath: session.info.vaultPath,
+                            source: proposal.command,
+                            text: JSON.stringify({
+                                operations: [{ path: `${proposal.name}.md`, content: proposal.content }],
+                            }),
+                        });
+                        commit('notice', `${proposal.command} filed ${proposal.name} · shell-validated · publishes on the next vault sync`);
+                    } catch (error) {
+                        commit('error', `${proposal.command} rejected · nothing written · ${error?.message ?? String(error)}`);
+                    }
+                }
             }
 
             if (isWin) {
@@ -1715,6 +1750,25 @@ export function App({
     // composer already ignores all four, so nothing here steals a keystroke
     // from it.
     useInput((input, key) => {
+        if (pendingRetention) {
+            // Any arrow toggles between the two choices; Enter commits the
+            // highlighted one; Esc skips. Ctrl+C also resolves as a skip so
+            // the box can never trap an operator who is trying to leave —
+            // the next press reaches the normal exit handling.
+            if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) {
+                setRetentionChoice((value) => (value + 1) % 2);
+                return;
+            }
+            if (key.return) {
+                pendingRetention.resolve(retentionChoice === 0);
+                return;
+            }
+            if (key.escape || (key.ctrl && input === 'c')) {
+                pendingRetention.resolve(false);
+                return;
+            }
+            return;
+        }
         if (pendingEmail) {
             if (key.upArrow) {
                 setEmailChoice((value) => (value - 1 + pendingEmail.choices.length) % pendingEmail.choices.length);
@@ -1857,13 +1911,24 @@ export function App({
                   width: columns,
               })
             : null,
+        pendingRetention
+            ? React.createElement(ChoiceBox, {
+                  question: `File to the vault? /${pendingRetention.command} ${pendingRetention.name} | ${
+                      pendingRetention.content.length > 200
+                          ? `${pendingRetention.content.slice(0, 200)}…`
+                          : pendingRetention.content}`,
+                  choices: ['File it', 'Skip'],
+                  selected: retentionChoice,
+                  width: columns,
+              })
+            : null,
         React.createElement(Composer, {
             onSubmit: submit,
             // `busy` blocks the composer outright — only the email tone choice
             // does that now, because its arrow keys must not land in the
             // buffer. A running engine turn is `steering` instead: the input
             // stays live and Enter queues a mid-work note (see submit).
-            busy: Boolean(pendingEmail),
+            busy: Boolean(pendingEmail || pendingRetention),
             steering: busy,
             click,
             skills: slashSkills,

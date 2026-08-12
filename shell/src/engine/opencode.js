@@ -187,6 +187,16 @@ export function openCodeConfigForMode(
         // Local/remote MCPs are host-side capabilities. A read-only promise
         // cannot assume each third-party tool is non-mutating.
         for (const name of Object.keys(allMcp)) permission[`${name}_*`] = 'deny';
+        // The eval, verify, and win turns are TOLD to read the session logs
+        // and eval verdicts under ~/.sherman, and this wall denied it — a
+        // judge graded blind and said so in its own verdict. Read-only turns
+        // cannot write (edit is denied above), so opening these directories
+        // to reads un-blinds the judge without loosening any write boundary.
+        // Read-only ONLY: a normal turn keeps the vault-only wall.
+        const shermanHome = dirname(config.workspacePath.replace(/\/+$/, ''));
+        permission.external_directory[`${shermanHome}/sessions/**`] = 'allow';
+        permission.external_directory[`${shermanHome}/evals/**`] = 'allow';
+        permission.external_directory[`${shermanHome}/win-sources/**`] = 'allow';
     } else {
         // Reads may cross into the configured vault, but model file tools may
         // not mutate it. apply_patch is denied outright because its movePath is

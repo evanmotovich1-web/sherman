@@ -41,7 +41,7 @@ export const COMMANDS = Object.freeze([
         name: 'eval',
         usage: '/eval [gaps|conduct]',
         summary: 'grade this session against the skills, and propose missing ones',
-        detail: 'Runs one read-only turn that reads this session\'s log and reports where skills, workers, and the vault were used or missed, whether durable knowledge was written, and what capability was missing. It judges and proposes; it never writes to the vault. The shell saves each verdict to ~/.sherman/evals/ so trends survive the session. Runs automatically when a session with turns in it ends, and as a background checkpoint every 10 minutes while a session with new turns is live.',
+        detail: 'Runs one read-only turn that reads this session\'s log and reports where skills, workers, and the vault were used or missed, whether durable knowledge was written, and what capability was missing. It judges and proposes; it never writes to the vault. The shell saves each verdict to ~/.sherman/evals/ so trends survive the session. Afterward, each complete /learn or /wiki fact the verdict proposed is offered in a choice box — Enter files it through the same shell validation as a hand-typed command, Esc skips it; nothing files without that keypress. Runs automatically when a session with turns in it ends, and as a background checkpoint every 10 minutes while a session with new turns is live.',
     },
     {
         name: 'email',
@@ -716,6 +716,32 @@ export function parseEmailResult(text) {
     if (question && choices.length >= 2) return { kind: 'question', question, choices };
     const draft = parseEmailDraft(text);
     return draft ? { kind: 'draft', draft } : null;
+}
+
+/**
+ * The retention proposals inside an eval verdict, ready for one-keypress
+ * filing.
+ *
+ * The eval skills already write complete `/learn name | lesson` and
+ * `/wiki name | fact` commands into their verdicts — this finds them, bare
+ * or quoted mid-prose in backticks, dedupes by name, and caps at four per
+ * verdict so an over-eager judge cannot flood the exit with boxes. Parsing
+ * is all this does: filing stays behind the operator keypress and the same
+ * shell validation a hand-typed command goes through.
+ */
+export function parseRetentionProposals(text) {
+    const out = [];
+    const seen = new Set();
+    for (const line of String(text ?? '').split('\n')) {
+        const match = line.match(/\/(learn|wiki)\s+([A-Za-z0-9][A-Za-z0-9_-]*)\s*\|\s*([^`]+)/);
+        if (!match) continue;
+        const content = match[3].trim();
+        if (!content || seen.has(match[2])) continue;
+        seen.add(match[2]);
+        out.push({ command: match[1], name: match[2], content });
+        if (out.length === 4) break;
+    }
+    return out;
 }
 
 /**

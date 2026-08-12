@@ -78,9 +78,12 @@ patient records, named-patient results, or any other PHI.
 Every non-empty graceful session exit runs the provider-backed, read-only conduct
 eval. Its report is stored only under local `~/.sherman/evals/` and never copied
 into a synchronized Vault lane. Authoritative
-retention is explicit-only through `/learn <name> | <lesson>` and
-`/wiki <name> | <fact>`; exit never starts it. No model reads the session to
-select or generate authoritative retention text. A deterministic shell-owned writer rejects unsafe
+retention is operator-gated: the explicit `/learn <name> | <lesson>` and
+`/wiki <name> | <fact>` commands, plus a per-fact approval box after each eval
+in which the operator files an eval-proposed fact with one keypress or skips
+it — nothing files without that keypress, and the accepted text goes through
+the same shell validation as a hand-typed command. Models still cannot write
+the vault directly; a proposal only becomes real through the operator. A deterministic shell-owned writer rejects unsafe
 operator-provided content and atomically confines an accepted replacement to
 `memory/shared/` or `wiki/`. The command payload is redacted from the transcript
 and session log before validation, so a rejected fact is not persisted there.
