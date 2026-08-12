@@ -3,6 +3,23 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Fixed: Windows verification — console-width leak and the zombie eval lane
+
+- A Windows `sherman update` failed verification on an otherwise healthy
+  machine, three ways with two causes. Cause one: Windows reports the live
+  console size even through a pipe, so a 102-column PowerShell leaked into
+  renders the test harness believes are pinned at 80 — the smoke composer
+  check now passes `columns` as a prop (Composer sizes off useWindowSize
+  otherwise) and the layout test file freezes `process.stdout` at 80x24
+  before any render.
+- Cause two: old-build sessions keep refiling artifacts into the retired
+  `vault/inbox/eval-recommendations/` lane until relaunched, and the eval
+  suite rightly fails while the lane is non-empty. The launcher now
+  self-heals it on every launch and every update: artifacts are quarantined
+  to `~/.sherman/evals/recovered-vault-inbox/` — moved, never deleted — and
+  the heal names itself once. Tested: quarantine, lane removal, idempotent
+  re-run.
+
 ## 2026-08-12 — Added: user.md — every Sherman knows its own operator
 
 - The third file of the trio (SYSTEM.md is the soul, the vault is the

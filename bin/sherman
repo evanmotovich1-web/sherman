@@ -694,7 +694,33 @@ shell_version() {
 # cannot: no remote means no update source, and a diverged tree is a person's
 # merge to make, never this script's. It must work with no engine installed
 # and no config written, which is why it dispatches before everything else.
+# Old-build sessions filed eval output into the retired
+# vault/inbox/eval-recommendations lane, and keep refiling it until they are
+# relaunched. The lane must stay empty (the eval suite asserts it), so every
+# machine self-heals: artifacts are QUARANTINED to
+# ~/.sherman/evals/recovered-vault-inbox/ — moved, never deleted — and the
+# heal is named once. Safe to run on every launch and every update.
+heal_legacy_eval_lane() {
+    lane="$ROOT/vault/inbox/eval-recommendations"
+    [ -d "$lane" ] || return 0
+    healed=0
+    for lane_file in "$lane"/*; do
+        [ -f "$lane_file" ] || continue
+        if [ "$healed" -eq 0 ]; then
+            mkdir -p "$SHERMAN_HOME/evals/recovered-vault-inbox"
+            healed=1
+        fi
+        mv "$lane_file" "$SHERMAN_HOME/evals/recovered-vault-inbox/" 2>/dev/null || return 0
+    done
+    if [ "$healed" -eq 1 ]; then
+        rmdir "$lane" 2>/dev/null
+        echo "healed: retired eval artifacts moved to ~/.sherman/evals/recovered-vault-inbox (an old session refiles them until relaunched)"
+    fi
+    return 0
+}
+
 run_update() {
+    heal_legacy_eval_lane
     if ! command -v git >/dev/null 2>&1 \
         || ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
         echo "This install is not a git checkout, so it cannot self-update."
@@ -1831,6 +1857,7 @@ fi
 # again exactly as if this were a first run. Nobody is told to delete a
 # file this script can move itself.
 quarantine_corrupt_config
+heal_legacy_eval_lane
 if [ -n "$config_quarantined" ]; then
     echo "Setup will ask its questions again; the moved file is kept for diagnosis."
     echo

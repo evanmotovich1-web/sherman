@@ -18,6 +18,13 @@ import { Transcript } from '../src/ui/Transcript.js';
 import { Wordmark } from '../src/ui/Wordmark.js';
 import { safeTerminalText } from '../src/ui/sanitize.js';
 import { shimmerSegments, startLoadIn } from '../src/ui/loadin.js';
+
+// Windows reports the live console size even through a pipe, so a real
+// PowerShell width leaks into renders these tests believe are pinned (a
+// 102-column console failed an 80-column assertion on an otherwise healthy
+// machine). Freeze the harness terminal before any render happens.
+Object.defineProperty(process.stdout, 'columns', { value: 80, configurable: true });
+Object.defineProperty(process.stdout, 'rows', { value: 24, configurable: true });
 import { SPINNER } from '../src/ui/theme.js';
 
 // Colour level is pinned, not inherited. Chalk resolves level 3 under a TTY (or
