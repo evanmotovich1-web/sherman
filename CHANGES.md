@@ -3,6 +3,25 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Added: the vault grows — one-keypress filing, and the judge can read
+
+- Why the vault sat at three files: 69 sessions, 16 evals, 3 proposed facts,
+  0 ever filed — a proposal had to be re-typed to become real, and never was.
+  Now, after every eval (exit and manual), each complete `/learn` and `/wiki`
+  the verdict proposed appears in a choice box: Enter files it, Esc skips it.
+  The operator keypress is still the only path to a write, and the accepted
+  text goes through the same shell validation and confinement as a hand-typed
+  command. Proposals are deduped and capped at four per verdict.
+- The judge is un-blinded: on zai, the permission wall denied everything
+  outside the vault, so eval turns told to read the session log graded blind
+  (one said so in its own verdict). Read-only turns — and only read-only
+  turns — may now READ `~/.sherman/sessions/`, `evals/`, and `win-sources/`;
+  writes stay denied and normal turns keep the vault-only wall.
+- DESIGN.md's retention boundary is updated to say what is now true:
+  operator-gated, not retype-only. Smoke check 32 pins the parser, the
+  read-only-only wall opening, and the keypress-gated filing path
+  (`TOTAL_CHECKS=32`).
+
 ## 2026-08-12 — Added: route a worker to a specific model
 
 - One worker, a named engine, the parent session untouched:

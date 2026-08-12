@@ -64,7 +64,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=31
+TOTAL_CHECKS=32
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -2793,6 +2793,71 @@ if grep -qF 'hand-over, not a mistake to correct' agent/SYSTEM.md \
     pass "SYSTEM.md teaches paste-storage through the CLI and skill-building from a new key"
 else
     fail "SYSTEM.md lost the paste hand-over or the build-skills-from-keys contract"
+fi
+
+# ----------------------------------------------------------------- check 32 --
+# The vault-growth gate. An eval-proposed /learn or /wiki becomes ONE keypress
+# instead of a retype, and the read-only judge can finally read the session
+# log it grades. The promises checked: the parser finds bare and backticked
+# proposals, dedupes, and caps; the opencode wall opens sessions/evals to
+# READ-ONLY turns only; and the filing path in the shell stays behind the
+# operator keypress and the shell validator.
+echo
+echo "32. eval proposals file on one keypress, and the judge reads its log"
+
+GATE_JS=$(cat <<'JS'
+import { strict as assert } from 'node:assert';
+const { parseRetentionProposals } = await import('./src/commands.js');
+const { openCodeConfigForMode } = await import('./src/engine/opencode.js');
+
+const verdict = [
+    'Some prose about the session.',
+    '/learn verify-first | Verify before claiming completion.',
+    'If useful, a `/wiki turnaround-format | The turnaround report is a table.` would record it.',
+    '/learn verify-first | A duplicate name that must not double-file.',
+].join('\n');
+const proposals = parseRetentionProposals(verdict);
+assert.equal(proposals.length, 2, 'expected two deduped proposals');
+assert.deepEqual(proposals[0], {
+    command: 'learn', name: 'verify-first', content: 'Verify before claiming completion.',
+});
+assert.deepEqual(proposals[1], {
+    command: 'wiki', name: 'turnaround-format', content: 'The turnaround report is a table.',
+});
+assert.equal(parseRetentionProposals('no proposals here').length, 0);
+
+const config = {
+    vaultPath: '/tmp/smoke-vault',
+    workspacePath: '/tmp/smoke-sherman-home/workspace',
+    zaiPlan: 'api',
+};
+const ro = JSON.parse(openCodeConfigForMode(config, 'read-only', {}));
+assert.equal(ro.permission.external_directory['/tmp/smoke-sherman-home/sessions/**'], 'allow');
+assert.equal(ro.permission.external_directory['/tmp/smoke-sherman-home/evals/**'], 'allow');
+assert.equal(ro.permission.edit, 'deny', 'read-only must still deny writes');
+const normal = JSON.parse(openCodeConfigForMode(config, 'normal', {}));
+assert.equal(normal.permission.external_directory['/tmp/smoke-sherman-home/sessions/**'], undefined,
+    'a normal turn must keep the vault-only wall');
+JS
+)
+
+gate_err=$(cd shell && env FORCE_COLOR=0 node --input-type=module -e "$GATE_JS" 2>&1)
+gate_status=$?
+if [ "$gate_status" -eq 0 ]; then
+    pass "proposals parse, dedupe, and cap; the judge reads its log on read-only turns only"
+else
+    fail "retention gate: $(printf '%s' "$gate_err" | head -3)"
+fi
+
+# The filing path itself: behind the keypress, through the validator. Pinned
+# by structure — the gate exists, filing goes through applyRetentionResult,
+# and no other call in the shell files eval output anywhere.
+if grep -qF 'parseRetentionProposals(evalReply)' shell/src/ui/app.js \
+    && grep -qF 'pendingRetention.resolve' shell/src/ui/app.js \
+    && grep -qF "choices: ['File it', 'Skip']" shell/src/ui/app.js; then
+    pass "filing stays behind the operator keypress and the shell validator"
+else
+    fail "the one-keypress retention gate lost its keypress or its validator"
 fi
 
 # -------------------------------------------------------------------- result --
