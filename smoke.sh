@@ -206,6 +206,18 @@ else
         pass "contains the no-PHI and autonomy rules"
     fi
 
+    # The self-evolution governance must survive assembly in BOTH directions:
+    # the autonomy to publish (branch + PR, unprompted) AND the fleet gate that
+    # holds the merge to main for a human. Losing either — reverting to "never
+    # push" or opening the door to "push to main" — is a regression, so both
+    # halves are pinned in the assembled adapter.
+    if grep -qF "never push to \`main\`" "$ADAPTER" \
+        && grep -qF "The merge is the operator's to grant." "$ADAPTER"; then
+        pass "carries the self-evolution push discipline: branch+PR yours, merge is the operator's"
+    else
+        fail "the self-evolution push discipline (branch+PR, main-merge gated) is missing from the adapter"
+    fi
+
     if grep -qF 'offer a complete operator-reviewed' "$ADAPTER" \
         && grep -qF '`/wiki <name> | <fact>` command' "$ADAPTER" \
         && grep -qF 'There is no validated private-memory' "$ADAPTER"; then
