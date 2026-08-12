@@ -162,10 +162,19 @@ export function submissionRecordText(value, parsed = parseSubmission(value)) {
         // The NAME is safe to keep — it is the readable part of the record —
         // but anything after it could be the secret, so it never lands in the
         // transcript or the session log. `remove NAME` carries no secret.
+        //
+        // The MALFORMED submission is the dangerous one. The first shipped
+        // version only redacted when a valid NAME parsed, so the most common
+        // operator mistake — pasting the value first — sailed into the log
+        // verbatim alongside its rejection notice. Anything after /key that
+        // is not a bare listing or a remove is redacted wholesale now: a
+        // record that over-redacts a typo is noise, one that under-redacts a
+        // secret is a leak, and the two costs are nowhere near equal.
+        const removal = parsed.args.match(/^remove\s+(\S+)\s*$/i);
+        if (removal) return `/key remove ${removal[1]}`;
         const match = parsed.args.match(/^([A-Za-z][A-Za-z0-9_]*)\s+\S/);
-        if (match && match[1].toLowerCase() !== 'remove') {
-            return `/key ${match[1]} «redacted»`;
-        }
+        if (match) return `/key ${match[1]} «redacted»`;
+        if (parsed.args.trim() !== '') return '/key «redacted»';
     }
     return value;
 }
