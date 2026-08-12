@@ -112,6 +112,44 @@ export function loadSkills(root = REPO_ROOT) {
         count += 1;
     }
 
+    // Personal skills: ~/.sherman/skills, the same directory the launcher
+    // already assembles into the workspace. Sherman forges a skill there to
+    // use it on the NEXT LAUNCH without waiting on a fleet merge; here it
+    // joins the registry so the palette and launch screen show what is
+    // actually loadable. Bundled wins a name collision — same rule the
+    // workspace assembler enforces — and an unreadable personal dir is
+    // simply absent (a fresh machine has none; that is not an error).
+    const personalDir = join(process.env.HOME || homedir(), '.sherman', 'skills');
+    let personalEntries = [];
+    try {
+        personalEntries = readdirSync(personalDir, { withFileTypes: true });
+    } catch { personalEntries = []; }
+    const bundledNames = new Set(list.map((skill) => skill.name));
+    for (const entry of personalEntries.filter((e) => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+        if (bundledNames.has(entry.name)) continue;
+        let text;
+        try {
+            text = readFileSync(join(personalDir, entry.name, 'SKILL.md'), 'utf8');
+        } catch {
+            malformed.push(entry.name);
+            continue;
+        }
+        const fields = parseFrontMatter(text);
+        if (!fields || !fields.name || !fields.category || !fields.description || fields.name !== entry.name) {
+            malformed.push(entry.name);
+            continue;
+        }
+        if (!byCategory.has(fields.category)) byCategory.set(fields.category, []);
+        byCategory.get(fields.category).push(fields.name);
+        list.push({
+            name: fields.name,
+            category: fields.category,
+            summary: fields.summary || fields.description,
+            personal: true,
+        });
+        count += 1;
+    }
+
     const categories = [...byCategory.entries()]
         .map(([name, items]) => ({ name, items }))
         .sort((a, b) => a.name.localeCompare(b.name));

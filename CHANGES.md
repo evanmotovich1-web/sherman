@@ -3,6 +3,23 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Added: skills pop in the trace, personal skills, and the zai shell
+
+- Every skill that fires now shows in the trace: a SKILL.md the engine opens
+  mid-turn renders as the same 📚 skill row a slash invocation gets — the
+  operator sees every skill a turn actually used, not just the ones typed.
+- Personal skills are first-class: `~/.sherman/skills/<name>/SKILL.md` joins
+  the launch registry and the slash palette (bundled wins a name collision,
+  same rule the workspace assembler enforces). The operating contract now
+  teaches the two speeds: forge personally to use next launch, ship
+  fleet-wide via `self-evolve` once a skill proves out — and go LOOKING for
+  loadable skills instead of working around them.
+- zai sessions get the shell on normal turns — operator-granted parity with
+  Codex, whose sessions always had one. Stated honestly in the code and
+  DESIGN.md: bash is not path-aware, so the vault-write denial rides the
+  operating contract for shell commands; read-only turns still deny bash
+  outright, and smoke pins both halves.
+
 ## 2026-08-12 — Fixed: Windows verification — console-width leak and the zombie eval lane
 
 - A Windows `sherman update` failed verification on an otherwise healthy

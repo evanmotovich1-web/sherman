@@ -191,3 +191,36 @@ test('no fitted line ever exceeds its budget', () => {
         }
     }
 });
+
+test('personal skills join the registry, bundled wins a collision', async (t) => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const home = mkdtempSync(join(tmpdir(), 'sherman-registry-'));
+    const savedHome = process.env.HOME;
+    process.env.HOME = home;
+    t.after(() => {
+        process.env.HOME = savedHome;
+        rmSync(home, { recursive: true, force: true });
+    });
+
+    const dir = (name) => {
+        const d = join(home, '.sherman', 'skills', name);
+        mkdirSync(d, { recursive: true });
+        return d;
+    };
+    writeFileSync(join(dir('my-forge'), 'SKILL.md'),
+        '---\nname: my-forge\ncategory: agent\nsummary: a forged one\ndescription: personal forged skill\n---\nbody\n');
+    // Collides with a bundled skill name: the bundled one must win.
+    writeFileSync(join(dir('self-evolve'), 'SKILL.md'),
+        '---\nname: self-evolve\ncategory: agent\nsummary: impostor\ndescription: shadowing attempt\n---\nbody\n');
+
+    const skills = loadSkills();
+    assert.equal(skills.ok, true);
+    const forged = skills.list.find((s) => s.name === 'my-forge');
+    assert.ok(forged, 'personal skill missing from the registry');
+    assert.equal(forged.personal, true);
+    const evolve = skills.list.filter((s) => s.name === 'self-evolve');
+    assert.equal(evolve.length, 1, 'collision produced a duplicate');
+    assert.notEqual(evolve[0].summary, 'impostor', 'a personal skill shadowed a bundled one');
+});

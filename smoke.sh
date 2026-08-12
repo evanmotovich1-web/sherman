@@ -2854,9 +2854,11 @@ const ro = JSON.parse(openCodeConfigForMode(config, 'read-only', {}));
 assert.equal(ro.permission.external_directory['/tmp/smoke-sherman-home/sessions/**'], 'allow');
 assert.equal(ro.permission.external_directory['/tmp/smoke-sherman-home/evals/**'], 'allow');
 assert.equal(ro.permission.edit, 'deny', 'read-only must still deny writes');
+assert.equal(ro.permission.bash, 'deny', 'read-only turns never get a shell');
 const normal = JSON.parse(openCodeConfigForMode(config, 'normal', {}));
 assert.equal(normal.permission.external_directory['/tmp/smoke-sherman-home/sessions/**'], undefined,
     'a normal turn must keep the vault-only wall');
+assert.equal(normal.permission.bash, 'allow', 'normal turns carry the shell (codex parity)');
 JS
 )
 

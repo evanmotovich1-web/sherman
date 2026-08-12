@@ -32,7 +32,9 @@ carried in this document and in the decisions table below.
 - Headless engines receive only the restricted tools needed to search, read,
   and write within their allowed vault scope.
 - Z.AI uses OpenCode's official provider integration with `glm-5.2` pinned.
-  Sherman disables sharing, plugins, arbitrary shell execution, and every
+  Sherman disables sharing, plugins, shell execution on read-only turns
+  (normal turns allow the shell — operator-granted parity with Codex, with
+  the vault-write rule riding the operating contract there), and every
   external path except the configured vault. Validated Sherman connectors are
   translated into OpenCode's native MCP schema and bound to the launch digest
   instead of trusting mutable workspace bytes or forking the registry.

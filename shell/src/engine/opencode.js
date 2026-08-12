@@ -171,10 +171,6 @@ export function openCodeConfigForMode(
         // Rules are last-match-wins: deny every external path, then open only
         // the configured vault subtree.
         external_directory: { '*': 'deny', [`${vault}/**`]: 'allow' },
-        // OpenCode has a permission boundary, not Codex's OS-level seatbelt.
-        // Deny arbitrary shell execution so it cannot route around path-aware
-        // read/edit checks.
-        bash: 'deny',
         // Sherman owns workers above the engine seam. Deny the engine's task
         // tool so a child agent with looser permissions cannot bypass policy.
         task: 'deny',
@@ -183,6 +179,9 @@ export function openCodeConfigForMode(
         if (!(allowPersonalWiki && name === 'llmwiki')) permission[`${name}_*`] = 'deny';
     }
     if (readOnly) {
+        // Read-only turns keep the full wall: no shell at all, because bash
+        // can route around every path-aware read/edit rule below.
+        permission.bash = 'deny';
         permission.edit = 'deny';
         // Local/remote MCPs are host-side capabilities. A read-only promise
         // cannot assume each third-party tool is non-mutating.
@@ -201,6 +200,14 @@ export function openCodeConfigForMode(
         // Reads may cross into the configured vault, but model file tools may
         // not mutate it. apply_patch is denied outright because its movePath is
         // authorized separately by external_directory in OpenCode 1.18.x.
+        // Normal turns get the shell — operator-granted parity with Codex,
+        // whose sessions have always had one. Honest cost, stated rather
+        // than hidden: bash is not path-aware, so the vault-write denial
+        // below is enforceable only on the model file tools; for shell
+        // commands it rides the operating contract. The operator weighed
+        // that against a zai Sherman that could not run a single command
+        // and chose the shell. Read-only turns are unchanged.
+        permission.bash = 'allow';
         const workspaceOnlyEdit = { '*': 'allow', [`${vault}/**`]: 'deny' };
         permission.edit = workspaceOnlyEdit;
         permission.write = workspaceOnlyEdit;
