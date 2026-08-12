@@ -3,6 +3,21 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-11 — Changed: the eval loop runs silent — it files, it doesn't fill the CLI
+
+- The automatic judge machinery no longer writes to the terminal. Checkpoint
+  evals, the catch-up eval, the exit session-eval, and every meta-eval still
+  run, still log, and still file their verdicts to `~/.sherman/evals/` for
+  `/win` — but they no longer commit worker panels or "grading in the
+  background" notices to the transcript. The CLI stays about the work, not
+  the grading of it. A background eval that fails does so silently and
+  restores its grading debt exactly as before, so coverage is unchanged; it
+  just no longer narrates.
+- A hand-typed `/eval` keeps one honest line — `session evaluated · filed
+  under ~/.sherman/evals · read it with /win` — so an operator who asked for
+  it knows it ran and where the verdict went, without the panel. On exit even
+  that is skipped; the shell already said it was evaluating on the way out.
+
 ## 2026-08-11 — Added: `sherman board` runs a live software-factory floor
 
 - The team-board watcher got a floor. On a TTY, `sherman board` now renders
