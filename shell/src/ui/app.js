@@ -629,28 +629,26 @@ export function App({
         async ({ evalText, target, logPath }) => {
             const request = metaEvalRequest(evalText, logPath);
             if (!request || !sessionFactory) return null;
-            commit('notice', 'meta eval · grading the eval itself · read-only worker');
+            // The eval loop is filed, never shown. The meta-judge grades the
+            // judge in the background and writes its verdict to the eval store
+            // (read it with /win); its output is not the operator's terminal
+            // to fill. Nothing here commits to the transcript.
             const worker = sessionFactory();
             let metaReply = '';
-            const engineErrors = [];
             try {
                 for await (const event of worker.send(request)) {
                     if (event.kind === 'message') {
                         metaReply = metaReply ? `${metaReply}\n\n${event.text}` : event.text;
                     }
-                    // Same contract as gradeOnWorker: outcome decides, an
-                    // error mid-stream does not — the reply may still arrive.
-                    if (event.kind === 'error') engineErrors.push(event.message);
+                    // Outcome decides, an error mid-stream does not — the reply
+                    // may still arrive. A meta-eval that produces nothing fails
+                    // silently by the eval store's own contract.
                 }
                 if (metaReply) {
-                    commit('worker-message', metaReply);
                     log.append('worker', metaReply);
                     appendEvalReport(target, 'meta eval', metaReply);
-                } else if (engineErrors.length > 0) {
-                    commit('error', `meta eval failed: ${engineErrors[engineErrors.length - 1]}`);
                 }
             } catch (err) {
-                commit('error', `meta eval failed: ${err?.message ?? String(err)}`);
                 metaReply = '';
             } finally {
                 workerUsageRef.current = addUsage(workerUsageRef.current, worker.usage ?? emptyUsage());
@@ -659,7 +657,7 @@ export function App({
             }
             return null;
         },
-        [commit, log, session, sessionFactory]
+        [log, session, sessionFactory]
     );
 
 
@@ -1141,7 +1139,13 @@ export function App({
                                 break;
                             }
                             if (isEval) {
+                                // Filed, not shown: the eval verdict accumulates
+                                // for the eval store and lands in the log, but
+                                // never commits to the transcript. The CLI stays
+                                // about the work; read verdicts with /win.
                                 evalReply = evalReply ? `${evalReply}\n\n${event.text}` : event.text;
+                                log.append('sherman', event.text);
+                                break;
                             }
                             if (isWin) {
                                 winReply = winReply ? `${winReply}\n\n${event.text}` : event.text;
@@ -1354,6 +1358,13 @@ export function App({
 
             if (isEval && evalReply) {
                 appendEvalReport(sessionId, 'session eval', evalReply);
+                // A hand-typed /eval gets ONE line back so the operator knows
+                // it ran and where the verdict went — the panel itself stays
+                // out of the CLI. On exit (exitFlowRef set) even that is
+                // skipped: the shell is already leaving and said so.
+                if (!exitFlowRef.current) {
+                    commit('notice', 'session evaluated · filed under ~/.sherman/evals · read it with /win');
+                }
                 // The loop on the loop: this verdict now gets graded, and the
                 // recommendation-plus-grade pair is filed for review. Awaited,
                 // so an exit's filing lands before the shell disposes.
@@ -1479,36 +1490,29 @@ export function App({
     // IT JUDGED — which for a catch-up is not this one. Worker tokens land in
     // the worker usage total like any worker's.
     const gradeOnWorker = useCallback(
-        async ({ request, kind, target, notice, logPath = null }) => {
+        async ({ request, kind, target, logPath = null }) => {
             const worker = sessionFactory();
             bgEvalWorkerRef.current = worker;
-            commit('notice', notice);
             let verdict = '';
-            const engineErrors = [];
             try {
                 for await (const event of worker.send(request)) {
                     if (event.kind === 'message') {
                         verdict = verdict ? `${verdict}\n\n${event.text}` : event.text;
                     }
-                    // Collected, not fatal: a worker turn is judged by whether
-                    // its verdict arrived, not by whether the engine grumbled
-                    // on the way. Seen live on codex 0.146.0 — error items on
-                    // turns that then completed, and the abort-on-first-error
-                    // this replaces threw away a verdict one event from done.
-                    if (event.kind === 'error') engineErrors.push(event.message);
+                    // A worker turn is judged by whether its verdict arrived,
+                    // not by whether the engine grumbled on the way; a mid-
+                    // stream error does not abort. The background eval loop
+                    // never speaks in the transcript — it FILES.
                 }
                 if (verdict) {
-                    if (engineErrors.length > 0) {
-                        commit('notice', `${kind} finished despite an engine error: ${engineErrors[engineErrors.length - 1]}`);
-                    }
-                    commit('worker-message', verdict);
                     log.append('worker', verdict);
                     appendEvalReport(target, kind, verdict);
-                } else {
-                    commit('error', `${kind} failed: ${engineErrors[engineErrors.length - 1] ?? 'the worker returned no verdict'}`);
                 }
+                // A background eval that produced no verdict fails silently:
+                // the caller restores the grading debt from the false return,
+                // so the coverage is kept without a line in the operator's
+                // terminal that was never theirs to watch.
             } catch (err) {
-                commit('error', `${kind} failed: ${err?.message ?? String(err)}`);
                 verdict = '';
             } finally {
                 workerUsageRef.current = addUsage(workerUsageRef.current, worker.usage ?? emptyUsage());
@@ -1516,9 +1520,9 @@ export function App({
                 worker.dispose();
                 bgEvalWorkerRef.current = null;
             }
-            // After the judge's worker is disposed, the meta-judge takes its
-            // turn — the loop runs on every eval path, background ones
-            // included, or the least-watched judges would be the least checked.
+            // The meta-judge takes its turn — the loop runs on every eval path,
+            // background ones included, or the least-watched judges would be
+            // the least checked. Silent, like the judge it grades.
             if (verdict) {
                 await runMetaEval({ evalText: verdict, target, logPath });
             }
@@ -1527,7 +1531,7 @@ export function App({
             // transient engine error costs one checkpoint, not the coverage.
             return Boolean(verdict);
         },
-        [commit, log, runMetaEval, session, sessionFactory]
+        [log, runMetaEval, session, sessionFactory]
     );
 
     // The background checkpoint eval: every `evalEveryMs`, a session with new
@@ -1567,14 +1571,13 @@ export function App({
                 kind: 'checkpoint eval',
                 target: sessionId,
                 logPath: log.path,
-                notice: 'checkpoint eval · background · read-only worker grading the session so far',
             });
             // A failed judge must not mark the turns graded: restore the debt
             // (unless something else — a manual /eval — booked meanwhile) so
-            // the next tick or the exit eval retries, and say so.
+            // the next tick or the exit eval retries. Silent: the retry is the
+            // loop's business, not a line for the operator's terminal.
             if (!graded && lastEvalTurnRef.current === booked) {
                 lastEvalTurnRef.current = before;
-                commit('notice', 'the failed checkpoint will retry at the next checkpoint; the exit eval covers it regardless');
             }
         };
 
@@ -1584,7 +1587,7 @@ export function App({
             bgEvalWorkerRef.current?.dispose();
             bgEvalWorkerRef.current = null;
         };
-    }, [commit, evalEveryMs, gradeOnWorker, log, sessionFactory, sessionId]);
+    }, [evalEveryMs, gradeOnWorker, log, sessionFactory, sessionId]);
 
     // The catch-up eval: the loop's guarantee that EVERY session ends with a
     // verdict, including the ones that never got to say goodbye. A closed
@@ -1611,7 +1614,6 @@ export function App({
                 kind: 'catch-up eval',
                 target: stale.id,
                 logPath: stale.path,
-                notice: `catch-up eval · session ${stale.id} ended without a verdict · grading it in the background`,
             });
         }, catchUpDelayMs);
 

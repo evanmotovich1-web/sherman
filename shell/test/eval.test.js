@@ -308,9 +308,21 @@ test('the checkpoint eval grades new turns on a worker, once, in the background'
         await until(() => h.workerRequests.length === 4);
 
         instance.unmount();
-        assert.match(h.captured(), /checkpoint eval · background/);
-        assert.match(h.captured(), /CHECKPOINT VERDICT/);
-        assert.match(h.captured(), /meta eval · grading the eval itself/);
+        // The eval loop runs and FILES, but never speaks in the transcript:
+        // the operator's terminal stays about the work, not the grading of it.
+        // None of the loop's chatter — the background notice, the verdict
+        // panel, the meta-eval line — reaches the captured frames.
+        assert.doesNotMatch(h.captured(), /checkpoint eval · background/);
+        assert.doesNotMatch(h.captured(), /CHECKPOINT VERDICT/);
+        assert.doesNotMatch(h.captured(), /meta eval/);
+        // The verdict still outlived the turn where it belongs: the per-session
+        // eval report under ~/.sherman/evals/, which /win reads.
+        const { readFileSync } = await import('node:fs');
+        const { evalsDir } = await import('../src/evalstore.js');
+        const filed = readFileSync(join(evalsDir(h.home), '20260729_040000_ckpt01.md'), 'utf8');
+        assert.match(filed, /## checkpoint eval/);
+        assert.match(filed, /CHECKPOINT VERDICT: on track\./);
+        assert.match(filed, /## meta eval/);
     } finally {
         instance.unmount();
         process.env.HOME = oldHome;
