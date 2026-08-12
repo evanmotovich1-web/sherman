@@ -239,6 +239,16 @@ else
         && pass "carries the launch-time memory index" \
         || fail "the memory index is missing from the adapter"
 
+    # The operator profile: first launch writes the ~/.sherman/user.md
+    # template, every launch splices its contents into the adapter, and the
+    # adapter teaches that the file is machine-local and never synced.
+    [ -f "$TMPHOME/.sherman/user.md" ] \
+        && grep -qF -- '- Role:' "$TMPHOME/.sherman/user.md" \
+        && grep -qF "## The operator's profile" "$ADAPTER" \
+        && grep -qF 'never sync it anywhere' "$ADAPTER" \
+        && pass "user.md template exists and its profile rides in the adapter" \
+        || fail "the operator profile (user.md) is missing from the launch"
+
     grep -qF '{{SHERMAN_BODY}}' "$ADAPTER" \
         && fail "splice token still present -- template copied, not assembled" \
         || pass "splice token replaced"
