@@ -3,6 +3,21 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-12 — Added: user.md — every Sherman knows its own operator
+
+- The third file of the trio (SYSTEM.md is the soul, the vault is the
+  memory): `~/.sherman/user.md` is the operator profile — role, current
+  work, reply-style and standing preferences. First launch writes a short
+  template; every launch splices the current contents into the assembled
+  adapter under "Who you are speaking with", so each session opens knowing
+  its human, not just their name.
+- Machine-local on purpose and never synced, committed, or shared — the
+  profile-level completion of the operator-identity fix: each machine's
+  Sherman knows ITS operator. Sessions are taught to offer exact lines for
+  the file when the operator states something durable about themselves, and
+  never to copy another person's profile in. Check 3 asserts the template,
+  the splice, and the never-sync teaching.
+
 ## 2026-08-12 — Added: the money engine — capped float, ledger, gate, and the earning skill
 
 - Sherman can now earn inside a fence: a $500 pre-funded Stripe float, hard
