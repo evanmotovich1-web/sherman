@@ -1460,6 +1460,64 @@ if [ "${1:-}" = "board" ]; then
     run_board "$@"
 fi
 
+# `install` is Sherman's approved path to a capability that is a piece of
+# software: the operator (or Sherman, naming this command) installs a named
+# tool through whatever package manager the machine already has, with every
+# byte of output on screen. It is deliberately NOT a silent, sandbox-escaping
+# auto-installer — the whole point is that acquiring a capability stays
+# visible and the operator can see exactly what landed. It refuses nothing
+# legitimate and pretends nothing it could not do.
+run_install() {
+    tool="${1:-}"
+    if [ -z "$tool" ]; then
+        echo "Usage: sherman install <tool>    (e.g. sherman install jq)"
+        echo "Installs a named tool through this machine's package manager, output shown."
+        exit 1
+    fi
+    # A conservative name gate: real package names only, so a stray argument
+    # can never turn into an arbitrary shell fragment run by a manager.
+    case "$tool" in
+        *[!A-Za-z0-9._@/-]*)
+            echo "Refusing to install '$tool': names are letters, digits, and . _ @ / - only." >&2
+            exit 1 ;;
+    esac
+
+    mgr=""
+    for candidate in brew npm pipx apt-get; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            mgr="$candidate"
+            break
+        fi
+    done
+    if [ -z "$mgr" ]; then
+        echo "No supported package manager found (looked for brew, npm, pipx, apt-get)." >&2
+        echo "Install one, or install '$tool' by hand." >&2
+        exit 1
+    fi
+
+    echo "Installing '$tool' with $mgr — you will see everything it does."
+    echo
+    case "$mgr" in
+        brew)    brew install "$tool" ;;
+        npm)     npm install -g "$tool" ;;
+        pipx)    pipx install "$tool" ;;
+        apt-get) sudo apt-get install -y "$tool" ;;
+    esac
+    status=$?
+    echo
+    if [ "$status" -eq 0 ]; then
+        echo "Installed '$tool'. Relaunch the session that needed it."
+    else
+        echo "Install of '$tool' failed ($mgr exited $status). The output above is the whole story." >&2
+    fi
+    exit "$status"
+}
+
+if [ "${1:-}" = "install" ]; then
+    shift
+    run_install "$@"
+fi
+
 # `update` is a subcommand, recognised first: it needs no engine, no config and
 # no session, so it runs before any of them are checked or created.
 if [ "${1:-}" = "update" ]; then

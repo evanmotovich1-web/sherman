@@ -3,6 +3,32 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-11 — Added: Sherman acquires capabilities instead of dead-ending
+
+- "That is outside what I can do" is retired as an answer. The operating
+  contract now makes resourceful self-extension the standing order: a
+  capability Sherman lacks is a task, not a wall, and it routes the gap to the
+  means that fits — write the skill it needs (`self-edit`), wire the connector
+  (`0-1`), or install the software (`sherman install`) — taking each as far as
+  it safely can before involving the operator. It returns to the person for
+  exactly two things, and returns with the step prepared: a secret only they
+  hold, or a genuinely destructive action.
+- New `self-extend` skill (category `agent`): the loop behind that
+  disposition — name the gap (already-have / skill / connector / software),
+  route it, take it as far as it goes, and stop only at the floor. Auto-invoked
+  the moment a request needs something Sherman cannot yet do.
+- New `sherman install <tool>` command: the approved, visible path to a
+  software capability. It installs a named tool through whatever package
+  manager the machine has (brew / npm / pipx / apt-get) with every byte of
+  output on screen. It is deliberately **not** a silent arbitrary installer —
+  a package name is letters, digits, and `. _ @ / -` only, so no shell
+  fragment can reach a manager through it. Smoke check 30 pins the usage and
+  the name gate.
+- The floor beneath all of it is unchanged and stated plainly in the contract:
+  never PHI, and never a silent sandbox escape. Acquisition is visible and
+  reversible or it waits for the operator — the isolation guarantees are the
+  product, not an obstacle to route around.
+
 ## 2026-08-11 — Changed: the eval loop runs silent — it files, it doesn't fill the CLI
 
 - The automatic judge machinery no longer writes to the terminal. Checkpoint

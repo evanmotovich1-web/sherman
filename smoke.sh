@@ -64,7 +64,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=29
+TOTAL_CHECKS=30
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -2624,6 +2624,28 @@ else
 fi
 
 rm -rf "$BOARDHOME"
+
+# ----------------------------------------------------------------- check 30 --
+# `sherman install` is the approved, visible path to a software capability. It
+# is NOT a silent arbitrary installer: a package name is letters/digits and a
+# few punctuation marks only, so a shell fragment can never reach a package
+# manager through it. Usage-with-no-arg and the name gate are what keep that
+# promise, and both are checked here without installing anything.
+echo
+echo "30. sherman install stays a named, non-injectable capability path"
+
+install_usage=$(./bin/sherman install 2>&1); install_usage_status=$?
+install_reject=$(./bin/sherman install 'foo; rm -rf /' 2>&1); install_reject_status=$?
+
+if [ "$install_usage_status" -ne 0 ] \
+    && printf '%s' "$install_usage" | grep -qF 'Usage: sherman install' \
+    && [ "$install_reject_status" -ne 0 ] \
+    && printf '%s' "$install_reject" | grep -qF 'Refusing to install' \
+    && grep -q 'run_install' bin/sherman; then
+    pass "install prints usage bare and refuses a name carrying shell metacharacters"
+else
+    fail "sherman install lost its usage or its name gate (usage=$install_usage_status reject=$install_reject_status)"
+fi
 
 # -------------------------------------------------------------------- result --
 echo
