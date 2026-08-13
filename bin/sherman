@@ -803,9 +803,47 @@ run_update() {
         old_version=$(shell_version)
 
         if ! git -C "$ROOT" pull --ff-only; then
+            # The fast-forward failed. Two very different causes: a network miss,
+            # or a genuinely diverged tree (local commits the remote does not
+            # have). A diverged tree is a wall worth knocking down, not a reason
+            # to stop: preserve the local tip to a backup branch and move onto
+            # the remote's, so `sherman update` always ends on the remote's
+            # latest. The one case that still stops is a dirty tree, because
+            # resetting it would destroy uncommitted work.
+            default_branch=$(git -C "$ROOT" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+            [ -n "$default_branch" ] || default_branch=main
+
+            if ! git -C "$ROOT" rev-parse --verify --quiet "origin/$default_branch" >/dev/null 2>&1; then
+                echo >&2
+                echo "update unavailable — could not reach the remote to check for updates." >&2
+                exit 1
+            fi
+
+            if [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
+                echo >&2
+                echo "manual update needed — this checkout has uncommitted changes, so it cannot" >&2
+                echo "be fast-forwarded or reset safely. Commit or stash them, then re-run sherman update." >&2
+                exit 1
+            fi
+
+            if ! git -C "$ROOT" checkout --quiet "$default_branch" 2>/dev/null; then
+                echo >&2
+                echo "manual update needed — could not switch to '$default_branch' to update it." >&2
+                exit 1
+            fi
+
+            backup="update-backup/$(date +%Y%m%d-%H%M%S)"
+            if ! git -C "$ROOT" branch "$backup" 2>/dev/null \
+                || ! git -C "$ROOT" reset --hard "origin/$default_branch" 2>/dev/null; then
+                echo >&2
+                echo "manual update needed — could not reconcile '$default_branch' onto origin/$default_branch." >&2
+                echo "inspect 'git status' and 'git log' in the checkout, then re-run." >&2
+                exit 1
+            fi
+
             echo >&2
-            echo "manual update needed — this checkout cannot fast-forward onto its remote." >&2
-            exit 1
+            echo "note: '$default_branch' could not fast-forward; it now matches origin/$default_branch," >&2
+            echo "and the prior local tip is preserved on branch '$backup'." >&2
         fi
 
         exec env SHERMAN_UPDATE_REEXEC=1 \
