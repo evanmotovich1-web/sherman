@@ -252,6 +252,54 @@ const DISABLED_HOST_TOOL_OVERRIDES = Object.freeze([
 // admission is a named allowlist, never "whatever the host config carries".
 const MEMORY_MCP_KEYS = Object.freeze(new Set(['mnemosyne', 'llmwiki']));
 
+// Tool-level pre-approval for the admitted servers. Codex gates every MCP
+// tool call behind an approval, and approval_policy="never" turns that gate
+// into an auto-decline — proven live 2026-08-12: an admitted, healthy
+// mnemosyne answered every call with "user cancelled MCP tool call". Only
+// the per-tool key unlocks a call headlessly (the server-level and wildcard
+// forms were both probed and do nothing), so the rosters are spelled out.
+// Both servers are Sherman-provisioned at pinned versions, so the rosters
+// are knowable; a tool absent here degrades to the old cancellation, never
+// to an escalation. mnemosyne's sync_* tools are deliberately absent: the
+// catalog promises a local-only store, and an outbound sync is not a call
+// to approve silently.
+const MEMORY_MCP_TOOLS = Object.freeze({
+    mnemosyne: Object.freeze([
+        'mnemosyne_remember', 'mnemosyne_recall', 'mnemosyne_shared_remember',
+        'mnemosyne_shared_recall', 'mnemosyne_shared_forget', 'mnemosyne_shared_stats',
+        'mnemosyne_sleep', 'mnemosyne_stats', 'mnemosyne_invalidate',
+        'mnemosyne_validate', 'mnemosyne_get', 'mnemosyne_triple_add',
+        'mnemosyne_triple_query', 'mnemosyne_triple_end', 'mnemosyne_remember_canonical',
+        'mnemosyne_recall_canonical', 'mnemosyne_scratchpad_write', 'mnemosyne_scratchpad_read',
+        'mnemosyne_scratchpad_clear', 'mnemosyne_export', 'mnemosyne_update',
+        'mnemosyne_forget', 'mnemosyne_batch', 'mnemosyne_import',
+        'mnemosyne_diagnose', 'mnemosyne_graph_query', 'mnemosyne_graph_link',
+        'mnemosyne_persona_promote', 'mnemosyne_persona_demote', 'mnemosyne_persona_list',
+        'mnemosyne_persona_reinforce', 'mnemosyne_hygiene_audit', 'mnemosyne_hygiene_clean',
+    ]),
+    llmwiki: Object.freeze([
+        'add_source_from_url', 'append', 'create', 'create_knowledge_base',
+        'delete', 'edit', 'guide', 'lint', 'list_comments',
+        'list_knowledge_bases', 'ping', 'read', 'reply_to_comment',
+        'search', 'update_knowledge_base',
+    ]),
+});
+
+// Their local stores, granted as writable roots on the SAME normal turns.
+// Codex sandboxes MCP server processes with the turn: proven live 2026-08-12,
+// a wired mnemosyne answered tools/list and then failed every call with
+// "unable to open database file" — SQLite needs write on its own directory
+// (WAL sidecars) even to read. Without this grant the memory pair is admitted
+// in name and dead in practice. The vault is deliberately NOT here: memory
+// stores are the models' to write, the vault writes only through the
+// shell-owned /learn and /wiki path.
+function memoryDataRoots() {
+    return [
+        join(homedir(), '.sherman', 'mnemosyne', 'data'),
+        join(homedir(), '.sherman', 'research'),
+    ];
+}
+
 export class CodexSession extends EngineSession {
     /** @param {import('../config.js').ShermanConfig} config */
     constructor(config) {
@@ -388,7 +436,18 @@ export class CodexSession extends EngineSession {
             // stays for its own turns.
             const admitted = (mode === 'normal' && MEMORY_MCP_KEYS.has(key))
                 || (source === 'skill:research-wiki' && key === 'llmwiki');
-            if (!admitted) args.push('-c', `mcp_servers.${key}.enabled=false`);
+            if (!admitted) {
+                args.push('-c', `mcp_servers.${key}.enabled=false`);
+                continue;
+            }
+            for (const tool of MEMORY_MCP_TOOLS[key] ?? []) {
+                args.push('-c', `mcp_servers.${key}.tools.${tool}.approval_mode="approve"`);
+            }
+        }
+        if (mode === 'normal') {
+            // See memoryDataRoots: without these the admitted memory servers
+            // start and then fail every call against their own stores.
+            args.push('-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(memoryDataRoots())}`);
         }
         return args;
     }

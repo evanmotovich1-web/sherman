@@ -828,17 +828,26 @@ run_update() {
     fi
 
     # ----------------------------------------------------------- mnemosyne --
-    # Same contract as the wiki repair: healthy costs one --help probe and
+    # Same contract as the wiki repair: healthy costs two cheap probes and
     # prints nothing; a machine that never provisioned it GROWS it on update
     # (pinned version), and every failure degrades to an honest NOTE.
+    #
+    # Health is CLI + MCP transport, not CLI alone. The [mcp] extra is
+    # load-bearing: a venv installed without it answers --help while
+    # `mnemosyne mcp` dies on startup, engines silently drop the dead server,
+    # and Sherman is taught a memory it does not have. The import probe makes
+    # an extra-less venv unhealthy, so `sherman update` heals it in place.
     mnemo_dir="$HOME/.sherman/mnemosyne"
-    mnemo_pin="mnemosyne-memory==3.15.1"
+    mnemo_pin="mnemosyne-memory[mcp]==3.15.1"
     mnemo_bin="$mnemo_dir/.venv/bin/mnemosyne"
     [ -x "$mnemo_bin" ] || mnemo_bin="$mnemo_dir/.venv/Scripts/mnemosyne.exe"
+    mnemo_py_probe="$mnemo_dir/.venv/bin/python"
+    [ -x "$mnemo_py_probe" ] || mnemo_py_probe="$mnemo_dir/.venv/Scripts/python.exe"
     # SHERMAN_NO_FETCH opts out (tests, air-gapped machines) — provisioning
     # is a network act, the same convention the vault sync honors.
     if [ -z "${SHERMAN_NO_FETCH:-}" ] \
-        && ! { [ -x "$mnemo_bin" ] && "$mnemo_bin" --help >/dev/null 2>&1; }; then
+        && ! { [ -x "$mnemo_bin" ] && "$mnemo_bin" --help >/dev/null 2>&1 \
+            && [ -x "$mnemo_py_probe" ] && "$mnemo_py_probe" -c 'import mcp' >/dev/null 2>&1; }; then
         if ! command -v python3 >/dev/null 2>&1; then
             echo "NOTE: mnemosyne needs python3, which is missing, so it was not provisioned."
         else
@@ -856,10 +865,11 @@ run_update() {
                     || echo "NOTE: pip could not install mnemosyne: $(printf '%s\n' "$mnemo_pip_out" | tail -1)"
                 mnemo_bin="$mnemo_dir/.venv/bin/mnemosyne"
                 [ -x "$mnemo_bin" ] || mnemo_bin="$mnemo_dir/.venv/Scripts/mnemosyne.exe"
-                if [ -x "$mnemo_bin" ] && "$mnemo_bin" --help >/dev/null 2>&1; then
-                    echo "mnemosyne ready (verified: its CLI answers from its own venv)"
+                if [ -x "$mnemo_bin" ] && "$mnemo_bin" --help >/dev/null 2>&1 \
+                    && "$mnemo_py" -c 'import mcp' >/dev/null 2>&1; then
+                    echo "mnemosyne ready (verified: CLI answers and the MCP transport imports)"
                 else
-                    echo "NOTE: mnemosyne still does not answer. Re-run install.sh for the full report."
+                    echo "NOTE: mnemosyne still does not verify. Re-run install.sh for the full report."
                 fi
             else
                 echo "NOTE: could not create mnemosyne's venv (is python3-venv installed?)."
