@@ -94,7 +94,8 @@ PLACEHOLDER
 # any field.
 PROVIDERS='codex|OpenAI (Codex)|codex|available|
 zai|Z.AI (GLM-5.2)|opencode|available|
-claude|Anthropic (Claude Code)|claude|unavailable|the Claude Code backend is not wired into the Sherman Shell yet; Codex and Z.AI GLM are the working backends today'
+deepseek|DeepSeek (deepseek-chat)|opencode|available|
+claude|Anthropic (Claude Code)|claude|unavailable|the Claude Code backend is not wired into the Sherman Shell yet; Codex, Z.AI GLM, and DeepSeek are the working backends today'
 
 provider_count() {
     printf '%s\n' "$PROVIDERS" | grep -c .
@@ -127,6 +128,11 @@ engine_install_hint() {
             ;;
         zai)
             echo "OpenCode is not installed. Z.AI GLM uses OpenCode as its agent runtime. Install it with:"
+            echo
+            echo "    npm install -g opencode-ai"
+            ;;
+        deepseek)
+            echo "OpenCode is not installed. DeepSeek uses OpenCode as its agent runtime. Install it with:"
             echo
             echo "    npm install -g opencode-ai"
             ;;
@@ -241,6 +247,57 @@ ensure_zai_auth() {
     fi
     echo "Z.AI is not signed in. Run: opencode auth login --pure --provider zai" >&2
     echo "Paste your Z.AI key there, then run sherman again." >&2
+    return 1
+}
+
+# The key comes straight from DeepSeek (platform.deepseek.com -> API keys)
+# and is pasted into SHERMAN, never into OpenCode's login flow. The shell
+# stores it with the same contract as /key: ~/.sherman/keys.json, chmod 600,
+# never committed, never synced, never in the vault, and the model never
+# handles the value. injectKeys() places it in the engine environment as
+# DEEPSEEK_API_KEY on every launch — exactly the variable OpenCode's
+# DeepSeek provider reads. OpenCode stays what it is here: the local coding
+# runtime, not the keeper of this credential.
+has_deepseek_auth() {
+    [ -f "$HOME/.sherman/keys.json" ] \
+        && grep -q '"DEEPSEEK_API_KEY"' "$HOME/.sherman/keys.json" 2>/dev/null
+}
+
+ensure_deepseek_auth() {
+    has_deepseek_auth && return 0
+    if [ -t 0 ]; then
+        echo
+        echo "DeepSeek needs your API key — create one at platform.deepseek.com -> API keys."
+        printf 'Paste your DeepSeek API key (input hidden) > '
+        stty -echo 2>/dev/null || true
+        read -r deepseek_key || deepseek_key=""
+        stty echo 2>/dev/null || true
+        echo
+        if [ -z "$deepseek_key" ]; then
+            echo "No key entered; nothing was saved." >&2
+            return 1
+        fi
+        # Through the key store's own writer (validation, atomic write,
+        # read-back, 0600) — the same path a /key command takes. The value
+        # rides an env var into node so it never appears in an argv, which
+        # `ps` can read on a shared machine.
+        if SHERMAN_DEEPSEEK_KEY="$deepseek_key" node -e '
+const { pathToFileURL } = require("node:url");
+import(pathToFileURL(process.argv[1]).href).then((keys) => {
+    const result = keys.saveKey("DEEPSEEK_API_KEY", process.env.SHERMAN_DEEPSEEK_KEY);
+    if (!result.ok) { console.error(result.reason); process.exit(1); }
+}).catch(() => process.exit(1));' "$ROOT/shell/src/keys.js"; then
+            deepseek_key=""
+            echo "  key stored in ~/.sherman/keys.json (chmod 600, never synced)."
+            echo "  Rotate it any time from inside Sherman: /key DEEPSEEK_API_KEY <new value>"
+            return 0
+        fi
+        deepseek_key=""
+        echo "The key could not be stored; nothing was saved." >&2
+        return 1
+    fi
+    echo "DeepSeek key missing. Run sherman in a terminal and paste it at the prompt," >&2
+    echo "or store it from inside Sherman with: /key DEEPSEEK_API_KEY <value>" >&2
     return 1
 }
 
@@ -986,7 +1043,7 @@ assemble_adapter() {
     case "$engine" in
         claude) template="$ROOT/adapters/claude-code/CLAUDE.md"; out="$WORKSPACE/CLAUDE.md" ;;
         codex)  template="$ROOT/adapters/codex/AGENTS.md";        out="$WORKSPACE/AGENTS.md" ;;
-        zai)    template="$ROOT/adapters/opencode/AGENTS.md";     out="$WORKSPACE/AGENTS.md" ;;
+        zai|deepseek) template="$ROOT/adapters/opencode/AGENTS.md"; out="$WORKSPACE/AGENTS.md" ;;
         *)
             echo "Unknown engine in config: $engine" >&2
             exit 1
@@ -1277,7 +1334,7 @@ BODY
     # Shell snapshots only a matching file, so a later model edit cannot turn
     # into an executable MCP server on the next turn.
     unset SHERMAN_MCP_CONFIG_SHA256
-    if [ "$engine" = "zai" ] && [ -f "$WORKSPACE/.mcp.json" ] \
+    if { [ "$engine" = "zai" ] || [ "$engine" = "deepseek" ]; } && [ -f "$WORKSPACE/.mcp.json" ] \
         && command -v node >/dev/null 2>&1; then
         SHERMAN_MCP_CONFIG_SHA256=$(node -e '
 const fs = require("node:fs");
@@ -1752,6 +1809,16 @@ run_model_picker() {
         exit 0
     fi
 
+    if [ "$picked" = "deepseek" ]; then
+        ensure_opencode || exit 1
+        ensure_deepseek_auth || exit 1
+        config_set engine deepseek
+        echo "  provider: DeepSeek"
+        echo "  model: deepseek-chat (via OpenCode)"
+        echo "  saved and verified. Run sherman to start."
+        exit 0
+    fi
+
     ensure_linux_codex || exit 1
     if ! command -v codex >/dev/null 2>&1; then
         engine_install_hint codex
@@ -1818,6 +1885,12 @@ if [ "${1:-}" = "model" ]; then
             echo "change provider interactively with: sherman model"
             exit 0
         fi
+        if [ "$configured_engine" = "deepseek" ]; then
+            echo "provider: DeepSeek"
+            echo "model: deepseek-chat (pinned by Sherman)"
+            echo "change provider interactively with: sherman model"
+            exit 0
+        fi
         current=$(read_codex_model)
         if [ -n "$current" ]; then
             echo "model: $current (from $(codex_config_path))"
@@ -1835,6 +1908,12 @@ if [ "${1:-}" = "model" ]; then
             ask_zai_plan
             echo "provider: Z.AI · model: glm-5.2 (verified: Sherman config)"
             exit 0 ;;
+        deepseek)
+            ensure_opencode || exit 1
+            ensure_deepseek_auth || exit 1
+            config_set engine deepseek
+            echo "provider: DeepSeek · model: deepseek-chat (verified: Sherman config)"
+            exit 0 ;;
         codex)
             ensure_linux_codex || exit 1
             config_set engine codex
@@ -1847,6 +1926,14 @@ if [ "${1:-}" = "model" ]; then
             exit 0
         fi
         echo "Z.AI is pinned to glm-5.2. Run 'sherman model' to switch providers." >&2
+        exit 1
+    fi
+    if [ "$configured_engine" = "deepseek" ]; then
+        if [ "$1" = "deepseek-chat" ]; then
+            echo "model: deepseek-chat (already pinned by Sherman)"
+            exit 0
+        fi
+        echo "DeepSeek is pinned to deepseek-chat. Run 'sherman model' to switch providers." >&2
         exit 1
     fi
     if write_codex_model "$1"; then exit 0; else exit 1; fi
@@ -1952,6 +2039,9 @@ esac
 require_engine "$ENGINE"
 if [ "$ENGINE" = "zai" ]; then
     ensure_zai_auth || exit 1
+fi
+if [ "$ENGINE" = "deepseek" ]; then
+    ensure_deepseek_auth || exit 1
 fi
 
 # Freshen the remote-tracking refs in the background, so the launch panel's

@@ -765,6 +765,7 @@ export const WORKER_ENGINES = Object.freeze({
     zai: 'zai',
     glm: 'zai',
     opencode: 'zai',
+    deepseek: 'deepseek',
 });
 
 /**
@@ -784,7 +785,7 @@ export function parseEngineFlag(text) {
         return {
             engine: null,
             task: match[2].trim(),
-            error: `Unknown engine "${match[1]}". Valid: codex, claude, zai (aliases: glm, opencode).`,
+            error: `Unknown engine "${match[1]}". Valid: codex, claude, zai, deepseek (aliases: glm, opencode).`,
         };
     }
     return { engine, task: match[2].trim(), error: null };
