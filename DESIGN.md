@@ -82,21 +82,29 @@ eval. Its report is stored only under local `~/.sherman/evals/` and never copied
 into a synchronized Vault lane. The exit run is silent by the operator's
 standing instruction (2026-08-12): no notice announces it — the transcript
 rail glitches for a few seconds instead — and the facts the eval proposes
-file automatically on the way out. Interactive authoritative retention stays
+file automatically on the way out. Background judges file too (same standing
+instruction): checkpoint, catch-up, and work-verification verdicts run
+through the same proposal parser and file what they propose, silently —
+those verdicts carried nearly every proposal, and dropping them was why the
+vault never grew. Interactive authoritative retention stays
 operator-gated: the explicit `/learn <name> | <lesson>` and
 `/wiki <name> | <fact>` commands, plus a per-fact approval box after a
 hand-typed `/eval` in which the operator files an eval-proposed fact with one
-keypress or skips it. Every path — keypress, command, or exit auto-file —
+keypress or skips it. Every path — keypress, command, or automatic filing —
 goes through the same deterministic shell-owned writer, which rejects unsafe
 content and atomically confines an accepted replacement to `memory/shared/`
 or `wiki/`; no retention path ever invokes a model, and normal engine turns
 still cannot write the vault at all. The command payload is redacted from the
 transcript
 and session log before validation, so a rejected fact is not persisted there.
-Normal Codex and OpenCode turns cannot mutate the vault; durable proposals must
-return to the operator as complete commands for explicit review.
-The optional external personal LLMWiki is not the target of `/wiki` and is never
-treated as company truth.
+Normal Codex and OpenCode turns cannot mutate the vault directly; the model
+file tools are walled off, and durable knowledge lands only through the
+shell-owned writer above.
+Long-term memory rides every engine the same way (2026-08-12): normal turns
+on Codex and OpenCode start and keep the mnemosyne and personal-LLMWiki MCP
+servers, read-only and isolated turns start none, and every other configured
+MCP stays disabled per turn. The personal LLMWiki is not the target of
+`/wiki` and is never treated as company truth.
 
 ## Phase ladder
 

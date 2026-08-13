@@ -669,6 +669,30 @@ export function App({
     // Quiet about its own failure modes by the eval store's own contract: a
     // meta worker that dies still leaves the eval verdict filed, just
     // ungraded — the loop must never cost the verdict it exists to check.
+    // Background judges file what they propose. The exit eval's auto-filing
+    // covered one door; checkpoint, catch-up, and work-verification verdicts
+    // carried most of the proposals and dropped every one — on this machine,
+    // nine of nine proposal-bearing verdicts were background ones the old
+    // pipeline threw away. Same parser, same shell-owned validator/writer,
+    // same confinement as a hand-typed /learn. Silent both ways: a filed
+    // fact publishes on the next vault sync, a rejected one stays unwritten,
+    // and the CLI stays about the work either way.
+    const fileRetentionProposals = useCallback((verdict) => {
+        for (const proposal of parseRetentionProposals(verdict)) {
+            try {
+                applyRetentionResult({
+                    vaultPath: session.info.vaultPath,
+                    source: proposal.command,
+                    text: JSON.stringify({
+                        operations: [{ path: `${proposal.name}.md`, content: proposal.content }],
+                    }),
+                });
+            } catch {
+                // Rejected by the validator: nothing written, nothing to say.
+            }
+        }
+    }, [session]);
+
     const runMetaEval = useCallback(
         async ({ evalText, target, logPath }) => {
             const request = metaEvalRequest(evalText, logPath);
@@ -1655,6 +1679,7 @@ export function App({
                             // CONCERNS would be worse than the old noise.
                             log.append('worker', verdict);
                             appendEvalReport(sessionId, 'work verification', verdict);
+                            fileRetentionProposals(verdict);
                             const flag = verdict.match(/\b(VERIFIED|CONCERNS|CANNOT VERIFY)\b/);
                             if (flag && flag[1] !== 'VERIFIED') {
                                 commit('notice', `work check: ${flag[1]} · full verdict filed under ~/.sherman/evals · /win reads it`);
@@ -1691,7 +1716,7 @@ export function App({
                 await submitRef.current(steerTurn(notes), { steer: true });
             }
         },
-        [carryOver, clearLingerTimers, commit, commitDelegate, commonsCommand, compactSession, exit, exitGlitchMs, goal, mouseEnabled, runMetaEval, runUpdate, session, sessionFactory, sessionId, setBusyBoth, log, slashSkills, atAgents, syncVaultOnExit]
+        [carryOver, clearLingerTimers, commit, commitDelegate, commonsCommand, compactSession, exit, exitGlitchMs, fileRetentionProposals, goal, mouseEnabled, runMetaEval, runUpdate, session, sessionFactory, sessionId, setBusyBoth, log, slashSkills, atAgents, syncVaultOnExit]
     );
     submitRef.current = submit;
 
@@ -1721,6 +1746,10 @@ export function App({
                 if (verdict) {
                     log.append('worker', verdict);
                     appendEvalReport(target, kind, verdict);
+                    // The judge's own verdict, not the meta-judge's below —
+                    // meta verdicts quote the proposals they grade, and
+                    // re-parsing quotes would file the judge's words twice.
+                    fileRetentionProposals(verdict);
                 }
                 // A background eval that produced no verdict fails silently:
                 // the caller restores the grading debt from the false return,
@@ -1745,7 +1774,7 @@ export function App({
             // transient engine error costs one checkpoint, not the coverage.
             return Boolean(verdict);
         },
-        [log, runMetaEval, session, sessionFactory]
+        [fileRetentionProposals, log, runMetaEval, session, sessionFactory]
     );
 
     // The background checkpoint eval: every `evalEveryMs`, a session with new

@@ -230,7 +230,7 @@ test('a manual /eval satisfies the exit eval', async () => {
 // and never for a session that has done nothing. The interval is injectable
 // (evalEveryMs) so these tests measure behavior, not ten minutes.
 
-function checkpointHarness() {
+function checkpointHarness(verdict = 'CHECKPOINT VERDICT: on track.') {
     const h = harness();
     const workerRequests = [];
     const workers = [];
@@ -248,7 +248,7 @@ function checkpointHarness() {
                     kind: 'message',
                     text: ['learn', 'wiki'].includes(request?.source)
                         ? '{"operations":[]}'
-                        : 'CHECKPOINT VERDICT: on track.',
+                        : verdict,
                 };
                 yield { kind: 'turn-end', usage: zeroUsage() };
             },
@@ -261,6 +261,43 @@ function checkpointHarness() {
     };
     return h;
 }
+
+// Background judges file what they propose now. The proposals lived in
+// checkpoint and catch-up verdicts — paths that never reached the retention
+// gate — so the vault sat at six files after seventy-five sessions. Filing
+// goes through the same shell-validated writer as a hand-typed /learn, and
+// only the judge's own verdict is parsed (the meta-judge quotes proposals,
+// and quotes must not file).
+test('a checkpoint verdict proposing a fact files it through the validator', async () => {
+    const h = checkpointHarness(
+        'CHECKPOINT VERDICT: drift found.\n\n/learn checkpoint-filed-fact | Background judges file what they propose.'
+    );
+    const oldHome = process.env.HOME;
+    process.env.HOME = h.home;
+    const instance = render(
+        React.createElement(App, {
+            session: h.session, sessionFactory: h.sessionFactory, sessionId: '20260812_200000_ckpt04',
+            evalEveryMs: 120,
+        }),
+        { stdin: h.stdin, stdout: h.stdout, exitOnCtrlC: false, patchConsole: false }
+    );
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        h.stdin.write('real work');
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        h.stdin.write('\r');
+        await until(() => h.requests.length === 1);
+        const file = join(h.home, 'vault', 'memory', 'shared', 'checkpoint-filed-fact.md');
+        await until(() => existsSync(file));
+        assert.equal(readFileSync(file, 'utf8'), 'Background judges file what they propose.\n');
+        // Silent by contract: the filing never reaches the operator terminal.
+        assert.doesNotMatch(h.captured(), /checkpoint-filed-fact/);
+    } finally {
+        instance.unmount();
+        process.env.HOME = oldHome;
+        rmSync(h.home, { recursive: true, force: true });
+    }
+});
 
 test('the checkpoint eval grades new turns on a worker, once, in the background', async () => {
     const h = checkpointHarness();

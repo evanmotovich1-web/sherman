@@ -91,6 +91,7 @@ test('OpenCode receives the exact validated Sherman MCP connectors', () => {
         writeFileSync(join(workspace, '.mcp.json'), JSON.stringify({
             mcpServers: {
                 llmwiki: { command: '/safe/python', args: ['wiki.py'], env: { MODE: 'safe' } },
+                mnemosyne: { command: '/safe/mnemosyne', args: ['mcp'] },
                 exa: { type: 'http', url: 'https://mcp.example.test', headers: { Authorization: 'test-placeholder' } },
                 ['__proto__']: { command: '/unsafe', args: [] },
             },
@@ -108,22 +109,27 @@ test('OpenCode receives the exact validated Sherman MCP connectors', () => {
             headers: { Authorization: 'test-placeholder' },
         });
         assert.equal(Object.hasOwn(mcp, '__proto__'), false);
+        // A normal turn starts the memory pair — mnemosyne and the personal
+        // wiki — and keeps their permission open; everything else configured
+        // stays denied and unstarted. Memory rides every engine the same way.
         const ordinary = JSON.parse(openCodeConfigForMode(
             { ...config, workspacePath: workspace }, 'normal', mcp, 'chat'
         ));
-        assert.equal(ordinary.mcp, undefined);
-        assert.equal(ordinary.permission['llmwiki_*'], 'deny');
+        assert.deepEqual(ordinary.mcp, { llmwiki: mcp.llmwiki, mnemosyne: mcp.mnemosyne });
+        assert.equal(ordinary.permission['llmwiki_*'], undefined);
+        assert.equal(ordinary.permission['mnemosyne_*'], undefined);
         assert.equal(ordinary.permission['exa_*'], 'deny');
         const explicitWiki = JSON.parse(openCodeConfigForMode(
             { ...config, workspacePath: workspace }, 'normal', mcp, 'skill:research-wiki'
         ));
-        assert.deepEqual(explicitWiki.mcp, { llmwiki: mcp.llmwiki });
+        assert.deepEqual(explicitWiki.mcp, { llmwiki: mcp.llmwiki, mnemosyne: mcp.mnemosyne });
         assert.equal(explicitWiki.permission['exa_*'], 'deny');
         const readOnly = JSON.parse(openCodeConfigForMode(
             { ...config, workspacePath: workspace },
             'read-only',
         ));
         assert.equal(readOnly.permission['llmwiki_*'], 'deny');
+        assert.equal(readOnly.permission['mnemosyne_*'], 'deny');
         assert.equal(readOnly.permission['exa_*'], 'deny');
         assert.equal(readOnly.mcp, undefined);
 

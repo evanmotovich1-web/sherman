@@ -92,10 +92,19 @@ test('read-only requests change real sandbox posture without writable roots', ()
     assert.equal(isolated.includes('features.browser_use=true'), false);
     assert.equal(isolated.includes('features.computer_use=true'), false);
 
-    instance._configuredMcpServerKeys = ['llmwiki', 'exa'];
+    // Memory rides every engine the same way: a NORMAL turn keeps mnemosyne
+    // and the personal wiki, everything else configured stays disabled, and
+    // any read-only mode denies the memory pair too — a judge must not write
+    // memories about its own grading.
+    instance._configuredMcpServerKeys = ['mnemosyne', 'llmwiki', 'exa'];
     const chat = instance._argsFor({ text: 'ordinary turn', mode: 'normal', source: 'chat' });
-    assert.ok(chat.includes('mcp_servers.llmwiki.enabled=false'));
+    assert.equal(chat.includes('mcp_servers.mnemosyne.enabled=false'), false);
+    assert.equal(chat.includes('mcp_servers.llmwiki.enabled=false'), false);
     assert.ok(chat.includes('mcp_servers.exa.enabled=false'));
+    const judging = instance._argsFor({ text: 'grade the session', mode: 'read-only', source: 'eval' });
+    assert.ok(judging.includes('mcp_servers.mnemosyne.enabled=false'));
+    assert.ok(judging.includes('mcp_servers.llmwiki.enabled=false'));
+    assert.ok(judging.includes('mcp_servers.exa.enabled=false'));
     const personalWiki = instance._argsFor({
         text: 'explicit personal wiki turn', mode: 'normal', source: 'skill:research-wiki',
     });
