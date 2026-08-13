@@ -16,6 +16,21 @@ import { EngineSession, ev, emptyUsage, addUsage } from './session.js';
 export const ZAI_MODEL = 'zai/glm-5.2';
 export const ZAI_CONTEXT_WINDOW = 1_000_000;
 
+// One OpenCode runtime, several providers. The engine name in the Sherman
+// config picks the pinned provider/model pair; a config from before this map
+// carries engine "zai", which is why zai is also the fallback. DeepSeek
+// authenticates through DEEPSEEK_API_KEY, which the launcher collects once
+// (pasted, hidden, stored 0600 in ~/.sherman/keys.json) and injectKeys()
+// places in the engine environment every session.
+export const OPENCODE_ENGINE_MODELS = Object.freeze({
+    zai: ZAI_MODEL,
+    deepseek: 'deepseek/deepseek-chat',
+});
+
+function pinnedModel(config) {
+    return OPENCODE_ENGINE_MODELS[config?.engine] ?? ZAI_MODEL;
+}
+
 const NOT_INSTALLED =
     'OpenCode is not installed. Install it with:\n' +
     '\n' +
@@ -39,10 +54,21 @@ function firstOutputStallMs() {
     return Number.isFinite(raw) && raw > 0 ? raw : FIRST_OUTPUT_STALL_MS;
 }
 
-function stallMessage(ms) {
+function stallMessage(ms, engine = 'zai') {
+    const header = `OpenCode produced no output for ${Math.round(ms / 1000)}s and was stopped — the turn never started.\n`
+        + 'Likely causes, most common first:\n';
+    if (engine === 'deepseek') {
+        return (
+            header +
+            '  1. DeepSeek key missing or revoked — run `sherman model`, pick DeepSeek, and paste a fresh key.\n' +
+            '  2. DeepSeek balance exhausted — check platform.deepseek.com and recharge.\n' +
+            '  3. DeepSeek or the network is stalled — try: opencode run --model deepseek/deepseek-chat "hello"\n' +
+            '  4. An MCP server is hanging at startup.\n' +
+            'Nothing was lost; resend the prompt to retry.'
+        );
+    }
     return (
-        `OpenCode produced no output for ${Math.round(ms / 1000)}s and was stopped — the turn never started.\n` +
-        'Likely causes, most common first:\n' +
+        header +
         '  1. Wrong Z.AI plan — a Coding Plan key aimed at the general API: run `sherman model`, pick Z.AI, answer "Coding Plan".\n' +
         '  2. Z.AI balance exhausted — OpenCode retries the refusal silently; check your Z.AI account and recharge.\n' +
         '  3. Z.AI auth expired — run: opencode auth login\n' +
@@ -55,7 +81,7 @@ function stallMessage(ms) {
 /** Build the exact headless invocation. Never enable OpenCode sharing. */
 export function openCodeArgs(config, text, sessionId) {
     const args = [
-        'run', '--pure', '--format', 'json', '--model', ZAI_MODEL,
+        'run', '--pure', '--format', 'json', '--model', pinnedModel(config),
         '--agent', 'sherman',
         '--dir', config.workspacePath,
     ];
@@ -242,7 +268,9 @@ export function openCodeConfigForMode(
         // endpoint — a completion. The credential slot, provider id, and
         // pinned model all stay the same; only the door changes, and only
         // when the operator declared the Coding Plan at `sherman model`.
-        ...(config.zaiPlan === 'coding'
+        // The coding-endpoint override belongs to the Z.AI provider alone; a
+        // DeepSeek engine shares this runtime but never that door.
+        ...((config.engine ?? 'zai') === 'zai' && config.zaiPlan === 'coding'
             ? { provider: { zai: { options: { baseURL: 'https://api.z.ai/api/coding/paas/v4' } } } }
             : {}),
         permission,
@@ -356,8 +384,8 @@ export class OpenCodeSession extends EngineSession {
 
     get info() {
         return {
-            engine: 'zai',
-            model: ZAI_MODEL.split('/')[1],
+            engine: this._config.engine ?? 'zai',
+            model: pinnedModel(this._config).split('/')[1],
             user: this._config.user,
             vaultPath: this._config.vaultPath,
             threadId: this._sessionId,
@@ -474,7 +502,7 @@ export class OpenCodeSession extends EngineSession {
         // Before the generic exit checks: a stall killed the child itself, so
         // the honest report is the stall and its repairs, not the kill signal.
         if (stalled) {
-            yield ev.error(stallMessage(stallMs));
+            yield ev.error(stallMessage(stallMs, this._config.engine ?? 'zai'));
             return;
         }
         if (exit.error?.code === 'ENOENT') {

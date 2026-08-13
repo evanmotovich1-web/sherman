@@ -33,6 +33,27 @@ test('Z.AI backend is selectable and advertises the pinned GLM model', () => {
     assert.equal(selected.info.contextWindow, 1_000_000);
 });
 
+// DeepSeek shares the OpenCode runtime; the engine name picks the pinned
+// provider/model pair, the argv pins it, and the info panel names it.
+test('DeepSeek backend is selectable, pinned to deepseek-chat, on the same runtime', () => {
+    const deepseekConfig = { ...config, engine: 'deepseek' };
+    const selected = selectBackend(deepseekConfig);
+    assert.equal(selected instanceof OpenCodeSession, true);
+    assert.equal(selected.info.engine, 'deepseek');
+    assert.equal(selected.info.model, 'deepseek-chat');
+    const argv = openCodeArgs(deepseekConfig, 'hello', null);
+    assert.ok(argv.includes('deepseek/deepseek-chat'), 'argv must pin the DeepSeek model');
+    assert.equal(argv.includes('zai/glm-5.2'), false);
+    // The Z.AI coding-endpoint override belongs to zai alone: a DeepSeek
+    // engine with a leftover coding-plan config must not inherit the door.
+    const cfg = JSON.parse(openCodeConfigForMode(
+        { ...deepseekConfig, zaiPlan: 'coding' }, 'normal'
+    ));
+    assert.equal(cfg.provider, undefined, 'DeepSeek must not carry the zai coding baseURL');
+    const zaiCfg = JSON.parse(openCodeConfigForMode({ ...config, zaiPlan: 'coding' }, 'normal'));
+    assert.ok(zaiCfg.provider?.zai, 'zai coding plan must keep its endpoint override');
+});
+
 test('OpenCode argv pins Z.AI GLM and resumes the exact session without sharing', () => {
     const fresh = openCodeArgs(config, 'hello', null);
     assert.deepEqual(fresh, [

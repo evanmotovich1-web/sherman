@@ -1829,16 +1829,20 @@ echo "20. the wizard cannot sell a dead backend"
 WIZHOME="$TMPHOME/wizard-home"
 mkdir -p "$WIZHOME"
 
-# Answer 3 first (Anthropic, registered unavailable), then 1 (codex). The run
-# must refuse 3 with the reason, re-prompt, and complete on 1 -- selecting the
+# Answer 4 first (Anthropic, registered unavailable), then 1 (codex). The run
+# must refuse 4 with the reason, re-prompt, and complete on 1 -- selecting the
 # unavailable provider may never proceed and may never error after selection.
-wiz_out=$(printf '3\n1\nWiz Tester\n' \
+wiz_out=$(printf '4\n1\nWiz Tester\n' \
     | env HOME="$WIZHOME" PATH="$STUBDIR:$PATH" ./bin/sherman --raw 2>&1)
 wiz_status=$?
 
 printf '%s' "$wiz_out" | grep -q "Z.AI (GLM-5.2)" \
     && pass "Z.AI GLM-5.2 is listed as an available provider" \
     || fail "menu does not list Z.AI GLM-5.2"
+
+printf '%s' "$wiz_out" | grep -q "DeepSeek (deepseek-chat)" \
+    && pass "DeepSeek is listed as an available provider" \
+    || fail "menu does not list DeepSeek"
 
 printf '%s' "$wiz_out" | grep -q "Anthropic (Claude Code) — not available yet" \
     && pass "Anthropic is listed, visibly unavailable" \
@@ -1918,6 +1922,31 @@ if [ "$coding_plan_status" -ne 0 ] \
     pass "a Coding Plan-only credential is not misrepresented as standard Z.AI API auth"
 else
     fail "Coding Plan-only auth crossed the standard Z.AI boundary (status=$coding_plan_status)"
+fi
+
+# DeepSeek end-to-end with a pre-stored key. The key comes straight from
+# DeepSeek and lives in Sherman's own key store — never in OpenCode's login —
+# so a machine with DEEPSEEK_API_KEY in ~/.sherman/keys.json selects the
+# provider without any prompt, pins deepseek-chat, and assembles the same
+# OpenCode adapter zai uses. (The paste prompt itself is tty-gated and the
+# writer it calls is the /key store's own, covered by the shell suite.)
+DSHOME="$TMPHOME/deepseek-home"
+mkdir -p "$DSHOME/.sherman"
+printf '{\n  "version": 1,\n  "keys": { "DEEPSEEK_API_KEY": "smoke-placeholder-not-a-real-key" }\n}\n' \
+    > "$DSHOME/.sherman/keys.json"
+chmod 600 "$DSHOME/.sherman/keys.json"
+ds_out=$(printf '3\nDee Tester\n' \
+    | env HOME="$DSHOME" PATH="$STUBDIR:$PATH" SHERMAN_NO_FETCH=1 ./bin/sherman --raw 2>&1)
+ds_status=$?
+ds_engine=$(/usr/bin/jq -r '.engine // empty' "$DSHOME/.sherman/config.json" 2>/dev/null)
+ds_model_out=$(env HOME="$DSHOME" PATH="$STUBDIR:$PATH" ./bin/sherman model 2>&1)
+if [ "$ds_status" -eq 0 ] && [ "$ds_engine" = "deepseek" ] \
+    && printf '%s' "$ds_model_out" | grep -q 'model: deepseek-chat (pinned by Sherman)' \
+    && ! printf '%s' "$ds_out" | grep -q 'smoke-placeholder-not-a-real-key' \
+    && grep -q "deepseek/deepseek-chat" shell/src/engine/opencode.js; then
+    pass "DeepSeek selection rides the Sherman key store, pins deepseek-chat, and never echoes the key"
+else
+    fail "DeepSeek wizard path failed (status=$ds_status engine=$ds_engine): $(printf '%s' "$ds_out" | tail -2)"
 fi
 fi
 
