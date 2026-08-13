@@ -161,12 +161,19 @@ export function openCodeConfigForMode(
     const vault = config.vaultPath.replace(/\/+$/, '');
     const allMcp = admittedMcp ?? openCodeMcpConfig(config.workspacePath);
     const allowPersonalWiki = source === 'skill:research-wiki';
-    const mcp = Object.fromEntries(Object.entries(allMcp).filter(
-        ([name]) => name === 'llmwiki' && allowPersonalWiki
-    ));
     const readOnly = mode === 'read-only'
         || mode === 'isolated-read-only'
         || mode === 'browser-read-only';
+    // The servers a turn actually starts. Long-term memory rides every engine
+    // the same way (operator's instruction, 2026-08-12): normal turns start
+    // mnemosyne and the personal wiki — the permission grant below meant
+    // nothing while the server list never carried them. The research skill's
+    // llmwiki carve-out stays. Read-only turns start nothing (see the spread
+    // at the bottom): a local MCP can mutate host state during startup.
+    const mcp = Object.fromEntries(Object.entries(allMcp).filter(
+        ([name]) => (name === 'llmwiki' && (allowPersonalWiki || mode === 'normal'))
+            || (name === 'mnemosyne' && mode === 'normal')
+    ));
     const permission = {
         // Rules are last-match-wins: deny every external path, then open only
         // the configured vault subtree.
@@ -177,11 +184,11 @@ export function openCodeConfigForMode(
     };
     for (const name of Object.keys(allMcp)) {
         if (allowPersonalWiki && name === 'llmwiki') continue;
-        // mnemosyne is the standing long-term memory: local store, no
-        // filesystem reach beyond its own data dir — the one MCP normal
+        // The memory pair — mnemosyne (local store, no filesystem reach
+        // beyond its own data dir) and the personal wiki — is what normal
         // turns keep. Read-only turns re-deny every MCP below, memory
         // included: a judge must not write memories about its own grading.
-        if (name === 'mnemosyne' && !readOnly) continue;
+        if ((name === 'mnemosyne' || name === 'llmwiki') && !readOnly) continue;
         permission[`${name}_*`] = 'deny';
     }
     if (readOnly) {

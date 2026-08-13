@@ -247,6 +247,11 @@ const DISABLED_HOST_TOOL_OVERRIDES = Object.freeze([
     'features.computer_use=false',
 ]);
 
+// The two Sherman-owned memory connectors a NORMAL turn keeps. Everything
+// else configured in the operator's codex config stays disabled per turn —
+// admission is a named allowlist, never "whatever the host config carries".
+const MEMORY_MCP_KEYS = Object.freeze(new Set(['mnemosyne', 'llmwiki']));
+
 export class CodexSession extends EngineSession {
     /** @param {import('../config.js').ShermanConfig} config */
     constructor(config) {
@@ -374,7 +379,15 @@ export class CodexSession extends EngineSession {
             }
         }
         for (const key of this._configuredMcpServerKeys) {
-            const admitted = source === 'skill:research-wiki' && key === 'llmwiki';
+            // Long-term memory rides every engine the same way (operator's
+            // instruction, 2026-08-12): NORMAL turns keep mnemosyne and the
+            // personal wiki — recall the contract teaches has to actually be
+            // wired, on Codex exactly as on OpenCode. Read-only and isolated
+            // turns still deny every MCP: a judge must not write memories
+            // about its own grading. The research skill's llmwiki carve-out
+            // stays for its own turns.
+            const admitted = (mode === 'normal' && MEMORY_MCP_KEYS.has(key))
+                || (source === 'skill:research-wiki' && key === 'llmwiki');
             if (!admitted) args.push('-c', `mcp_servers.${key}.enabled=false`);
         }
         return args;

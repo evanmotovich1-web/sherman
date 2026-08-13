@@ -3169,15 +3169,36 @@ const mcp = { mnemosyne: {}, other: {} };
 const normal = JSON.parse(openCodeConfigForMode(config, 'normal', mcp));
 assert.equal(normal.permission['mnemosyne_*'], undefined, 'normal turns must keep memory');
 assert.equal(normal.permission['other_*'], 'deny', 'other MCPs stay denied');
+assert.ok(normal.mcp && normal.mcp.mnemosyne, 'normal turns must START the memory server, not only permit it');
 const ro = JSON.parse(openCodeConfigForMode(config, 'read-only', mcp));
 assert.equal(ro.permission['mnemosyne_*'], 'deny', 'a judge must not write memories');
+assert.equal(ro.mcp, undefined, 'read-only turns must start no MCP server');
 JS
 )
 mnemo_err=$(cd shell && env FORCE_COLOR=0 node --input-type=module -e "$MNEMO_JS" 2>&1)
 if [ $? -eq 0 ]; then
-    pass "catalogued secret-free with a fenced data dir; normal turns keep it, read-only denies it"
+    pass "catalogued secret-free with a fenced data dir; normal turns start and keep it, read-only denies it"
 else
     fail "mnemosyne wiring: $(printf '%s' "$mnemo_err" | head -3)"
+fi
+
+# Memory rides every engine: Codex normal turns admit the memory pair while
+# every other configured MCP stays disabled, and read-only turns deny all.
+if grep -qF "MEMORY_MCP_KEYS = Object.freeze(new Set(['mnemosyne', 'llmwiki']))" shell/src/engine/codex.js \
+    && grep -qF "mode === 'normal' && MEMORY_MCP_KEYS.has(key)" shell/src/engine/codex.js; then
+    pass "codex normal turns admit the memory pair, everything else stays disabled"
+else
+    fail "codex lost the memory-pair admission — recall is taught but not wired"
+fi
+
+# Background judges file what they propose: the checkpoint/catch-up/verify
+# verdicts carried the proposals, and dropping them was why the vault never
+# grew. The filing path is the same validator a hand-typed /learn uses.
+if grep -qF 'const fileRetentionProposals = useCallback' shell/src/ui/app.js \
+    && grep -qF 'fileRetentionProposals(verdict);' shell/src/ui/app.js; then
+    pass "background eval verdicts file their proposals through the validator"
+else
+    fail "background evals stopped filing proposals — the vault will stall again"
 fi
 
 if grep -qF 'an honest importance score' agent/SYSTEM.md \
