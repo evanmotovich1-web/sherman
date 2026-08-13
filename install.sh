@@ -398,10 +398,13 @@ echo
 # vector store that lives entirely on this machine. Pinned to a reviewed
 # version; no cloud, no telemetry, data under ~/.sherman/mnemosyne/data.
 # Same degradation contract as the wiki: every failure is an honest NOTE,
-# and "installed" is claimed only after the CLI answers from its own venv.
+# and "installed" is claimed only after the CLI answers from its own venv AND
+# the MCP transport imports. The [mcp] extra is load-bearing: without it the
+# CLI answers happily while `mnemosyne mcp` dies on startup, engines silently
+# drop the dead server, and Sherman is taught a memory it does not have.
 echo "  installing mnemosyne — Sherman's long-term memory"
 MNEMO_DIR="$HOME/.sherman/mnemosyne"
-MNEMO_PIN="mnemosyne-memory==3.15.1"
+MNEMO_PIN="mnemosyne-memory[mcp]==3.15.1"
 MNEMO_BIN="$MNEMO_DIR/.venv/bin/mnemosyne"
 [ -x "$MNEMO_BIN" ] || MNEMO_BIN="$MNEMO_DIR/.venv/Scripts/mnemosyne.exe"
 if ! command -v python3 >/dev/null 2>&1; then
@@ -426,11 +429,12 @@ else
         fi
         MNEMO_BIN="$MNEMO_DIR/.venv/bin/mnemosyne"
         [ -x "$MNEMO_BIN" ] || MNEMO_BIN="$MNEMO_DIR/.venv/Scripts/mnemosyne.exe"
-        if [ -x "$MNEMO_BIN" ] && "$MNEMO_BIN" --help >/dev/null 2>&1; then
-            echo "  mnemosyne installed (verified: its CLI answers from its own venv)"
+        if [ -x "$MNEMO_BIN" ] && "$MNEMO_BIN" --help >/dev/null 2>&1 \
+            && "$MNEMO_PY" -c 'import mcp' >/dev/null 2>&1; then
+            echo "  mnemosyne installed (verified: CLI answers and the MCP transport imports)"
             echo "  memory store: $MNEMO_DIR/data"
         else
-            echo "  NOTE: mnemosyne's CLI did not answer from its venv."
+            echo "  NOTE: mnemosyne did not verify (CLI or MCP transport missing from its venv)."
         fi
     else
         echo "  NOTE: could not create mnemosyne's Python venv (is python3-venv installed?)."

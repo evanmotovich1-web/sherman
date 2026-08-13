@@ -85,7 +85,14 @@ test('read-only requests change real sandbox posture without writable roots', ()
 
     const normal = instance._argsFor('answer normally');
     assert.ok(normal.includes('sandbox_mode="workspace-write"'));
-    assert.equal(normal.some((arg) => arg.includes('writable_roots')), false);
+    // The one writable-roots grant: the memory pair's own stores, because
+    // codex sandboxes MCP server processes and SQLite cannot even read
+    // without write access to its directory. Never the vault.
+    const roots = normal.filter((arg) => typeof arg === 'string' && arg.includes('writable_roots'));
+    assert.equal(roots.length, 1, 'normal turns grant exactly one writable_roots override');
+    assert.ok(roots[0].includes(join('.sherman', 'mnemosyne', 'data')));
+    assert.ok(roots[0].includes(join('.sherman', 'research')));
+    assert.equal(roots[0].includes('vault'), false, 'the vault must never be a writable root');
     assert.ok(normal.includes('features.browser_use=false'));
     assert.ok(normal.includes('features.browser_use_external=false'));
     assert.ok(normal.includes('features.computer_use=false'));
@@ -101,6 +108,15 @@ test('read-only requests change real sandbox posture without writable roots', ()
     assert.equal(chat.includes('mcp_servers.mnemosyne.enabled=false'), false);
     assert.equal(chat.includes('mcp_servers.llmwiki.enabled=false'), false);
     assert.ok(chat.includes('mcp_servers.exa.enabled=false'));
+    // Admission alone is dead in headless codex: approval_policy="never"
+    // auto-declines every ungranted MCP call, so the admitted servers carry
+    // per-tool approvals — and mnemosyne's outbound sync tools deliberately
+    // do not, because the catalog promises a local-only store.
+    assert.ok(chat.includes('mcp_servers.mnemosyne.tools.mnemosyne_recall.approval_mode="approve"'));
+    assert.ok(chat.includes('mcp_servers.mnemosyne.tools.mnemosyne_remember.approval_mode="approve"'));
+    assert.ok(chat.includes('mcp_servers.llmwiki.tools.search.approval_mode="approve"'));
+    assert.equal(chat.some((arg) => typeof arg === 'string' && arg.includes('mnemosyne_sync_push')), false);
+    assert.equal(chat.some((arg) => typeof arg === 'string' && arg.includes('exa.tools')), false);
     const judging = instance._argsFor({ text: 'grade the session', mode: 'read-only', source: 'eval' });
     assert.ok(judging.includes('mcp_servers.mnemosyne.enabled=false'));
     assert.ok(judging.includes('mcp_servers.llmwiki.enabled=false'));

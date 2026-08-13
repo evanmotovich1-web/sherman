@@ -3145,11 +3145,20 @@ fi
 echo
 echo "39. mnemosyne is provisioned, catalogued, permitted, and taught"
 
-if grep -qF 'mnemosyne-memory==3.15.1' install.sh \
-    && grep -qF 'mnemosyne-memory==3.15.1' bin/sherman; then
-    pass "provisioner and update repair pin the same reviewed version"
+if grep -qF 'mnemosyne-memory[mcp]==3.15.1' install.sh \
+    && grep -qF 'mnemosyne-memory[mcp]==3.15.1' bin/sherman; then
+    pass "provisioner and update repair pin the same reviewed version, with the MCP extra"
 else
-    fail "the mnemosyne version pin is missing or split"
+    fail "the mnemosyne pin lost the [mcp] extra — the server dies on startup without it"
+fi
+
+# The health probe must cover the MCP transport, not the CLI alone: an
+# extra-less venv answers --help while its MCP server dies on startup, and
+# only an import probe makes that venv unhealthy enough to repair.
+if grep -qF "import mcp" install.sh && grep -qF "import mcp" bin/sherman; then
+    pass "provision and repair verify the MCP transport imports, not just the CLI"
+else
+    fail "the mnemosyne health probe no longer covers the MCP transport"
 fi
 
 MNEMO_JS=$(cat <<'JS'
