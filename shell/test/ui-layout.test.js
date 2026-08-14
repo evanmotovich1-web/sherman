@@ -751,7 +751,7 @@ test('status reports vault and motion truth with terminal-cell width', () => {
     }
 });
 
-test('multiline user prompts align continuation rows under the body', () => {
+test('multiline user prompts sit framed between accent rules, continuations aligned', () => {
     const output = contentRows(renderToString(
         React.createElement(Transcript, {
             items: [{ id: 'user-multiline', kind: 'user', text: 'line one\nline two\nline three' }],
@@ -759,7 +759,11 @@ test('multiline user prompts align continuation rows under the body', () => {
         }),
         { columns: 80 }
     ));
-    assert.deepEqual(output, [' ● line one', '   line two', '   line three']);
+    // The Hermes register for the operator's own turn: a partial-width rule
+    // above and below the ●-anchored prompt. At 80 columns the rule is 45%
+    // of the 79-cell transcript width: 35 cells, behind the one-cell gutter.
+    const rule = ` ${'─'.repeat(35)}`;
+    assert.deepEqual(output, [rule, ' ● line one', '   line two', '   line three', rule]);
 });
 
 test('reply geometry is a titled top rule, an open body, and a closing rule', () => {

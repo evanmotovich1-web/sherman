@@ -137,7 +137,7 @@ test('App dispatches goals, read-only plans, and isolated workers', async () => 
 
     const stdout = new PassThrough();
     stdout.columns = 80;
-    stdout.rows = 24;
+    stdout.rows = 34;
     let captured = '';
     stdout.on('data', (chunk) => { captured += chunk.toString(); });
 

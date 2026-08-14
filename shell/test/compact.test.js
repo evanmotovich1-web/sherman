@@ -123,7 +123,7 @@ test('App auto-compacts at 90% and seeds the fresh thread with the summary', asy
 
     const stdout = new PassThrough();
     stdout.columns = 80;
-    stdout.rows = 24;
+    stdout.rows = 30;
     let captured = '';
     stdout.on('data', (chunk) => { captured += chunk.toString(); });
 

@@ -228,22 +228,41 @@ function Item({ item, width, rows, rail = RAIL }) {
         case 'banner':
             return React.createElement(Banner);
 
-        case 'user':
-            // User prompts may wrap inside the explicit-width transcript. The
-            // two-space newline indent aligns continuations under the body.
-            // The ● is the turn's anchor: the accent dot marks where a turn
-            // begins, and the ┊-railed work rows that follow hang under it —
-            // prompt, then the tree of what the prompt caused.
-            return React.createElement(
+        case 'user': {
+            // The user's turn, framed the way Hermes frames it (operator's
+            // screenshot, 2026-08-14): an accent rule above, the bold prompt
+            // behind its ● anchor, an accent rule below. The rules run PART
+            // of the width — enough to read as a frame, short enough that the
+            // eye still catches the ragged right edge that says "spoken, not
+            // rendered". Continuation lines keep the two-space indent so they
+            // hang under the body, and the ┊-railed work rows that follow
+            // hang under the whole frame — prompt, then the tree of what the
+            // prompt caused.
+            const body = React.createElement(
                 Text,
                 null,
                 React.createElement(Text, { color: color.accent }, '● '),
                 React.createElement(
                     Text,
-                    { color: color.user },
+                    { color: color.user, bold: true },
                     safeTerminalText(item.text, { preserveNewlines: true }).replace(/\n/g, '\n  ')
                 )
             );
+            // Below this there is no room for a rule that reads as one.
+            if (width < 8) return body;
+            const rule = React.createElement(
+                Text,
+                { color: color.accent, wrap: 'truncate' },
+                '─'.repeat(Math.min(width, Math.max(24, Math.floor(width * 0.45))))
+            );
+            return React.createElement(
+                Box,
+                { flexDirection: 'column', width: Math.max(1, width) },
+                rule,
+                body,
+                rule
+            );
+        }
 
         // Self-talk: the model's own interim summary of what it is doing. Same
         // dim italic weight as the tool trace, because it belongs to the same
