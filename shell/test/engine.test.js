@@ -429,3 +429,36 @@ test('error items surface item.message, and known advisories are not errors', ()
     assert.equal(empty[0].kind, 'error');
     assert.match(empty[0].message, /auth failed: token expired/);
 });
+
+test('an operator grant flows into the single writable_roots override, vault still excluded', () => {
+    const home = mkdtempSync(join(tmpdir(), 'sherman-grant-home-'));
+    const realHome = process.env.HOME;
+    try {
+        const vault = join(home, 'company', 'vault');
+        mkdirSync(vault, { recursive: true });
+        const project = join(home, 'projects', 'offline-lab');
+        mkdirSync(project, { recursive: true });
+        mkdirSync(join(home, '.sherman'), { recursive: true });
+        // The operator grants a safe project dir, plus the vault (which must be
+        // refused). homedir() reads $HOME on POSIX, so both the grant-file
+        // lookup and the exclusions resolve against this throwaway home.
+        writeFileSync(
+            join(home, '.sherman', 'sandbox.json'),
+            JSON.stringify({ writable_roots: [project, vault] })
+        );
+        process.env.HOME = home;
+
+        const instance = new CodexSession({
+            engine: 'codex', user: 'test-user',
+            vaultPath: vault, workspacePath: join(home, 'workspace'),
+        });
+        const normal = instance._argsFor('answer normally');
+        const roots = normal.filter((arg) => typeof arg === 'string' && arg.includes('writable_roots'));
+        assert.equal(roots.length, 1, 'a grant must merge into the one override, not add a second');
+        assert.ok(roots[0].includes(project), 'the granted project dir reaches the kernel writable_roots');
+        assert.equal(roots[0].includes(join('company', 'vault')), false, 'the granted vault path was refused');
+    } finally {
+        if (realHome === undefined) delete process.env.HOME; else process.env.HOME = realHome;
+        rmSync(home, { recursive: true, force: true });
+    }
+});
