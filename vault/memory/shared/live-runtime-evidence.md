@@ -1,0 +1,1 @@
+Report that a process is “running” only when live process or device telemetry confirms it. If sandbox restrictions block that inspection, report only what file evidence proves—start time, last observed stage, and failure-marker state—and label current liveness unconfirmed.
