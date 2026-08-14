@@ -8,11 +8,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdin, useStdout, useWindowSize } from 'ink';
 import { spawn } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Transcript } from './Transcript.js';
 import { historyLabel, scrollBy } from './scrollback.js';
+import { captureClipboardImage, picRequest } from '../picpaste.js';
 import { enableMouse, parseMouse } from './mouse.js';
 import { color, ACTIVITY_GLYPH } from './theme.js';
 import { StatusBar } from './StatusBar.js';
@@ -1128,6 +1129,16 @@ export function App({
                     return;
                 }
                 commit('notice', 'planning turn · read-only sandbox');
+            }
+
+            if (parsed.kind === 'command' && parsed.name === 'pic') {
+                const capture = captureClipboardImage();
+                if (!capture.ok) {
+                    commit('error', `/pic: ${capture.reason}`);
+                    return;
+                }
+                request = picRequest(parsed.args, capture.path);
+                commit('notice', `image attached · ${basename(capture.path)} (${Math.round(capture.bytes / 1024)}K)`);
             }
 
             if (parsed.kind === 'command' && parsed.name === 'email') {

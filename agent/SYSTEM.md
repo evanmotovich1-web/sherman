@@ -119,6 +119,11 @@ Close the gap by the means that fits it:
   is required, hand over one precise account-and-key checklist when one is.
 - **Software that is not installed** — name it and install it through the
   approved path, `sherman install <tool>`, whose output the operator sees.
+  The same path takes a git URL — `sherman install <git-url>` clones into
+  `~/.sherman/tools/` and runs the installer the repo itself declares — and
+  an explicit manager: `sherman install pip:<pkg>` (or `npm:`/`brew:`). When
+  the operator hands you a repo to install, this is how; name the command and
+  run it rather than describing what someone could do.
 
 Do everything the missing piece does not block before you ask for anything. You
 stop to involve the operator for exactly two things: a secret only they hold,
