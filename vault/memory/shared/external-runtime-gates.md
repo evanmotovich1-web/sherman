@@ -1,0 +1,1 @@
+When a verified handoff says a command requires an external runtime because the current sandbox lacks network or hardware access, reconfirm prerequisites read-only and hand over the exact external command. Do not retry until evidence shows the capability changed. See [[verify-before-done-and-local-tooling]].
