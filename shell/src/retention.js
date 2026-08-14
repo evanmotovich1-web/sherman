@@ -87,6 +87,9 @@ const LOWER_PERSON_AFTER_RELATION = new RegExp(
 function laneFor(vaultPath, source) {
     if (source === 'learn') return join(vaultPath, 'memory', 'shared');
     if (source === 'wiki') return join(vaultPath, 'wiki');
+    // The self-direction loop's standing goals and threads. Same validation
+    // stack, same hardened writer — the loop holds no rawer pen than /wiki.
+    if (source === 'direction') return join(vaultPath, 'direction');
     return null;
 }
 

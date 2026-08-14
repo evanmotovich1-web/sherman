@@ -6,7 +6,7 @@ import {
     rmSync, statSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { applyRetentionResult, parseRetentionResult } from '../src/retention.js';
 
@@ -308,5 +308,24 @@ test('retention rejects symlinked lanes and targets before writing', () => {
         }), /symlinked or escaped/);
     } finally {
         rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('the direction lane confines validated writes to vault/direction', () => {
+    const vaultPath = mkdtempSync(join(tmpdir(), 'sherman-vault-'));
+    try {
+        mkdirSync(join(vaultPath, 'direction'), { recursive: true });
+        const text = JSON.stringify({ operations: [{ path: 'goals.md', content: '- improve smoke coverage\n' }] });
+        const written = applyRetentionResult({ vaultPath, source: 'direction', text });
+        assert.deepEqual(written.map((p) => basename(p)), ['goals.md']);
+        assert.equal(readFileSync(join(vaultPath, 'direction', 'goals.md'), 'utf8'), '- improve smoke coverage\n');
+        // The lane inherits the full validation stack: person-linked clinical
+        // prose is refused here exactly as it is in the wiki lane.
+        assert.throws(() => applyRetentionResult({
+            vaultPath, source: 'direction',
+            text: JSON.stringify({ operations: [{ path: 'goals.md', content: 'patient John Smith has diabetes' }] }),
+        }), /possible_phi/);
+    } finally {
+        rmSync(vaultPath, { recursive: true, force: true });
     }
 });
