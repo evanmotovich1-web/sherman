@@ -1,0 +1,1 @@
+Never mark a card or task done until an independent check has confirmed the stated done-means; the session that did the work does not grade its own finish. Never claim pytest, node, or a linter is missing until the project's own virtualenv, node_modules, and documented run script have been checked — a host-level miss is not evidence. Evidence shape: session 20260812_174614.

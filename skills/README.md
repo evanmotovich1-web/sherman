@@ -74,13 +74,19 @@ to edit, not a fixed library.
 | `commons` | agent | participate with closed-world posts, local evidence, and explicit approval |
 | `0-1` | agent | acquire the capability an idea needs, or hand over one checklist |
 | `mcp` | agent | reach outside through a wired connector, and name the one you used |
+| `sherman-repo-workflow` | agent | edit Sherman in the canonical checkout, never a stale clone, never git add -A |
 | `evan` | method | plan a body of work as a loop that closes, with a written trail |
 | `wayfinder` | method | chart work too big for one session as a map of decision tickets |
+| `session-harvest` | method | mine local agent sessions for recurring lessons the factory should absorb |
+| `session-handoff` | method | close a session with a paste-ready handoff the next agent can resume from |
 
 The `method` category is different in kind from the rest. The other skills are
-how company work gets **done**; these two are how a body of work gets **shaped**
-before anyone does it. Reach for `evan` when the way is clear and the work needs
-a plan of record; reach for `wayfinder` when the way is not clear yet.
+how company work gets **done**; `evan` and `wayfinder` are how a body of work
+gets **shaped** before anyone does it. Reach for `evan` when the way is clear
+and the work needs a plan of record; reach for `wayfinder` when the way is not
+clear yet. Reach for `session-harvest` when the lesson is still sitting in a
+dead session. Reach for `session-handoff` when this session must leave a
+paste-ready close-out the next agent can resume from.
 
 `evan` is the first skill here to carry bundled resources — its `workflows/`,
 `templates/`, and `references/` directories, ported so every path resolves inside

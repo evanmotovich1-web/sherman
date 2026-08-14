@@ -85,8 +85,11 @@ the lane.
 - **Blocked names its blocker.** `blocked: needs zai recharge` tells the
   operator what to fix; bare `blocked` tells nobody anything.
 - **Verify before done**, exactly as `kanban` requires — and a teammate is
-  the natural verifier: prefer marking a card `verify` and letting another
-  session check "done means" over grading your own work.
+  the natural verifier. Mark the card `verify` and stop. The session that
+  did the work never writes `done`. Another session, or an assigned
+  reviewer, re-reads the artifact and only then promotes it. A completion
+  report that arrives before that check is a miss, even if the work later
+  proves fine.
 
 ## The operator is watching
 
