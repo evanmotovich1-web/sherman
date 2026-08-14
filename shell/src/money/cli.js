@@ -8,6 +8,8 @@
 //
 //   (default)      float balance, today's spend vs the day cap, last 10
 //                  ledger lines, pending approvals — sync runs first
+//   setup          the one-time setup as a live checklist: which of the six
+//                  steps are done vs pending, from what is locally observable
 //   ledger [n]     last n ledger lines (default 25)
 //   sync           reconcile the ledger against Stripe (stub until deploy)
 //   kill           the kill switch, three steps, each reported (§4.3)
@@ -25,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 import { CAPS } from './caps.js';
 import { appendLedger, moneyDir, readLedger } from './ledger.js';
-import { stripeClient, syncWithStripe } from './stripe.js';
+import { KEY_NAMES, loadMoneyConfig, stripeClient, syncWithStripe } from './stripe.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GATE_DIR = join(REPO_ROOT, 'gate', 'money-gate');
@@ -161,6 +163,53 @@ function lastKnownBalanceCents(entries) {
         if (Number.isInteger(entries[i].balance_after_cents)) return entries[i].balance_after_cents;
     }
     return null;
+}
+
+// The one-time setup, rendered as a live checklist. It reports only what is
+// locally observable — which keys the operator has handed over, which config
+// artifacts setup has written — and names the three account-side steps it
+// cannot see from here rather than pretending to verify them. Presence only:
+// a key is read as a boolean and never printed, so this screen carries no key
+// material (smoke check 38's line holds here too).
+function setupScreen(dir, env = process.env) {
+    const config = loadMoneyConfig(dir);
+    const cfg = config.ok ? config.config : {};
+    const present = (name) => Boolean(env[name]);
+
+    const checkpoints = [
+        { done: present(KEY_NAMES.collect), label: 'collect key stored', where: KEY_NAMES.collect,
+          action: `hand over the collect key — /key ${KEY_NAMES.collect} <value>  (step 5)` },
+        { done: present(KEY_NAMES.issuing), label: 'issuing key stored', where: KEY_NAMES.issuing,
+          action: `hand over the issuing key — /key ${KEY_NAMES.issuing} <value>  (step 5)` },
+        { done: present(KEY_NAMES.webhook), label: 'webhook secret stored', where: KEY_NAMES.webhook,
+          action: `hand over the webhook secret — /key ${KEY_NAMES.webhook} <value>  (step 6)` },
+        { done: Boolean(cfg.card_id), label: 'issuing card recorded', where: 'config.json card_id',
+          action: 'fund the $500 float, then record the card id in ~/.sherman/money/config.json  (step 3)' },
+        { done: Boolean(cfg.gate_url), label: 'gate url recorded', where: 'config.json gate_url',
+          action: 'deploy the gate (gate/money-gate/README.md), then set gate_url in ~/.sherman/money/config.json  (step 6)' },
+    ];
+
+    const box = (done) => (done ? '[x]' : '[ ]');
+    const doneCount = checkpoints.filter((c) => c.done).length;
+    const next = checkpoints.find((c) => !c.done);
+
+    const lines = ['setup readiness — the six-step checklist in docs/money-setup.md', ''];
+    lines.push('  observable from here:');
+    for (const c of checkpoints) {
+        lines.push(`    ${box(c.done)} ${c.label.padEnd(23)}${c.where}`);
+    }
+    lines.push('');
+    lines.push('  confirm at Stripe (Sherman cannot see these from here):');
+    lines.push('    -  account activated and KYC-verified  (step 1)');
+    lines.push('    -  Issuing enabled  (step 2)');
+    lines.push('    -  payout destination configured  (step 4)');
+    lines.push('');
+    if (next) {
+        lines.push(`  next: ${next.action}   (${doneCount} of ${checkpoints.length} local checkpoints done)`);
+    } else {
+        lines.push('  next: all local checkpoints done — confirm the three Stripe-side steps, then `sherman money` syncs the float');
+    }
+    return { ok: true, text: lines.join('\n') };
 }
 
 async function defaultScreen(dir) {
@@ -354,6 +403,7 @@ async function approve(dir, id) {
 export async function moneyCommand(args = '', dir = moneyDir()) {
     const [verb, rest] = String(args).trim().split(/\s+/, 2);
     if (!verb) return defaultScreen(dir);
+    if (verb === 'setup') return setupScreen(dir);
     if (verb === 'ledger') return ledgerScreen(dir, Number(rest));
     if (verb === 'sync') {
         const sync = await syncWithStripe({ dir });
@@ -362,7 +412,7 @@ export async function moneyCommand(args = '', dir = moneyDir()) {
     if (['kill', 'resume', 'approve'].includes(verb)) {
         return { ok: false, text: `run \`sherman money ${verb}\` in a terminal — the in-shell /money window is read-only` };
     }
-    return { ok: false, text: 'Usage: /money [ledger [n] | sync] · terminal: sherman money [ledger|sync|kill|resume|approve <id>]' };
+    return { ok: false, text: 'Usage: /money [setup | ledger [n] | sync] · terminal: sherman money [setup|ledger|sync|kill|resume|approve <id>]' };
 }
 
 async function main(argv) {
@@ -370,12 +420,13 @@ async function main(argv) {
     const [verb, arg] = argv;
     let result;
     if (!verb) result = await defaultScreen(dir);
+    else if (verb === 'setup') result = setupScreen(dir);
     else if (verb === 'ledger') result = ledgerScreen(dir, Number(arg));
     else if (verb === 'sync') { const sync = await syncWithStripe({ dir }); result = { ok: true, text: `sync: ${sync.message}` }; }
     else if (verb === 'kill') result = await kill(dir);
     else if (verb === 'resume') result = await resume(dir);
     else if (verb === 'approve') result = await approve(dir, arg);
-    else result = { ok: false, text: 'Usage: sherman money [ledger [n] | sync | kill | resume | approve <id>]' };
+    else result = { ok: false, text: 'Usage: sherman money [setup | ledger [n] | sync | kill | resume | approve <id>]' };
 
     process.stdout.write(`${result.text}\n`);
     process.exitCode = result.ok ? 0 : 1;

@@ -220,6 +220,47 @@ test('the money screens degrade with named messages and never leak key material'
     }
 });
 
+test('the setup checklist tracks local progress and never prints a key value', async () => {
+    const dir = tempDir();
+    mkdirSync(dir, { recursive: true });
+    try {
+        // Fresh machine: no keys, no config. Every local checkpoint is pending
+        // and the next action is the very first handover.
+        const before = await moneyCommand('setup', dir);
+        assert.equal(before.ok, true);
+        assert.match(before.text, /0 of 5 local checkpoints done/);
+        assert.match(before.text, /\[ \] collect key stored/);
+        assert.match(before.text, /next: hand over the collect key/);
+        // The three account-side steps are named, not faked as verified.
+        assert.match(before.text, /confirm at Stripe/);
+        assert.match(before.text, /Issuing enabled/);
+
+        // Keys handed over and the config artifacts written: every local
+        // checkpoint flips, and the screen still carries no key material.
+        process.env.STRIPE_RESTRICTED_KEY = 'rk_live_dummy_for_test_only';
+        process.env.STRIPE_ISSUING_KEY = 'rk_live_dummy_issuing_only';
+        process.env.STRIPE_WEBHOOK_SECRET = 'whsec_dummy_for_test_only';
+        writeFileSync(
+            join(dir, 'config.json'),
+            JSON.stringify({ card_id: 'ic_dummy_card_id', gate_url: 'https://gate.example.workers.dev' })
+        );
+
+        const after = await moneyCommand('setup', dir);
+        assert.equal(after.ok, true);
+        assert.match(after.text, /all local checkpoints done/);
+        assert.match(after.text, /\[x\] collect key stored/);
+        assert.match(after.text, /\[x\] gate url recorded/);
+        for (const marker of ['rk_live', 'whsec_', 'dummy_for_test_only', 'ic_dummy_card_id', 'gate.example']) {
+            assert.equal(after.text.includes(marker), false, `setup screen leaked ${marker}`);
+        }
+    } finally {
+        delete process.env.STRIPE_RESTRICTED_KEY;
+        delete process.env.STRIPE_ISSUING_KEY;
+        delete process.env.STRIPE_WEBHOOK_SECRET;
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
 test('the stripe client refuses to fetch when network is disabled or keys are absent', async () => {
     const dir = tempDir();
     try {

@@ -919,15 +919,17 @@ const fullReplyLines = renderToString(
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
 // One gutter column, then the Hermes register: the signature is embedded in
-// the top rule, both corner tips turn down, and the body flows OPEN beneath
-// it — no side rules, no bottom border, no trailing blank row after it,
-// because the next user turn carries the air between turns. (That apostrophe
-// is load-bearing: bash 3.2 scans $(...) heredocs for quote pairs, and this
-// comment must keep the same single-quote parity the old text had.)
+// the top rule, both corner tips turn down, the body flows OPEN beneath it
+// with no side rules, and a bottom rule with its own two corners closes the
+// reply. No trailing blank row after it, because the next user turn carries
+// the air between turns. (That word apostrophe stays absent on purpose: bash
+// 3.2 scans $(...) heredocs for quote pairs, and this comment must keep the
+// same single-quote parity the old text had.)
 if (
-    fullReplyLines.length !== 2 ||
+    fullReplyLines.length !== 3 ||
     !/^ ╭─ Sherman ─+╮$/.test(fullReplyLines[0]) ||
-    fullReplyLines[1].trimEnd() !== ' reply body'
+    fullReplyLines[1].trimEnd() !== ' reply body' ||
+    !/^ ╰─+╯$/.test(fullReplyLines[2])
 ) {
     mappingMissing.push('signed Sherman reply geometry and trailing rhythm');
 }
@@ -962,16 +964,20 @@ const longReplyLines = renderToString(
     }),
     { columns: 80 }
 ).replace(/\x1b\[[0-9;]*m/g, '').split('\n');
-// Row 0 is the titled top rule; every row after it is open body. The frame
-// has nothing to close now, so what a wrap must prove is that no enclosure
-// glyph reappears below the rule, no row escapes the width, and the wrapped
-// chunks still reassemble the input exactly — no text dropped at the wrap.
-// (Digits only, so trimming the row edges can never eat real content.)
-const longBodyLines = longReplyLines.slice(1).filter((line) => line.trim() !== '');
+// Row 0 is the titled top rule and the last row is the closing bottom rule;
+// every row between them is open body. The sides stay open, so what a wrap
+// must prove is that no SIDE rule reappears between the two rules, no row
+// escapes the width, and the wrapped chunks still reassemble the input
+// exactly — no text dropped at the wrap. (Digits only, so trimming the row
+// edges can never eat real content.)
+const longNonEmpty = longReplyLines.filter((line) => line.trim() !== '');
+const longBottomRule = longNonEmpty[longNonEmpty.length - 1];
+const longBodyLines = longNonEmpty.slice(1, -1);
 if (
     longBodyLines.length < 2 ||
     !/^ ╭─ Sherman ─+╮$/.test(longReplyLines[0]) ||
-    longBodyLines.some((line) => /[╰│]/.test(line)) ||
+    !/^ ╰─+╯$/.test(longBottomRule) ||
+    longBodyLines.some((line) => line.includes('│')) ||
     maxWidth(longReplyLines.join('\n')) > 80 ||
     longBodyLines.map((line) => line.trim()).join('') !== longReplyInput
 ) {

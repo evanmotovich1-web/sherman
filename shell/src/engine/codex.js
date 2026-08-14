@@ -31,6 +31,7 @@ import { basename, join, relative } from 'node:path';
 import { EngineSession, ev, emptyUsage, addUsage } from './session.js';
 import { contextWindowFor } from '../config.js';
 import { summarizeChange, MAX_SNAPSHOT_BYTES } from './filediff.js';
+import { grantedWritableRoots } from './writable-roots.js';
 
 const NOT_INSTALLED =
     'Codex is not installed. Install it with:\n' +
@@ -446,8 +447,13 @@ export class CodexSession extends EngineSession {
         }
         if (mode === 'normal') {
             // See memoryDataRoots: without these the admitted memory servers
-            // start and then fail every call against their own stores.
-            args.push('-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(memoryDataRoots())}`);
+            // start and then fail every call against their own stores. Any
+            // operator-granted roots (opt-in, vault-excluded, network still
+            // off) merge into the SAME single override so the kernel seatbelt
+            // still travels as exactly one writable_roots key.
+            const granted = grantedWritableRoots({ vault: this._config.vaultPath });
+            const roots = [...memoryDataRoots(), ...granted];
+            args.push('-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(roots)}`);
         }
         return args;
     }

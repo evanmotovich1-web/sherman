@@ -762,7 +762,7 @@ test('multiline user prompts align continuation rows under the body', () => {
     assert.deepEqual(output, [' ● line one', '   line two', '   line three']);
 });
 
-test('reply geometry is a titled top rule with an open body', () => {
+test('reply geometry is a titled top rule, an open body, and a closing rule', () => {
     const reply = rawRows(renderToString(
         React.createElement(Transcript, {
             items: [{ id: 'reply', kind: 'message', text: 'Concise response.' }],
@@ -771,14 +771,17 @@ test('reply geometry is a titled top rule with an open body', () => {
         { columns: 80 }
     ));
     // One column of transcript gutter, then the Hermes register: the
-    // signature lives inside the top rule, both corner tips turn down, and
-    // the body flows OPEN beneath it — no side rules, no bottom border.
-    assert.equal(reply.length, 2, `expected a rule and a body row, got ${JSON.stringify(reply)}`);
+    // signature lives inside the top rule, both corner tips turn down, the
+    // body flows OPEN beneath it with no side rules, and a bottom rule with
+    // its own two corners closes the reply. A box in look, open at the sides.
+    assert.equal(reply.length, 3, `expected top rule, body, and bottom rule, got ${JSON.stringify(reply)}`);
     assert.match(reply[0], /^ ╭─ Sherman ─+╮$/, 'reply lost its titled top rule');
     assert.equal(reply[1].trimEnd(), ' Concise response.', 'reply body is not open text');
-    assert.ok(!reply.some((line) => line.includes('╰')), 'a bottom border crept back in');
-    // The rule spans the transcript width: gutter + 78 cells at 80 columns.
+    assert.match(reply[2], /^ ╰─+╯$/, 'reply lost its closing bottom rule');
+    assert.ok(!reply.some((line) => line.includes('│')), 'a side rule crept in — the sides stay open');
+    // Both rules span the transcript width: gutter + 78 cells at 80 columns.
     assert.equal(stringWidth(reply[0]), 79, 'the top rule does not span the transcript');
+    assert.equal(stringWidth(reply[2]), 79, 'the bottom rule does not span the transcript');
 });
 
 // The whole point of the rail is that the transcript has ONE left edge. Diff,
@@ -847,11 +850,11 @@ test('a non-zero glitch tick churns the rail and zero restores it', () => {
     assert.equal(glitched, again, 'the glitch is not deterministic per tick');
 });
 
-// A reply that wraps is the common case. The open frame has nothing to close,
-// so what a wrap must prove is different now: the rule still heads the reply,
-// no border glyph reappears further down, and no wrapped row escapes the
+// A reply that wraps is the common case. The sides stay open, so what a wrap
+// must prove is: the rule still heads the reply, a bottom rule still closes it,
+// no SIDE rule ever reappears between them, and no wrapped row escapes the
 // transcript's width.
-test('a wrapped reply stays open, attributed, and inside its width', () => {
+test('a wrapped reply stays open at the sides, attributed, and inside its width', () => {
     for (const columns of [60, 200]) {
         const body = 'wrap '.repeat(80).trim();
         const rows = contentRows(renderToString(
@@ -862,12 +865,13 @@ test('a wrapped reply stays open, attributed, and inside its width', () => {
             { columns }
         ));
         const top = rows[0];
-        const bodyRows = rows.slice(1);
+        const middle = rows.slice(1, -1);
         assert.match(top, /^ ╭─ Sherman ─+╮$/, `${columns}-column reply lost its titled top rule`);
-        assert.ok(bodyRows.length > 1, `${columns}-column reply did not wrap, so this proves nothing`);
+        assert.match(rows.at(-1), /^ ╰─+╯$/, `${columns}-column reply lost its closing bottom rule`);
+        assert.ok(middle.length > 1, `${columns}-column reply did not wrap, so this proves nothing`);
         assert.ok(
-            !rows.some((line) => /[╰│]/.test(line)),
-            `${columns}-column reply grew enclosure glyphs back`
+            !rows.some((line) => line.includes('│')),
+            `${columns}-column reply grew side rules back`
         );
         assert.ok(
             maxWidth(renderToString(
@@ -933,13 +937,14 @@ test('live transcript geometry anchors the newest of two turns at 80x24', async 
         { id: 'm2', kind: 'worker-message', text: 'Worker reply.' },
     ], 80, 24);
 
-    // Row 23 is the LAST row of a 24-row viewport. The reply is an open frame
-    // now — a titled rule with the body flowing beneath it — so the newest
-    // words themselves stand on that final row and nothing hangs below the
-    // viewport.
+    // Row 23 is the LAST row of a 24-row viewport. The reply is a side-open
+    // frame — a titled rule, the body, then a closing rule — so its bottom rule
+    // stands on that final row, the body just above it, and nothing hangs below
+    // the viewport.
     const frameRows = rawRows(output);
-    assert.equal(frameRows.findIndex((line) => line.includes('Worker reply.')), 23);
-    assert.match(frameRows[22], /^ ╭─ ◇ Worker 01 ─+╮\s*$/, 'the titled rule should head the newest reply');
+    assert.match(frameRows[23], /^ ╰─+╯\s*$/, 'the closing rule should sit on the final row');
+    assert.equal(frameRows.findIndex((line) => line.includes('Worker reply.')), 22);
+    assert.match(frameRows[21], /^ ╭─ ◇ Worker 01 ─+╮\s*$/, 'the titled rule should head the newest reply');
 });
 
 test('live transcript clips oldest turns and renders newest rows once', async () => {

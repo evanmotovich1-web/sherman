@@ -80,7 +80,7 @@ function Row({ label, labelColor, children, bold, width }) {
 // The `round` box glyphs, matching cli-boxes' `round` style — the same set
 // Ink itself draws for borderStyle:'round', so the hand-built top row and the
 // Ink-drawn sides and bottom are the same alphabet.
-const ROUND = { topLeft: '╭', top: '─', topRight: '╮' };
+const ROUND = { topLeft: '╭', top: '─', topRight: '╮', bottomLeft: '╰', bottomRight: '╯' };
 
 // One dash between the corner and the label, so the row reads
 // `╭─ Sherman ─────╮`. Hermes' embedTextInBorder adds NO padding of its own:
@@ -159,20 +159,33 @@ function TitledTopBorder({ width, label, labelColor }) {
     );
 }
 
-// The reply frame: a titled top rule and an OPEN body, the Hermes register.
+// The closing rule: the two lower corners turning up, spanning the transcript's
+// full width so it lines up cell-for-cell under the titled top rule. Always
+// exactly `width` cells, recomputed live for the same reason the top row is.
+function BottomBorder({ width }) {
+    return React.createElement(
+        Text,
+        { color: color.frame, wrap: 'truncate' },
+        ROUND.bottomLeft + ROUND.top.repeat(Math.max(0, width - 2)) + ROUND.bottomRight
+    );
+}
+
+// The reply frame: a titled top rule, an OPEN body, and a closing bottom rule,
+// the Hermes register.
 //
 //     ╭─ Sherman ────────────────╮
 //     The vault stores one
 //     durable fact per file.
+//     ╰──────────────────────────╯
 //
-// The two corner tips turn down and nothing else encloses the reply: no side
-// rules, no bottom border. The rule spans the transcript's full width, and
-// the body flows flush beneath it, exactly as Hermes prints its own replies.
-// The closed four-sided box this replaces was retired on the operator's
-// instruction (2026-08-12): the tips ARE the frame.
+// Two rules bracket the reply top and bottom, each with its pair of corner
+// tips, but nothing encloses the sides: the body flows flush between them with
+// no left or right rule. It reads as a box without being one — Hermes' own
+// register, where the tips frame the reply and the content bleeds to the edges.
 //
 // The top row is hand-built by `TitledTopBorder` so the name can live inside
-// the border; the body is plain wrapped text with no border machinery at all.
+// the border, the bottom row by `BottomBorder`; the body is plain wrapped text
+// with no border machinery at all.
 function ShermanMessage({ text, width, worker = false }) {
     const safeText = safeTerminalText(text, { preserveNewlines: true });
     // Below this there is no room for the corners, a dash, and a cell of
@@ -191,7 +204,8 @@ function ShermanMessage({ text, width, worker = false }) {
             label: worker ? ' ◇ Worker 01 ' : ' Sherman ',
             labelColor,
         }),
-        React.createElement(Text, { wrap: 'wrap' }, safeText)
+        React.createElement(Text, { wrap: 'wrap' }, safeText),
+        React.createElement(BottomBorder, { width })
     );
 }
 
