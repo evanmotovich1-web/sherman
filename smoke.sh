@@ -64,7 +64,7 @@ PASSES=0
 SKIPPED=0
 FAILURES=0
 FAILURE_DETAILS=""
-TOTAL_CHECKS=39
+TOTAL_CHECKS=40
 SMOKE_USER="smoke-tester"
 
 # The launcher freshens remote refs in the background at launch. A check
@@ -3259,6 +3259,44 @@ if grep -qF 'they fire SILENTLY' agent/SYSTEM.md \
     pass "the contract forbids narrating skill use in prose"
 else
     fail "SYSTEM.md lost the silent-skill-fire rule"
+fi
+
+echo "40. the self-direction loop keeps its gates"
+
+# The verb must be dispatched, or the whole feature is dead code.
+if grep -qF 'run_loop "$@"' bin/sherman; then
+    pass "bin/sherman dispatches the loop verb"
+else
+    fail "bin/sherman lost the loop dispatch"
+fi
+
+# The loop's own tests are its behavioral contract: pick logged before
+# execution, STOP honored at both seams, failure halt, operator-line immunity.
+if (cd shell && node --test test/loop-direction.test.js test/loop-run.test.js >/dev/null 2>&1); then
+    pass "direction-layer and loop-core tests pass"
+else
+    fail "the loop test suite is red"
+fi
+
+# Gate honesty, greppable: no loop source may reach for a merge, a spend, or
+# an engine bypass -- the loop schedules existing gated paths, it never opens
+# one. And the vault pen stays validated: writeFileSync appears in cli.js
+# alone (the STOP file, outside the vault), never in direction.js or run.js.
+if ! grep -qE 'pr merge|push.*--force|money approve|dangerously' shell/src/loop/*.js \
+    && ! grep -qF 'writeFileSync' shell/src/loop/direction.js \
+    && ! grep -qF 'writeFileSync' shell/src/loop/run.js; then
+    pass "no loop code path can merge, spend, bypass, or write the vault raw"
+else
+    fail "a loop source grew a gate-crossing call"
+fi
+
+# The seed goals file must exist and carry the operator's standing lines --
+# the immunity rule has to have something real to protect on a fresh install.
+if [ -f vault/direction/goals.md ] \
+    && [ "$(grep -cF '[operator]' vault/direction/goals.md)" -ge 2 ]; then
+    pass "the direction seed carries its operator-marked standing rules"
+else
+    fail "vault/direction/goals.md is missing or lost its [operator] lines"
 fi
 
 # -------------------------------------------------------------------- result --

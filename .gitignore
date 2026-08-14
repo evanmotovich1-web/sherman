@@ -21,3 +21,7 @@ vault/memory/private/*
 
 # teamlore's per-session capture sentinel is runtime state.
 .claude/skills/teamlore/.needs-distill
+
+# The self-direction loop's audit log is THIS machine's run history, not
+# company knowledge — each machine grows its own.
+vault/direction/log.md

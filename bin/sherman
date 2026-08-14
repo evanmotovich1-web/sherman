@@ -1731,6 +1731,24 @@ if [ "${1:-}" = "money" ]; then
     run_money "$@"
 fi
 
+# `loop` -- the self-direction loop (docs/superpowers/specs/
+# 2026-08-13-self-direction-loop-design.md). Same split as `money`: this
+# script owns the bash 3.2 dispatch, shell/src/loop/cli.js owns the logic.
+# Needs the Sherman config (it drives the configured engine), which cli.js
+# loads and reports on itself.
+run_loop() {
+    if ! command -v node >/dev/null 2>&1; then
+        echo "sherman loop needs Node.js 22 or newer, and node is not on your PATH." >&2
+        exit 1
+    fi
+    exec node "$ROOT/shell/src/loop/cli.js" "$@"
+}
+
+if [ "${1:-}" = "loop" ]; then
+    shift
+    run_loop "$@"
+fi
+
 # `install` is Sherman's approved path to a capability that is a piece of
 # software: the operator (or Sherman, naming this command) installs a named
 # tool through whatever package manager the machine already has, with every

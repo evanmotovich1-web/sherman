@@ -306,7 +306,8 @@ of two strangers:
    order, not a favor to the next session.
 3. **Consolidate at end.** `session-eval` grades the session and names its one
    highest-value change; `remember` that change so the next recall surfaces it.
-   Then `self-evolve` any harness weakness you saw. A session that ends without
+   Then `distill` the raw material into tight `/wiki` facts and `/learn` lessons,
+   and `self-evolve` any harness weakness you saw. A session that ends without
    this breaks the loop for the next one.
 
 A grade nobody reads and a lesson nobody remembers are both silence. Read,
