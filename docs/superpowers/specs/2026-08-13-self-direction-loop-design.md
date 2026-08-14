@@ -41,10 +41,15 @@ A new top-level vault area, plain Markdown, one concern per file:
 ```
 vault/direction/
   goals.md          # 3–7 standing goals, ranked. One line each + why.
-  threads/          # open work threads, one file per thread
-    <slug>.md       # status: open|blocked|done, next step, evidence links
+  thread-<slug>.md  # open work threads, one file per thread:
+                    # status: open|blocked|done, next step, evidence links
   log.md            # append-only: each loop iteration's pick + outcome, one line
 ```
+
+*(Amended at build time: threads are flat `thread-<slug>.md` files, not a
+`threads/` subtree — the hardened retention writer forbids path separators,
+and one lane with a name prefix buys the same organization for none of the
+new surface.)*
 
 - **Agents self-populate.** At the end of any session (loop or normal), the
   existing retention/eval path may propose direction updates through the same

@@ -176,3 +176,18 @@ test('an empty direction layer makes the first pick a bootstrap instruction', as
         rmSync(home, { recursive: true, force: true });
     }
 });
+
+test('loop stop writes the STOP file and a fresh loop clears the stale one', async () => {
+    const { home, vaultPath } = tempHomeAndVault();
+    try {
+        const { requestStop, clearStaleStop } = await import('../src/loop/cli.js');
+        assert.equal(requestStop(home).ok, true);
+        assert.equal(existsSync(join(home, '.sherman', 'loop', 'STOP')), true);
+        // A fresh invocation is operator intent: the stale STOP is cleared so
+        // the loop it starts is not instantly halted by a forgotten file.
+        assert.equal(clearStaleStop(home), true);
+        assert.equal(existsSync(join(home, '.sherman', 'loop', 'STOP')), false);
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+    }
+});

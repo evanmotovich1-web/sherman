@@ -1,0 +1,2 @@
+- [operator] Direction for the self-direction loop. Edit freely; lines marked [operator] cannot be rewritten by agents.
+- [operator] Standing rule: reversible work only — branch + PR, never merge; no spends outside the money engine; no external sends; no PHI.
