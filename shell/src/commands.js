@@ -20,6 +20,12 @@ export const COMMANDS = Object.freeze([
         detail: 'Runs one turn in the current engine with a read-only sandbox. It plans only and does not save or implement the plan.',
     },
     {
+        name: 'pic',
+        usage: '/pic [what to do with it]',
+        summary: 'hand the engine the image on your clipboard',
+        detail: 'Copy a screenshot or picture first (⌘⇧⌃4, or Copy Image anywhere), then /pic. The shell saves the clipboard image as a PNG under ~/.sherman/workspace/pastes/ — inside the sandbox every engine already reads — and sends a turn pointing at it, with your words as the task. Capture is macOS-only for now; the file stays until you delete it.',
+    },
+    {
         name: 'subagent',
         usage: '/subagent [--engine codex|claude|zai] <task>',
         summary: 'run an isolated read-only worker, on a chosen model if named',

@@ -1756,13 +1756,83 @@ fi
 # auto-installer — the whole point is that acquiring a capability stays
 # visible and the operator can see exactly what landed. It refuses nothing
 # legitimate and pretends nothing it could not do.
+# A git URL is a different acquisition: clone into ~/.sherman/tools, then run
+# the installer the repo itself declares — package.json -> npm install,
+# pyproject/setup.py -> a repo-local .venv with pip install -e ., else the
+# repo's own install.sh. Visible throughout, and reversible: the clone
+# directory is the whole footprint, and the removal command is printed.
+install_repo() {
+    url="$1"
+    case "$url" in
+        *[\;\&\|\`\$\(\)\<\>\ ]*)
+            echo "Refusing '$url': not a plain git URL." >&2
+            return 1 ;;
+    esac
+    command -v git >/dev/null 2>&1 || { echo "git is not on PATH." >&2; return 1; }
+    name=$(basename "$url" .git)
+    case "$name" in
+        ''|*[!A-Za-z0-9._-]*)
+            echo "Refusing '$url': cannot derive a safe directory name from it." >&2
+            return 1 ;;
+    esac
+    dest="$HOME/.sherman/tools/$name"
+    mkdir -p "$HOME/.sherman/tools"
+    if [ -d "$dest/.git" ]; then
+        echo "Repo already cloned at $dest — pulling latest."
+        git -C "$dest" pull --ff-only || return 1
+    else
+        echo "Cloning $url -> $dest"
+        git clone "$url" "$dest" || return 1
+    fi
+    echo
+    if [ -f "$dest/package.json" ]; then
+        command -v npm >/dev/null 2>&1 || { echo "Repo declares package.json but npm is not on PATH." >&2; return 1; }
+        echo "Repo declares package.json — running npm install (you will see everything)."
+        ( cd "$dest" && npm install ) || return 1
+    elif [ -f "$dest/pyproject.toml" ] || [ -f "$dest/setup.py" ]; then
+        command -v python3 >/dev/null 2>&1 || { echo "Repo declares a Python package but python3 is not on PATH." >&2; return 1; }
+        echo "Repo declares a Python package — creating $dest/.venv and installing editable."
+        ( cd "$dest" && python3 -m venv .venv && ./.venv/bin/pip install -e . ) || return 1
+        echo "Executables live in $dest/.venv/bin/."
+    elif [ -f "$dest/install.sh" ]; then
+        echo "Repo ships its own install.sh — running it from the repo directory (you will see everything)."
+        ( cd "$dest" && sh install.sh ) || return 1
+    else
+        echo "No recognized installer (package.json, pyproject.toml, setup.py, install.sh)."
+        echo "The clone is at $dest — read its README for the manual step."
+    fi
+    echo
+    echo "Done. Remove it completely with: rm -rf $dest"
+    return 0
+}
+
 run_install() {
     tool="${1:-}"
     if [ -z "$tool" ]; then
-        echo "Usage: sherman install <tool>    (e.g. sherman install jq)"
-        echo "Installs a named tool through this machine's package manager, output shown."
+        echo "Usage: sherman install <tool>                       (e.g. sherman install jq)"
+        echo "       sherman install <git-url>                    clone into ~/.sherman/tools and run its installer"
+        echo "       sherman install pip:<pkg>|npm:<pkg>|brew:<pkg>  pick the manager explicitly"
+        echo "Everything an install does is shown; a repo install is removed with rm -rf ~/.sherman/tools/<name>."
         exit 1
     fi
+
+    # A git URL routes to the repo path.
+    case "$tool" in
+        https://*|http://*|git@*:*)
+            install_repo "$tool"
+            exit $? ;;
+    esac
+
+    # An explicit manager prefix beats first-found detection: pip:yt-dlp on a
+    # Mac with brew must not become a brew formula guess.
+    forced_mgr=""
+    case "$tool" in
+        pip:*)  forced_mgr="pip";  tool="${tool#pip:}" ;;
+        pipx:*) forced_mgr="pip";  tool="${tool#pipx:}" ;;
+        npm:*)  forced_mgr="npm";  tool="${tool#npm:}" ;;
+        brew:*) forced_mgr="brew"; tool="${tool#brew:}" ;;
+    esac
+
     # A conservative name gate: real package names only, so a stray argument
     # can never turn into an arbitrary shell fragment run by a manager.
     case "$tool" in
@@ -1770,6 +1840,42 @@ run_install() {
             echo "Refusing to install '$tool': names are letters, digits, and . _ @ / - only." >&2
             exit 1 ;;
     esac
+
+    if [ -n "$forced_mgr" ]; then
+        case "$forced_mgr" in
+            pip)
+                if command -v pipx >/dev/null 2>&1; then
+                    echo "Installing '$tool' with pipx — you will see everything it does."
+                    echo
+                    pipx install "$tool"
+                elif command -v python3 >/dev/null 2>&1; then
+                    echo "Installing '$tool' with pip (--user) — you will see everything it does."
+                    echo
+                    python3 -m pip install --user "$tool"
+                else
+                    echo "Neither pipx nor python3 is on PATH; cannot install '$tool' from pip." >&2
+                    exit 1
+                fi ;;
+            npm)
+                command -v npm >/dev/null 2>&1 || { echo "npm is not on PATH." >&2; exit 1; }
+                echo "Installing '$tool' with npm — you will see everything it does."
+                echo
+                npm install -g "$tool" ;;
+            brew)
+                command -v brew >/dev/null 2>&1 || { echo "brew is not on PATH." >&2; exit 1; }
+                echo "Installing '$tool' with brew — you will see everything it does."
+                echo
+                brew install "$tool" ;;
+        esac
+        status=$?
+        echo
+        if [ "$status" -eq 0 ]; then
+            echo "Installed '$tool'. Relaunch the session that needed it."
+        else
+            echo "Install of '$tool' failed (exit $status). The output above is the whole story." >&2
+        fi
+        exit "$status"
+    fi
 
     mgr=""
     for candidate in brew npm pipx apt-get; do

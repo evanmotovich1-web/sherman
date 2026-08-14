@@ -45,10 +45,10 @@ test('explicit retention payloads are redacted before transcript or session logg
 
 test('registry drives suggestions and help', () => {
     assert.equal(commandFor('subagent')?.usage, '/subagent [--engine codex|claude|zai] <task>');
-    assert.deepEqual(suggestionsFor('/p').map((c) => c.name), ['plan']);
+    assert.deepEqual(suggestionsFor('/p').map((c) => c.name), ['plan', 'pic']);
     assert.deepEqual(
         suggestionsFor('/').map((c) => c.name),
-        ['goal', 'plan', 'subagent', 'agents', 'compact', 'eval', 'email', 'win', 'learn', 'wiki',
+        ['goal', 'plan', 'pic', 'subagent', 'agents', 'compact', 'eval', 'email', 'win', 'learn', 'wiki',
             'connectors', 'key', 'commons', 'money', 'copy', 'select', 'customize', 'update', 'clear', 'help', 'exit']
     );
     // /compact, /connectors, /copy, and /clear share a prefix, so none may
