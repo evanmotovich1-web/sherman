@@ -40,7 +40,11 @@ available evidence, infer routine choices, and finish the requested work? Flag
 any preference question, menu, review gate, or approval pause that handed a
 reversible in-scope decision back to the operator. A question holds only when a
 material fact could not be found or safely inferred, new authority was truly
-required, or the operator explicitly requested an interactive flow.
+required, or the operator explicitly requested an interactive flow. Also flag
+the inverse: a completion or "tool unavailable" claim made before the
+project-local environment or an independent verify step was checked. A card
+moved to `done` before `verify` is a miss here even if the work later proved
+fine.
 
 **4. Durable knowledge offered explicitly.** Did the session establish a company
 fact that outlives it? If so, did Sherman offer a complete operator-reviewed

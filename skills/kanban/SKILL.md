@@ -28,9 +28,13 @@ session picks the board up by reading it, not by re-planning.
 ```
 
 Statuses: `backlog → in-progress → verify → done` (plus `blocked`, with the
-blocker named on the card). Nothing skips `verify`: a card moves to `done`
-only after its "done means" was checked against reality — delegate the check
-to `@reviewer` or the verification flow when the work was substantial.
+blocker named on the card). Nothing skips `verify`. A card stays in `verify`
+until an independent check — `@reviewer`, a second session, or the
+verification flow — has re-read the artifact and confirmed the "done means"
+against reality. The session that did the work does not promote its own card
+to `done`. Reporting "done" in prose while the file still says `verify` is
+the same failure: the board is the truth, and a completion claim that
+arrives before the check is a lie the next session will trust.
 
 ## Running it
 
