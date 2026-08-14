@@ -12,6 +12,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { EngineSession, ev, emptyUsage, addUsage } from './session.js';
+import { grantedWritableRoots } from './writable-roots.js';
 
 export const ZAI_MODEL = 'zai/glm-5.2';
 export const ZAI_CONTEXT_WINDOW = 1_000_000;
@@ -252,6 +253,15 @@ export function openCodeConfigForMode(
         permission.write = workspaceOnlyEdit;
         permission.patch = workspaceOnlyEdit;
         permission.apply_patch = 'deny';
+        // Operator-granted extra roots (opt-in, vault-excluded, network still
+        // off): open them to the model's file tools so a project outside the
+        // workspace can be worked on without a paste-block. Codex enforces the
+        // same grant at the kernel; on OpenCode it is this allowlist. Appended
+        // after the vault-deny above, and grantedWritableRoots never returns a
+        // vault-related path, so the vault wall stands.
+        for (const root of grantedWritableRoots({ vault })) {
+            permission.external_directory[`${root}/**`] = 'allow';
+        }
     }
     if (mode === 'isolated-read-only') {
         permission.skill = 'deny';
