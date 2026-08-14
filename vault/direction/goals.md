@@ -1,2 +1,7 @@
 - [operator] Direction for the self-direction loop. Edit freely; lines marked [operator] cannot be rewritten by agents.
 - [operator] Standing rule: reversible work only — branch + PR, never merge; no spends outside the money engine; no external sends; no PHI.
+- 1. Fill the vault with true, cited operator knowledge. Never invent company facts: medical-lab SOPs, client formats, and business policies enter only from the operator. See thread-vault-population.
+- 2. Get the money engine live: support the operator through docs/money-setup.md and keep `sherman money setup` honest about what remains. See thread-money-setup.
+- 3. Keep the fleet current: every enrolled machine on the latest main via `sherman update`. See thread-fleet-update.
+- 4. Harden the loop through use: pick work small enough to finish inside the 20-minute cap, and leave a thread behind whenever work spans iterations. See thread-loop-shakedown.
+- 5. Leave the direction layer better than you found it every session: close threads that are done, open threads for what you learned is next.
