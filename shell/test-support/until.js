@@ -25,8 +25,12 @@
 // read. A genuine hang still fails — just later, on the runner where nobody is
 // watching a clock anyway.
 
-/** Generous on a shared runner, tight on a developer machine. */
-export const RENDER_DEADLINE_MS = process.env.CI ? 30_000 : 3_000;
+/** Generous on a shared runner, and roomy enough on a developer machine that
+ *  a parallel engine session churning the same cores cannot fail a correct
+ *  render — proven live 2026-08-13, when the full suite red-lined one TTY
+ *  test three runs straight beside a working codex session and passed the
+ *  moment it ran alone. The deadline is a hang backstop, not a latency bar. */
+export const RENDER_DEADLINE_MS = process.env.CI ? 30_000 : 15_000;
 
 /**
  * Poll `predicate` until it is true, or throw once the deadline passes.
