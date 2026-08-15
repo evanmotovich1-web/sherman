@@ -199,6 +199,18 @@ export class EngineSession {
     }
 
     /**
+     * Start paying the session's fixed costs NOW — process spawn, handshake,
+     * connector startup — so the first `send` pays only for the model.
+     *
+     * Fire-and-forget by contract: it must never throw, never block, and
+     * never change what a later `send` returns — a backend whose warm-up
+     * fails simply pays the old price on turn one, on the same code path it
+     * always had. The default is a no-op because a backend with no fixed
+     * costs has nothing to warm.
+     */
+    prewarm() {}
+
+    /**
      * Drop conversation continuity so the next `send` opens a fresh thread,
      * and report whether that happened.
      *

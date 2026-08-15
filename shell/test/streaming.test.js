@@ -160,6 +160,39 @@ test('startNewThread also marks the app-server thread stale', () => {
     assert.equal(s._appServerThreadLoaded, false);
 });
 
+// ----------------------------------------------------------------- prewarm --
+
+test('EngineSession.prewarm is a safe no-op on any backend', async () => {
+    const { EngineSession } = await import('../src/engine/session.js');
+    const base = new EngineSession();
+    assert.equal(base.prewarm(), undefined);
+});
+
+test('prewarm runs once, joins the turn, and a failure is swallowed', async () => {
+    const s = session();
+    let readyCalls = 0;
+    // The warm-up path IS _ensureAppServerReady; stub it to count joins
+    // without spawning a real server.
+    s._ensureAppServerReady = async () => {
+        readyCalls += 1;
+        throw new Error('no codex on this box');
+    };
+    s.prewarm();
+    const first = s._prewarm;
+    s.prewarm();
+    assert.equal(s._prewarm, first, 'a second prewarm must not start a second warm-up');
+    // The stored promise never rejects — the catch() swallowed the failure.
+    await first;
+    assert.equal(readyCalls, 1);
+});
+
+test('prewarm is skipped once the thread is already loaded', () => {
+    const s = session();
+    s._appServerThreadLoaded = true;
+    s.prewarm();
+    assert.equal(s._prewarm, null);
+});
+
 // ------------------------------------------------------------------ streaming UI --
 
 test('a streaming reply renders an open frame: titled top rule, cursor, no close', () => {

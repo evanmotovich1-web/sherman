@@ -265,6 +265,13 @@ export function App({
     // machines that never adopted the pet.
     useEffect(() => () => { writePetState('offline'); }, []);
 
+    // The engine warms up while the operator reads the launch panel: process
+    // spawn, handshake, connectors — the fixed costs that used to sit inside
+    // the first turn's silence. After the first paint, never before it, so
+    // the screen is up before the engine starts paying. Contract-guaranteed
+    // safe to fire and forget (see EngineSession.prewarm).
+    useEffect(() => { session.prewarm?.(); }, [session]);
+
     // Whether this session has anything worth grading, and whether it has been
     // graded. A session that was launched and quit has no conduct to judge, and
     // spending a real engine turn to say so on every exit would be a tax on
