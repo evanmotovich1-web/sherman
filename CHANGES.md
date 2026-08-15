@@ -3,6 +3,16 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-15 — Added: live clocks on running tool rows
+
+- A tool in flight now wears a ticking elapsed suffix (`exec npm test ·
+  12s`) on the railed activity rows and the activity line — the
+  reference's per-call timer, translated to house rules: no second
+  spinner, and the suffix states only a measured fact ("reported 12s
+  ago"), replaced by the engine's own duration the moment the tool
+  completes. The clock runs only while a row is running, so idle shells
+  do not repaint.
+
 ## 2026-08-15 — Added: launch pre-warm — the engine is ready before the first prompt
 
 - The first reply's fixed costs — app-server spawn, handshake, memory

@@ -1457,6 +1457,12 @@ export function App({
                                 category: skillUse ? 'skill' : event.category,
                                 mark: done ? completionMark(event) : null,
                                 durationMs: done ? event.durationMs ?? null : null,
+                                // When the report ARRIVED, so the live rows can
+                                // show a running clock. Not the engine's own
+                                // start time — but "reported n seconds ago" is
+                                // a fact this process measured itself, and it
+                                // is what the elapsed suffix claims.
+                                startedAt: Date.now(),
                             };
                             // Replaced in place rather than moved to the end, so a
                             // task finishing does not make the list jump around.
@@ -1464,7 +1470,10 @@ export function App({
                                 const index = current.findIndex((a) => a.id === event.id);
                                 if (index === -1) return [...current, entry];
                                 const next = current.slice();
-                                next[index] = entry;
+                                // The clock keeps the FIRST report's arrival
+                                // time across updates, or every progress event
+                                // would reset a long tool to 0s.
+                                next[index] = { ...entry, startedAt: current[index].startedAt };
                                 return next;
                             });
                             if (done) {

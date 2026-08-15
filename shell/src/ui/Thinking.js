@@ -5,15 +5,42 @@
 // is the slowest one in the product (~19,900 input tokens, nothing cached until
 // turn 2). With nothing on screen during that wait, a working shell reads as a
 // hung one — and the wait is the very first thing a new user experiences.
+// (Chat turns stream now, but tool work still runs in silence between deltas,
+// and every non-streaming path still leans on this entirely.)
 //
-// The status rule owns the sole spinner and timer. This component renders only
-// factual lifecycle/tool lines, preventing duplicated "working" chrome.
+// The status rule owns the sole spinner and timer for the TURN. What each row
+// here carries since the live-clock work is a per-tool elapsed suffix — the
+// reference's per-call timer, translated to this house's rules: no second
+// spinner, and the suffix states only a measured fact ("reported 12s ago"),
+// ticking once a second the way the status rule's own clock does under
+// reduced motion.
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Text, Box, useWindowSize } from 'ink';
 
 import { color } from './theme.js';
 import { safeTerminalText } from './sanitize.js';
+
+/** How often the running clocks advance. Once a second: the suffix shows
+ *  whole seconds, so ticking faster would repaint identical frames. */
+export const CLOCK_TICK_MS = 1000;
+
+/**
+ * The elapsed suffix for one activity row, or '' when it has none.
+ *
+ * A row earns a clock only while it is genuinely RUNNING: it has an arrival
+ * time and no engine-measured duration yet. A completed row's true duration
+ * arrives from the engine and renders through the trace instead — showing
+ * wall-clock past that point would be a second, disagreeing number.
+ *
+ * Pure, with `now` injectable, so the cadence is testable without timers.
+ */
+export function elapsedSuffix(activity, now = Date.now()) {
+    if (!activity || Number.isFinite(activity.durationMs)) return '';
+    if (!Number.isFinite(activity.startedAt)) return '';
+    const seconds = Math.max(0, Math.floor((now - activity.startedAt) / 1000));
+    return ` · ${seconds}s`;
+}
 
 /**
  * @param {{active: boolean, activities?: Array<{id:string,line:string,category?:string}>, lifecycle?: string|null, columns?: number, rows?: number}} props
@@ -36,7 +63,7 @@ export function activityBudget(viewportWidth, viewportRows) {
     return Math.max(0, viewportRows - statusRows - composerRows);
 }
 
-export function Thinking({ active, activities = [], lifecycle = null, columns, rows, reserveRows = 0 }) {
+export function Thinking({ active, activities = [], lifecycle = null, columns, rows, reserveRows = 0, now = null }) {
     const measured = useWindowSize();
     const viewportWidth = typeof columns === 'number' ? columns : measured.columns;
     const viewportRows = typeof rows === 'number' ? rows : measured.rows;
@@ -45,6 +72,19 @@ export function Thinking({ active, activities = [], lifecycle = null, columns, r
         3,
         Math.max(0, activityBudget(viewportWidth, viewportRows) - reserveRows)
     );
+
+    // The clock tick. Runs only while a row is actually wearing a clock, so
+    // an idle shell — and a turn whose tools have all completed — is not
+    // re-rendering every second for nothing. `now` is injectable so off-TTY
+    // fixtures render a deterministic frame instead of racing the timer.
+    const hasRunning = activities.some((a) => elapsedSuffix(a) !== '');
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        if (!active || !hasRunning || now !== null) return undefined;
+        const id = setInterval(() => setTick((n) => n + 1), CLOCK_TICK_MS);
+        return () => clearInterval(id);
+    }, [active, hasRunning, now]);
+
     if (!active || maxRows === 0 || (activities.length === 0 && !lifecycle)) return null;
 
     // The activity line renders only what the engine actually sent. A silent
@@ -62,12 +102,20 @@ export function Thinking({ active, activities = [], lifecycle = null, columns, r
                   `  ${safeTerminalText(lifecycle)}`
               )
             : null,
-        ...activities.slice(-maxRows).map((activity) =>
-            React.createElement(
+        ...activities.slice(-maxRows).map((activity) => {
+            const suffix = elapsedSuffix(activity, now ?? Date.now());
+            return React.createElement(
                 Text,
-                { key: activity.id, color: color.tertiary, wrap: 'truncate' },
-                `  ┊ ${safeTerminalText(activity.line)}`
-            )
-        )
+                { key: activity.id, wrap: 'truncate' },
+                React.createElement(
+                    Text,
+                    { color: color.tertiary },
+                    `  ┊ ${safeTerminalText(activity.line)}`
+                ),
+                suffix === ''
+                    ? null
+                    : React.createElement(Text, { color: color.muted }, suffix)
+            );
+        })
     );
 }
