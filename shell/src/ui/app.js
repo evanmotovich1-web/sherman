@@ -289,6 +289,15 @@ export function App({
 
     const [busy, setBusy] = useState(false);
     const [activities, setActivities] = useState([]);
+    // The in-flight reply, accumulated from message-delta events: the
+    // typewriter. `streamRef` holds the truth (id → accumulated text) so a
+    // burst of deltas costs one string append each; the STATE repaints on a
+    // short timer instead of per delta, because re-rendering the markdown
+    // body hundreds of times a second would melt the frame budget for no
+    // extra information. Committed messages clear both.
+    const [streamingReply, setStreamingReply] = useState(null);
+    const streamRef = useRef({ id: null, text: '' });
+    const streamFlushRef = useRef(null);
     // Whether the turn in flight IS an isolated worker (subagent, @agent,
     // /plan, evals, the auto work-check). Drives the status rule's 🤖 chip;
     // engine-reported subagent and mcp activities drive the rest of it.
@@ -1322,7 +1331,49 @@ export function App({
                         case 'turn-start':
                             break;
 
-                        case 'message':
+                        // The typewriter. Deltas accumulate in a ref and the
+                        // screen repaints on a trailing 80ms throttle — the
+                        // first fragment paints immediately, later ones batch.
+                        // Headless flows (workers, evals, email drafts) skip
+                        // it: their replies are filed, not watched.
+                        case 'message-delta': {
+                            if (isWorker || isEval || isEmail) break;
+                            const stream = streamRef.current;
+                            if (stream.id !== event.id) {
+                                stream.id = event.id;
+                                stream.text = '';
+                            }
+                            stream.text += event.text;
+                            addStreamed(event.text);
+                            if (streamFlushRef.current === null) {
+                                const paint = () => setStreamingReply(
+                                    streamRef.current.id === null
+                                        ? null
+                                        : { id: streamRef.current.id, text: streamRef.current.text }
+                                );
+                                paint();
+                                streamFlushRef.current = setTimeout(() => {
+                                    streamFlushRef.current = null;
+                                    paint();
+                                }, 80);
+                            }
+                            break;
+                        }
+
+                        case 'message': {
+                            // The canonical full text replaces the streamed
+                            // draft in one frame: clear the live buffer, then
+                            // commit. `messageWasStreamed` records whether the
+                            // estimate already counted these characters.
+                            const messageWasStreamed = streamRef.current.id !== null;
+                            if (messageWasStreamed) {
+                                streamRef.current = { id: null, text: '' };
+                                if (streamFlushRef.current !== null) {
+                                    clearTimeout(streamFlushRef.current);
+                                    streamFlushRef.current = null;
+                                }
+                                setStreamingReply(null);
+                            }
                             if (isEmail) {
                                 // Logged (it is what the engine said) but not
                                 // committed: the operator reads the draft the
@@ -1346,8 +1397,9 @@ export function App({
                             }
                             commit(messageKind, event.text);
                             log.append(isWorker ? 'worker' : 'sherman', event.text);
-                            if (!isWorker) addStreamed(event.text);
+                            if (!isWorker && !messageWasStreamed) addStreamed(event.text);
                             break;
+                        }
 
                         // Self-talk commits immediately, so it appears in the
                         // trace WHILE the turn runs and stays there afterward:
@@ -1547,6 +1599,15 @@ export function App({
                 clearLingerTimers();
                 setActivities([]);
                 setLifecycle(null);
+                // An interrupted or failed turn can leave a half-streamed
+                // reply on screen; the committed transcript is the record,
+                // so the live draft never outlives its turn.
+                streamRef.current = { id: null, text: '' };
+                if (streamFlushRef.current !== null) {
+                    clearTimeout(streamFlushRef.current);
+                    streamFlushRef.current = null;
+                }
+                setStreamingReply(null);
                 activeSessionRef.current = session;
                 if (isWorker) engine.dispose();
                 setInfo(session.info);
@@ -1995,7 +2056,7 @@ export function App({
     return React.createElement(
         Box,
         { flexDirection: 'column', height: rows },
-        React.createElement(Transcript, { items, offset: scrollOffset, glitch, onWindow }),
+        React.createElement(Transcript, { items, offset: scrollOffset, glitch, onWindow, streaming: streamingReply }),
         // Only while parked above the tail, and only ever a measured count. The
         // row costs transcript height, which is the honest trade: the shell
         // says how much it is hiding from you, in the same units you scroll in.

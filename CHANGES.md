@@ -3,6 +3,26 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-15 — Added: the typewriter — chat turns stream token-by-token
+
+- Normal chat turns now ride a persistent `codex app-server` process
+  (probed live on 0.146.0 before adoption): replies type in word-by-word
+  under an open Sherman frame with a block cursor, instead of landing whole
+  after a silent wait. Judges, evals, and workers keep the battle-tested
+  `codex exec` path, and both transports advance the same on-disk thread —
+  proven live by interleaving them mid-conversation. A failed app-server
+  handshake falls back to exec in the same turn; interrupts use the
+  protocol's own `turn/interrupt`; the context meter is fed directly from
+  `thread/tokenUsage/updated`, no rollout tailing on this path.
+
+## 2026-08-15 — Added: replies render as markdown in the house inks
+
+- Sherman's replies used to print raw model text — literal `**` and
+  backticks. A hand-rolled markdown renderer (headings, emphasis, code,
+  lists, quotes, links, aligned tables) now draws them inside the reply
+  frame, falling back to literal lines for anything it does not recognise:
+  wrong styling is recoverable, missing content is not.
+
 ## 2026-08-12 — Fixed: an up-to-date update says so, plainly
 
 - On a machine already at the latest, `sherman update` ended by comparing a
