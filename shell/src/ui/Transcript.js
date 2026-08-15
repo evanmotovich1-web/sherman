@@ -35,6 +35,7 @@ import { Banner } from './Header.js';
 import { LaunchScreen } from './LaunchScreen.js';
 import { safeTerminalText } from './sanitize.js';
 import { Diff } from './Diff.js';
+import { Markdown } from './Markdown.js';
 
 // Width of the speaker gutter for notice/error rows. A fixed column means
 // wrapped lines hang under the text rather than under the label.
@@ -204,7 +205,11 @@ function ShermanMessage({ text, width, worker = false }) {
             label: worker ? ' ◇ Worker 01 ' : ' Sherman ',
             labelColor,
         }),
-        React.createElement(Text, { wrap: 'wrap' }, safeText),
+        // The body is markdown now, rendered in the house inks. The text is
+        // already sanitized above; Markdown never drops content it cannot
+        // style, so the fallback for unrecognised constructs is the same
+        // literal line this row used to print.
+        React.createElement(Markdown, { text: safeText, width }),
         React.createElement(BottomBorder, { width })
     );
 }
