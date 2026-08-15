@@ -3,6 +3,17 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-15 — Added: the composer teaches — rotating capability hints
+
+- An empty composer used to rest on one static line forever. It now
+  rotates through capability hints at a reading pace (5s): the working
+  verbs (/plan, /goal, @agents, /subagent), the memory pair (/learn,
+  /wiki), session craft (/win, /compact, /pic), and a sample of the
+  skills actually loaded on this install. Every hint names something
+  real — a test walks each taught command against the command table —
+  and the resting line leads the rotation, so frame zero, reduced
+  motion, and narrow widths are the composer of old.
+
 ## 2026-08-15 — Added: live clocks on running tool rows
 
 - A tool in flight now wears a ticking elapsed suffix (`exec npm test ·

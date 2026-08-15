@@ -16,6 +16,7 @@ import { caretForClick, isMouseSequence } from './mouse.js';
 import { foldPasteChunk, touchesPaste } from './paste.js';
 import { CommandMenu } from './CommandMenu.js';
 import { commandFor, suggestionsFor, typedSkillName } from '../commands.js';
+import { capabilityHints, hintFor, HINT_INTERVAL_MS } from './placeholders.js';
 
 // Preserve pasted line breaks so a multi-line prompt remains visibly multi-line
 // inside the field. Strip every other C0 control plus DEL; those escape/control
@@ -54,6 +55,23 @@ export function Composer({ onSubmit, busy, steering = false, columns, initialVal
     const size = useWindowSize();
     const width = Math.max(1, typeof columns === 'number' ? columns : size.columns);
     const suggestions = menuDismissed || steering ? [] : suggestionsFor(value, skills);
+
+    // The teaching rotation. Advances only while the field is empty and
+    // resting — the moment a character exists the placeholder is invisible
+    // and the timer would be repainting for nobody — and never under reduced
+    // motion, where the resting line simply stays (it leads the rotation, so
+    // "reduced" means the composer of old, not a different one).
+    const hints = capabilityHints({ skills });
+    const [hintTick, setHintTick] = useState(0);
+    const idleEmpty = !busy && !steering && value === '';
+    const configuredMotion = process.env.SHERMAN_MOTION;
+    const reducedMotion = configuredMotion !== undefined
+        && configuredMotion.trim().toLowerCase() !== 'on';
+    useEffect(() => {
+        if (!idleEmpty || reducedMotion) return undefined;
+        const id = setInterval(() => setHintTick((n) => n + 1), HINT_INTERVAL_MS);
+        return () => clearInterval(id);
+    }, [idleEmpty, reducedMotion]);
     // A typed value that names a loaded skill inks the whole entry purple —
     // the composer-side echo of the palette's skill rows, so the operator sees
     // which contract Enter is about to invoke before pressing it.
@@ -273,12 +291,18 @@ export function Composer({ onSubmit, busy, steering = false, columns, initialVal
         );
     }
 
-    // Same two strings as before, re-derived from the new text room. The long
+    // Same thresholds as before, re-derived from the new text room. The long
     // placeholder is 29 cells and used to appear at width 34 (room = 34-5);
     // the short one is 21 cells and appeared at width 26. Text room is now
     // width - 7 rather than width - 5, so both thresholds move up by 2.
+    //
+    // At full width the slot now rotates capabilityHints — tick 0 is the
+    // original resting line, so a fixture, a fresh mount, and a reduced-motion
+    // session all render exactly the composer that always shipped. Narrow
+    // widths keep the short static line: a rotating hint that truncates
+    // mid-word teaches nothing.
     const placeholder = width >= 36
-        ? 'Ask about company operations…'
+        ? hintFor(hints, hintTick)
         : width >= 28 ? 'Ask about operations…' : '';
     // The steering placeholder keeps the literal words "Ctrl+C to interrupt"
     // at every width that shows one: that phrase is the running-turn marker
