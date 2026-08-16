@@ -1,0 +1,1 @@
+A generated dashboard is not done until its verifier recomputes claims from the real source files rather than hard-coded expected values, and the rendered output is visually inspected for collisions, clipping, and unreadable labels. Close every verifier concern before reporting completion.
