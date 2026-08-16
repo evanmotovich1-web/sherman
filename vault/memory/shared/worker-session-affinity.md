@@ -1,0 +1,1 @@
+Background workers, evals, and meta-evals must remain attached to the session and request that spawned them. Before appending worker output, verify that its target session ID and cited log path match the active session; reject or reroute mismatches.
