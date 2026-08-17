@@ -3,6 +3,15 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-15 — Added: launch pre-warm — the engine is ready before the first prompt
+
+- The first reply's fixed costs — app-server spawn, handshake, memory
+  connectors, thread open — now run in the background while the operator
+  reads the launch panel, instead of inside the first turn's silence.
+  Measured live: first token at ~5.0s cold, ~1.6s pre-warmed. A failed
+  warm-up is swallowed and the first turn retries on its own path (exec
+  fallback behind it), so pre-warming can only move time, never outcomes.
+
 ## 2026-08-15 — Added: the typewriter — chat turns stream token-by-token
 
 - Normal chat turns now ride a persistent `codex app-server` process

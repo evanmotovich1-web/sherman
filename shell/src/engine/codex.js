@@ -348,6 +348,26 @@ export class CodexSession extends EngineSession {
         // The per-turn bill is the growth since the turn started.
         this._billBaseline = null;
         this._lastBill = null;
+        // The in-flight warm-up, if any. See prewarm().
+        this._prewarm = null;
+    }
+
+    /**
+     * Pay the streaming transport's fixed costs during the launch idle:
+     * spawn the app-server, run the handshake, open the posture-configured
+     * thread (which is also what starts the admitted memory connectors).
+     * Measured before this existed, those costs were the bulk of the ~5s the
+     * README documents between the first prompt and its first token — spent
+     * while the operator was reading the launch panel anyway.
+     *
+     * Never throws and never blocks: a failed warm-up is swallowed, and the
+     * first real turn retries the same path itself — landing on the exec
+     * fallback if it fails again — so this can only ever move time, not
+     * outcomes.
+     */
+    prewarm() {
+        if (this._prewarm !== null || this._appServerThreadLoaded) return;
+        this._prewarm = this._ensureAppServerReady().catch(() => {});
     }
 
     get info() {
@@ -895,16 +915,20 @@ export class CodexSession extends EngineSession {
      * The turn ends at turn/completed or turn/failed; a server death mid-turn
      * ends it with an error (or `interrupted` if we asked for that).
      */
-    async *_sendViaAppServer(normalized) {
+    /**
+     * The server running, the handshake done, the thread open under the
+     * posture config. Idempotent, so prewarm() and the turn itself can both
+     * call it — whoever runs second finds the work already done.
+     *
+     * `thread/resume` reads the same on-disk store `codex exec resume`
+     * writes, which is what lets the two transports interleave on one
+     * conversation.
+     */
+    async _ensureAppServerReady() {
         if (this._appServer === null) this._appServer = new CodexAppServer();
         const server = this._appServer;
         await server.ensureStarted();
-
-        // Open or reload the thread as needed. `thread/resume` reads the same
-        // on-disk store `codex exec resume` writes, which is what lets the
-        // two transports interleave on one conversation.
         if (this._threadId === null) {
-            yield ev.status('opening a thread…');
             const started = await server.request('thread/start', {
                 cwd: this._config.workspacePath,
                 config: this._appServerConfig(),
@@ -915,7 +939,6 @@ export class CodexSession extends EngineSession {
             this._rolloutPath = null;
             this._appServerThreadLoaded = true;
         } else if (!this._appServerThreadLoaded) {
-            yield ev.status('resuming the thread…');
             await server.request('thread/resume', {
                 threadId: this._threadId,
                 cwd: this._config.workspacePath,
@@ -923,6 +946,27 @@ export class CodexSession extends EngineSession {
             });
             this._appServerThreadLoaded = true;
         }
+        return server;
+    }
+
+    async *_sendViaAppServer(normalized) {
+        // A warm-up in flight is this same work already underway; joining it
+        // instead of racing it means at most one thread/start ever runs. The
+        // catch() on the stored promise swallowed any failure — the re-run
+        // below rethrows it on the turn's own path, where the exec fallback
+        // is waiting.
+        if (this._prewarm !== null) {
+            await this._prewarm;
+            this._prewarm = null;
+        }
+        // The status is only worth showing when the wait is real: a
+        // pre-warmed thread skips both the wait and the label.
+        if (this._threadId === null) {
+            yield ev.status('opening a thread…');
+        } else if (!this._appServerThreadLoaded) {
+            yield ev.status('resuming the thread…');
+        }
+        const server = await this._ensureAppServerReady();
 
         this._billBaseline = this._lastBill;
 
@@ -1138,6 +1182,7 @@ export class CodexSession extends EngineSession {
         this._appServer?.dispose();
         this._appServer = null;
         this._appServerThreadLoaded = false;
+        this._prewarm = null;
     }
 }
 
