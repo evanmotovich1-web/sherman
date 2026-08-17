@@ -41,6 +41,7 @@
  * @typedef {{kind:'reasoning', text:string}} ReasoningEvent
  * @typedef {{kind:'status', text:string}} StatusEvent
  * @typedef {{kind:'message', text:string}} MessageEvent
+ * @typedef {{kind:'message-delta', id:string, text:string}} MessageDeltaEvent
  * @typedef {{kind:'tool', id:string, phase:'started'|'updated'|'completed', glyph:string,
  *            label:string, category:string, outcome:'running'|'succeeded'|'failed'|'declined'|'unknown',
  *            durationMs:number|null}} ToolEvent
@@ -52,8 +53,8 @@
  *            reason:string|null, added:number, removed:number,
  *            lines:Array<{sign:'+'|'-', text:string}>, more:number}} DiffEvent
  *
- * @typedef {TurnStartEvent|ReasoningEvent|StatusEvent|MessageEvent|ToolEvent
- *          |TurnEndEvent|ContextEvent|InterruptedEvent|ErrorEvent|DiffEvent} EngineEvent
+ * @typedef {TurnStartEvent|ReasoningEvent|StatusEvent|MessageEvent|MessageDeltaEvent
+ *          |ToolEvent|TurnEndEvent|ContextEvent|InterruptedEvent|ErrorEvent|DiffEvent} EngineEvent
  *
  * A `diff` event reports one file change in the lines that actually changed.
  * `available:false` is a first-class outcome, not a failure to paper over: no
@@ -88,6 +89,7 @@ export const EVENT_KINDS = Object.freeze([
     'reasoning',
     'status',
     'message',
+    'message-delta',
     'tool',
     'turn-end',
     'context',
@@ -104,6 +106,12 @@ export const ev = Object.freeze({
     reasoning: (text) => ({ kind: 'reasoning', text }),
     status: (text) => ({ kind: 'status', text }),
     message: (text) => ({ kind: 'message', text }),
+    // A fragment of an in-flight message. `id` groups fragments into one
+    // message so a UI can accumulate them per item; the matching `message`
+    // event still arrives when the item completes, carrying the canonical
+    // full text — a consumer that ignores deltas entirely loses nothing but
+    // the typewriter. A backend with no delta stream simply never emits one.
+    messageDelta: (id, text) => ({ kind: 'message-delta', id, text }),
     tool: ({
         id,
         phase,

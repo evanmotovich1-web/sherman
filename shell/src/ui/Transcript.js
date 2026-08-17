@@ -214,6 +214,31 @@ function ShermanMessage({ text, width, worker = false }) {
     );
 }
 
+// The reply as it streams in: the same titled top rule the committed frame
+// opens with, the body growing under it with a block cursor riding the tail,
+// and NO bottom rule yet — the frame closes when the reply commits, so the
+// open bottom edge itself says "still typing". The cursor is appended to the
+// raw text BEFORE markdown parsing so it lands wherever the tail is — inside
+// a code fence, mid-list — instead of floating on its own row.
+const STREAM_CURSOR = '▍';
+
+function StreamingMessage({ text, width }) {
+    const safeText = safeTerminalText(text, { preserveNewlines: true });
+    if (width < 5) {
+        return React.createElement(Text, { wrap: 'truncate' }, safeText + STREAM_CURSOR);
+    }
+    return React.createElement(
+        Box,
+        { flexDirection: 'column', width: Math.max(1, width), flexShrink: 0 },
+        React.createElement(TitledTopBorder, {
+            width,
+            label: ' Sherman ',
+            labelColor: color.accent,
+        }),
+        React.createElement(Markdown, { text: safeText + STREAM_CURSOR, width })
+    );
+}
+
 /** One committed transcript item. `rail` is this row's rail glyph — the
  *  dotted `┊` normally, a glitch glyph while the exit flow runs. */
 function Item({ item, width, rows, rail = RAIL }) {
@@ -385,8 +410,13 @@ function Item({ item, width, rows, rail = RAIL }) {
  *
  * `onWindow` reports the measured window upward so the shell can clamp its own
  * offset and print a true count. The measurement is reported, never recomputed.
+ *
+ * `streaming` is the in-flight reply, `{id, text}` or null: rendered after
+ * every committed item as an open frame that the commit replaces. It lives in
+ * the same content column, so the bottom anchor keeps the growing tail in
+ * view exactly as it keeps the newest committed rows.
  */
-export function Transcript({ items, columns, offset = 0, glitch = 0, onWindow }) {
+export function Transcript({ items, columns, offset = 0, glitch = 0, onWindow, streaming = null }) {
     const size = useWindowSize();
     const viewportWidth = typeof columns === 'number' ? columns : size.columns;
     const gutter = viewportWidth >= 4 ? 1 : 0;
@@ -467,7 +497,14 @@ export function Transcript({ items, columns, offset = 0, glitch = 0, onWindow })
                         rail: railGlyph(glitch, row),
                     })
                 )
-            )
+            ),
+            streaming && streaming.text
+                ? React.createElement(StreamingMessage, {
+                      key: `stream-${streaming.id}`,
+                      text: streaming.text,
+                      width,
+                  })
+                : null
         )
     );
 }

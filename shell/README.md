@@ -136,9 +136,41 @@ the UI is imported lazily — so they keep working on a machine that has never r
 `npm install`, and a broken UI dependency cannot take down the tool you would use
 to debug it.
 
-## Transport: `codex exec --json`, not the app-server protocol
+## Transport: a hybrid — app-server for chat, `codex exec` for everything else
 
-Two headless routes into Codex exist. We drive the CLI:
+Two headless routes into Codex exist, and the shell now drives both, split by
+what each turn is for:
+
+- **Normal chat turns** ride a persistent `codex app-server` process speaking
+  JSON-RPC over stdio (`src/engine/appserver.js`). It is the transport that
+  streams token deltas — the typewriter — plus a live context measurement and
+  a first-class `turn/interrupt`. Probed live against codex-cli 0.146.0 before
+  adoption: `initialize` → `thread/start {cwd, config}` → `turn/start`, with
+  `item/agentMessage/delta` fragments arriving word-by-word and
+  `thread/tokenUsage/updated` carrying both the live context (`last`) and the
+  accumulating bill (`total`) with the model's real window.
+- **Read-only judges, isolated evals, and workers** keep the original CLI
+  path below. Those turns are headless and invisible; they gain nothing from
+  deltas and keep the simpler one-process-per-turn failure story.
+
+Both transports advance the SAME thread — they share codex's on-disk session
+store, so `codex exec resume <thread_id>` continues a thread the app-server
+opened and vice versa (proven live: a word established over the app-server was
+recalled by an exec resume, and again by the app-server after a `thread/resume`
+reload). After any exec turn the app-server's in-memory thread is stale, so
+the next chat turn re-resumes it from disk before starting.
+
+The app-server protocol is marked experimental upstream, which is why the
+first version of this shell refused it. The terms of adoption: the exec path
+stays whole as the fallback, a failed app-server handshake falls back to exec
+in the same turn (the operator is told), and a protocol break on a future
+`codex update` degrades the typewriter, not the shell. The posture travels as
+`thread/start` config — dotted keys, exactly the `-c` overrides exec uses;
+bare hyphenated server names, never quoted, and only keys present in the
+operator's own config may be overridden (a disable on an absent server
+fabricates a broken half-entry and thread/start fails "invalid transport").
+
+### The CLI path (judges, evals, workers — and the fallback)
 
 - Turn 1: `codex exec --json "<prompt>"`
 - Every later turn: `codex exec resume <thread_id> --json "<prompt>"`
@@ -157,45 +189,30 @@ in the previous turn returns it, with `cached_input_tokens: 19200` confirming th
 prompt is being reused rather than resent cold. `turn.completed.usage` is where
 the status bar's token count comes from — free, no extra accounting.
 
-### The cost we accepted
+**There is no token-level streaming on the exec transport** (probed 0.145.0,
+re-probed 0.146.0: a short answer is one `item.completed`, seconds after
+`turn.started`). That is the whole reason chat turns moved to the app-server;
+on the CLI path, streaming remains *item*-level and the activity indicator and
+elapsed timer carry the perceived-responsiveness load, so a wait never reads
+as a dead screen.
 
-**There is no token-level streaming on this transport.** A 128-token answer
-arrived as one `item.completed`, roughly 5.5 seconds after `turn.started`. There
-were no incremental deltas.
+The delta stream reaches the UI as normalized `message-delta` events — a
+backend with no delta stream simply never emits one, and a consumer that
+ignores deltas entirely loses nothing but the typewriter (the canonical
+`message` event still arrives when the item completes). The transcript renders
+the in-flight reply as an open frame: the titled top rule, the body growing
+under it through the same markdown renderer, a block cursor riding the tail,
+and no bottom rule until the reply commits — the open bottom edge itself says
+"still typing".
 
-Streaming is therefore *item*-level, not *token*-level. In practice a multi-step
-turn still fills the pane progressively, because reasoning summaries, tool calls
-and messages each arrive as they complete. It is a single short answer that lands
-all at once after a pause.
+### The context meter
 
-### Why not app-server, which does stream
+On the app-server path the meter is fed directly: `thread/tokenUsage/updated`
+carries the live figure and the model's real window, so `context` events flow
+mid-turn with no rollout tailing. Everything below describes the CLI path,
+which still needs the workaround.
 
-`codex app-server` exposes a v2 JSON-RPC protocol that includes exactly what we
-gave up:
-
-```
-AgentMessageDeltaNotification { delta, itemId, threadId, turnId }
-```
-
-That is true typewriter output. We did not take it because:
-
-- It is marked `[experimental]`. The protocol can change on any `codex update`,
-  and a v1 built on it means the whole shell breaks when it does.
-- It carries 39+ message types and needs a JSON-RPC handshake that was never
-  verified working, against a CLI surface that was verified working in minutes.
-- Stability matters more than polish for a tool the company is meant to depend on.
-
-**This is not a lock-in.** Swapping transports touches `src/engine/codex.js` and
-no UI code — that is what `EngineSession` is for. If the missing typewriter
-effect turns out to bother us more than the experimental risk, the swap is a
-contained change.
-
-Until then, 04-02's UI carries the perceived-responsiveness load: an activity
-indicator and an elapsed timer, so a wait never reads as a dead screen.
-
-### The context meter under this transport
-
-`turn.completed.usage` is the only usage this transport carries. Re-verified
+`turn.completed.usage` is the only usage the exec transport carries. Re-verified
 against codex-cli 0.145.0 by capturing a live turn: seven events, and only the
 last had a `usage` key. `codex exec --help` exposes no usage-streaming flag, and
 the `TokenUsageUpdatedNotification` present in the binary belongs to app-server,

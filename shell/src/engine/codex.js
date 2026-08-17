@@ -1,11 +1,25 @@
 // Codex backend — drives `codex` headless and normalizes its event stream.
 //
-// This is the ONLY file in shell/ that knows Codex exists. Everything above it
-// sees the EngineSession contract in session.js.
+// This file and appserver.js are the ONLY files in shell/ that know Codex
+// exists. Everything above them sees the EngineSession contract in session.js.
 //
-// TRANSPORT: `codex exec --json` for the first turn, `codex exec resume` for
-// every turn after. Chosen over the app-server protocol -- see shell/README.md
-// for the evidence and the cost accepted. One process per turn.
+// TRANSPORT, since the streaming work: a hybrid.
+//
+//   - NORMAL chat turns ride a persistent `codex app-server` process
+//     (appserver.js) because it is the transport that streams token deltas —
+//     the typewriter the exec stream provably does not carry (probed on
+//     0.145.0 and re-probed on 0.146.0: a short answer is one item.completed).
+//   - Every other mode — read-only judges, isolated evals, workers — keeps
+//     `codex exec --json` / `codex exec resume`, the path that has been
+//     battle-tested since 04-02. Those turns are headless and invisible, so
+//     they gain nothing from deltas and keep the simpler failure story.
+//
+// Both transports advance the SAME thread: they share codex's on-disk
+// session store, so an exec resume continues the thread the app-server
+// opened. After any exec turn the in-memory app-server thread is stale, so
+// the next normal turn re-resumes it from disk (_threadStaleInAppServer).
+// If the app-server path fails at the handshake, the turn falls back to
+// exec — worse feel, same answer — and says so in a status event.
 //
 // Three things here were learned by probing codex 0.145.0 directly and are the
 // difference between a working backend and one that hangs or silently loses its
@@ -32,6 +46,7 @@ import { EngineSession, ev, emptyUsage, addUsage } from './session.js';
 import { contextWindowFor } from '../config.js';
 import { summarizeChange, MAX_SNAPSHOT_BYTES } from './filediff.js';
 import { grantedWritableRoots } from './writable-roots.js';
+import { CodexAppServer } from './appserver.js';
 
 const NOT_INSTALLED =
     'Codex is not installed. Install it with:\n' +
@@ -320,6 +335,19 @@ export class CodexSession extends EngineSession {
         // path -> pre-write bytes, captured at item.started. See _snapshotChanges.
         this._fileSnapshots = new Map();
         this._configuredMcpServerKeys = configuredMcpServerKeys();
+        // The streaming transport, spawned lazily on the first normal turn.
+        this._appServer = null;
+        // True while the app-server's in-memory thread matches the on-disk
+        // one. Any exec turn on this session advances the disk copy behind
+        // the server's back, so it flips false and the next normal turn
+        // re-resumes from disk instead of continuing a stale context.
+        this._appServerThreadLoaded = false;
+        // The in-flight app-server turn, for turn/interrupt.
+        this._activeTurnId = null;
+        // thread/tokenUsage/updated carries an accumulating bill (`total`).
+        // The per-turn bill is the growth since the turn started.
+        this._billBaseline = null;
+        this._lastBill = null;
     }
 
     get info() {
@@ -355,6 +383,9 @@ export class CodexSession extends EngineSession {
     startNewThread() {
         this._threadId = null;
         this._rolloutPath = null;
+        // The app-server's loaded thread is the OLD one; the next normal
+        // turn must thread/start fresh, not keep talking to it.
+        this._appServerThreadLoaded = false;
         return true;
     }
 
@@ -730,11 +761,280 @@ export class CodexSession extends EngineSession {
     }
 
     /**
+     * The posture, translated for thread/start's `config` object. Dotted keys
+     * apply exactly like `codex exec -c` overrides (probed 0.146.0) — bare
+     * names, never quoted, and only keys that exist in the operator's config
+     * may be overridden (a disable on an absent server fabricates a broken
+     * half-entry and the whole thread/start fails "invalid transport").
+     *
+     * Only the NORMAL posture is built here because only normal turns take
+     * this transport; every other mode goes to exec, where _postureArgs
+     * remains the single authority for its flags. The two builders share
+     * their inputs (the override lists and memoryDataRoots) so the boundary
+     * cannot drift silently.
+     */
+    _appServerConfig() {
+        const config = {
+            sandbox_mode: 'workspace-write',
+            approval_policy: 'never',
+        };
+        if (readCodexSetting('model_reasoning_summary') === null) {
+            config.model_reasoning_summary = 'auto';
+        }
+        for (const override of DISABLED_HOST_TOOL_OVERRIDES) {
+            const [key, value] = override.split('=');
+            config[key] = value === 'false' ? false : value;
+        }
+        for (const key of this._configuredMcpServerKeys) {
+            if (MEMORY_MCP_KEYS.has(key)) {
+                for (const tool of MEMORY_MCP_TOOLS[key] ?? []) {
+                    config[`mcp_servers.${key}.tools.${tool}.approval_mode`] = 'approve';
+                }
+                continue;
+            }
+            config[`mcp_servers.${key}.enabled`] = false;
+        }
+        const granted = grantedWritableRoots({ vault: this._config.vaultPath });
+        config['sandbox_workspace_write.writable_roots'] = [...memoryDataRoots(), ...granted];
+        return config;
+    }
+
+    /** camelCase app-server notifications → the same normalized events the
+     *  exec path emits, plus the deltas exec cannot carry. Instance method so
+     *  file-change snapshots and tool timing reuse _mapItem unchanged. */
+    _mapNotification(method, params) {
+        // Another thread's traffic (a future multi-session server) is not
+        // this turn's evidence. Threadless housekeeping passes through.
+        if (params?.threadId && this._threadId && params.threadId !== this._threadId) {
+            return [];
+        }
+        switch (method) {
+            case 'turn/started':
+                this._toolStarts.clear();
+                this._activeTurnId = params?.turn?.id ?? null;
+                return [ev.turnStart(), ev.status('starting…')];
+
+            case 'item/started':
+            case 'item/updated':
+            case 'item/completed': {
+                const phase = method.slice('item/'.length);
+                const item = appServerItem(params?.item);
+                if (!item) return [];
+                return this._mapItem(item, phase);
+            }
+
+            case 'item/agentMessage/delta':
+                return typeof params?.delta === 'string' && params.delta !== ''
+                    ? [ev.messageDelta(String(params.itemId ?? ''), params.delta)]
+                    : [];
+
+            case 'thread/tokenUsage/updated': {
+                // One notification carries both numbers the exec path sources
+                // from two places: `last` IS the live context (what the next
+                // request will carry — no rollout tailing on this transport)
+                // and `total` is the accumulating bill, banked for turn-end.
+                const usage = params?.tokenUsage;
+                if (usage?.total) this._lastBill = usage.total;
+                const last = usage?.last;
+                if (!Number.isFinite(last?.totalTokens)) return [];
+                if (Number.isFinite(usage.modelContextWindow)) {
+                    this._measuredWindow = usage.modelContextWindow;
+                }
+                return [ev.context(last.totalTokens, this.info.contextWindow)];
+            }
+
+            case 'warning':
+                return typeof params?.message === 'string' && params.message !== ''
+                    ? [ev.advisory(params.message)]
+                    : [];
+
+            case 'turn/completed': {
+                this._toolStarts.clear();
+                this._activeTurnId = null;
+                const usage = this._turnBill();
+                if (usage !== null) this._usage = addUsage(this._usage, usage);
+                return [ev.turnEnd(usage)];
+            }
+
+            case 'turn/failed': {
+                this._activeTurnId = null;
+                if (this._interrupted) return [];
+                const message = params?.turn?.error?.message
+                    ?? params?.error?.message
+                    ?? 'The engine reported a failed turn.';
+                return [ev.error(String(message)), ev.turnEnd(this._turnBill())];
+            }
+
+            default:
+                // thread/status/changed, account/rateLimits/updated, MCP
+                // startup chatter — real, but not this UI's registers.
+                return [];
+        }
+    }
+
+    /** The turn's bill: growth of the accumulating total since turn start. */
+    _turnBill() {
+        if (!Number.isFinite(this._lastBill?.inputTokens)) return null;
+        const base = this._billBaseline ?? { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0 };
+        const input = Math.max(0, this._lastBill.inputTokens - (base.inputTokens ?? 0));
+        const output = Math.max(0, (this._lastBill.outputTokens ?? 0) - (base.outputTokens ?? 0));
+        return {
+            input,
+            cachedInput: Math.max(0, (this._lastBill.cachedInputTokens ?? 0) - (base.cachedInputTokens ?? 0)),
+            output,
+            reasoning: Math.max(0, (this._lastBill.reasoningOutputTokens ?? 0) - (base.reasoningOutputTokens ?? 0)),
+            total: input + output,
+        };
+    }
+
+    /**
+     * A normal turn over the streaming transport.
+     *
+     * Notifications are pumped into a queue the generator drains, so engine
+     * events come out in arrival order exactly as the exec path's lines do.
+     * The turn ends at turn/completed or turn/failed; a server death mid-turn
+     * ends it with an error (or `interrupted` if we asked for that).
+     */
+    async *_sendViaAppServer(normalized) {
+        if (this._appServer === null) this._appServer = new CodexAppServer();
+        const server = this._appServer;
+        await server.ensureStarted();
+
+        // Open or reload the thread as needed. `thread/resume` reads the same
+        // on-disk store `codex exec resume` writes, which is what lets the
+        // two transports interleave on one conversation.
+        if (this._threadId === null) {
+            yield ev.status('opening a thread…');
+            const started = await server.request('thread/start', {
+                cwd: this._config.workspacePath,
+                config: this._appServerConfig(),
+            });
+            const threadId = started?.thread?.id;
+            if (!threadId) throw new Error('thread/start returned no thread id');
+            this._threadId = threadId;
+            this._rolloutPath = null;
+            this._appServerThreadLoaded = true;
+        } else if (!this._appServerThreadLoaded) {
+            yield ev.status('resuming the thread…');
+            await server.request('thread/resume', {
+                threadId: this._threadId,
+                cwd: this._config.workspacePath,
+                config: this._appServerConfig(),
+            });
+            this._appServerThreadLoaded = true;
+        }
+
+        this._billBaseline = this._lastBill;
+
+        const queue = [];
+        let wake = null;
+        let closed = false;
+        const push = (entry) => {
+            queue.push(entry);
+            wake?.();
+        };
+        const TERMINAL = new Set(['turn/completed', 'turn/failed', 'turn/interrupted']);
+        const unsubscribe = server.onNotification((method, params) => {
+            push({ method, params });
+            if (TERMINAL.has(method)) closed = true;
+        });
+
+        try {
+            await server.request('turn/start', {
+                threadId: this._threadId,
+                input: [{ type: 'text', text: normalized.text }],
+            });
+
+            while (true) {
+                while (queue.length > 0) {
+                    const { method, params } = queue.shift();
+                    // An interrupted turn ends as `interrupted`, full stop —
+                    // the exec path's exact semantics: no turn-end, no error,
+                    // thread retained for the next send.
+                    if (TERMINAL.has(method) && this._interrupted) {
+                        this._interrupted = false;
+                        this._activeTurnId = null;
+                        yield ev.interrupted();
+                        return;
+                    }
+                    for (const event of this._mapNotification(method, params)) yield event;
+                    if (TERMINAL.has(method)) return;
+                }
+                if (this._interrupted && !server.alive) {
+                    // We asked for the interrupt and the server is gone —
+                    // the thread survives on disk either way.
+                    yield ev.interrupted();
+                    return;
+                }
+                if (!server.alive) {
+                    throw new Error('codex app-server exited mid-turn');
+                }
+                if (closed) continue;
+                await new Promise((resolve) => {
+                    wake = resolve;
+                    // Re-check liveness twice a second so a dead server
+                    // cannot strand the turn waiting on a wake that will
+                    // never come.
+                    setTimeout(resolve, 500);
+                });
+                wake = null;
+            }
+        } finally {
+            unsubscribe();
+            this._activeTurnId = null;
+            if (this._interrupted) {
+                this._interrupted = false;
+            }
+        }
+    }
+
+    /**
      * Run one user turn.
+     *
+     * Normal chat turns take the streaming transport; if its handshake fails
+     * the turn falls back to exec in the same breath — worse feel, same
+     * answer, and the operator is told which path ran. All other modes go
+     * straight to exec (see the transport note at the top of this file).
+     *
      * @param {string|{text:string, mode?:'normal'|'read-only'|'isolated-read-only', source?:string}} request
      * @returns {AsyncGenerator<import('./session.js').EngineEvent>}
      */
     async *send(request) {
+        const normalized = normalizeRequest(request);
+        if (normalized.mode === 'normal') {
+            this._interrupted = false;
+            this._toolStarts.clear();
+            try {
+                yield* this._sendViaAppServer(normalized);
+                return;
+            } catch (err) {
+                if (this._interrupted) {
+                    this._interrupted = false;
+                    yield ev.interrupted();
+                    return;
+                }
+                // The experimental transport broke. Fall back rather than
+                // fail the turn — but only if the turn never started
+                // streaming, because replaying a half-run turn would run
+                // its side effects twice.
+                this._appServer?.dispose();
+                this._appServerThreadLoaded = false;
+                if (this._activeTurnId !== null) {
+                    this._activeTurnId = null;
+                    yield ev.error(err?.message ?? String(err));
+                    return;
+                }
+                yield ev.status('streaming transport unavailable · using the turn-based one');
+            }
+        }
+        yield* this._sendViaExec(request);
+        // Exec advanced the on-disk thread behind the app-server's back.
+        this._appServerThreadLoaded = false;
+    }
+
+    /** The original per-turn transport, unchanged: one `codex exec` process
+     *  per turn, item-level events, no deltas. */
+    async *_sendViaExec(request) {
         this._interrupted = false;
         this._toolStarts.clear();
 
@@ -807,6 +1107,23 @@ export class CodexSession extends EngineSession {
 
     /** Abort the in-flight turn. The session stays usable. */
     interrupt() {
+        if (this._activeTurnId !== null && this._appServer?.alive) {
+            this._interrupted = true;
+            // First-class on this transport: the turn stops, the thread and
+            // the server both stay up. If the request itself fails, killing
+            // the server is the fallback — the thread survives on disk and
+            // the next turn resumes it.
+            this._appServer
+                .request('turn/interrupt', {
+                    threadId: this._threadId,
+                    turnId: this._activeTurnId,
+                })
+                .catch(() => {
+                    this._appServer?.dispose();
+                    this._appServerThreadLoaded = false;
+                });
+            return;
+        }
         if (this._child && this._child.exitCode === null) {
             this._interrupted = true;
             this._child.kill('SIGTERM');
@@ -818,7 +1135,31 @@ export class CodexSession extends EngineSession {
             this._child.kill('SIGTERM');
         }
         this._child = null;
+        this._appServer?.dispose();
+        this._appServer = null;
+        this._appServerThreadLoaded = false;
     }
+}
+
+// The app-server spells item types in camelCase where the exec stream spells
+// them snake_case ('agentMessage' vs 'agent_message', probed 0.146.0). One
+// normalization at the boundary lets _mapItem stay the single item authority
+// for both transports. Fields ride through untouched — command, status,
+// changes, and text were observed carrying the same names on both.
+const APP_SERVER_ITEM_TYPES = Object.freeze({
+    agentMessage: 'agent_message',
+    commandExecution: 'command_execution',
+    fileChange: 'file_change',
+    mcpToolCall: 'mcp_tool_call',
+    webSearch: 'web_search',
+    collabToolCall: 'collab_tool_call',
+    todoList: 'todo_list',
+});
+
+function appServerItem(item) {
+    if (!item || typeof item !== 'object' || typeof item.type !== 'string') return null;
+    const type = APP_SERVER_ITEM_TYPES[item.type] ?? item.type;
+    return type === item.type ? item : { ...item, type };
 }
 
 function normalizeRequest(request) {
