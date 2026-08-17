@@ -1,0 +1,1 @@
+On 2026-08-16, the Qwen3.8-27B v0.3 LoRA series covering seeds 1–3 was not verified as trained: the experiment ledger records all three as trained:false, and no resulting adapter weights were found. See [[qwen3-8-27b]] and [[local-ml-inventory-2026-08-16]].

@@ -1,0 +1,1 @@
+Every research worker must return source-backed claims, limits, and unresolved conflicts. The main synthesis must preserve those citations and must not treat a list of themes or worker counts as verification that the research was completed.

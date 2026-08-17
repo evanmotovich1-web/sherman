@@ -1,0 +1,1 @@
+When recovering prior work, distinguish the immediately preceding session from an older session containing the most recent relevant work. Name both when they differ, keep evidence bound to its source session, and label current liveness unconfirmed unless verified under [[live-runtime-evidence]]. See [[worker-session-affinity]].
