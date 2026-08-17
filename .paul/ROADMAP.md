@@ -2,7 +2,7 @@
 
 Derived from design doc §6 (Phases). Bootstrapped 2026-07-26.
 
-## Milestone v0.1 — Evan-only local prototype 🟡 In progress (4 of 6 phases)
+## Milestone v0.1 — Evan-only local prototype 🟡 In progress (substance shipped; see Phase 9)
 
 Proves the whole contract end to end on one Mac: *type `sherman`, the agent
 appears, it knows the business.*
@@ -14,13 +14,12 @@ Evan's first live run; Phase 5 the same day, after seeing the launch screen.
 Phases 1 and 4 delivered the command, the branded screen, the headless engine and
 the vault boundary.
 
-**What remains is the sentence's last clause: "it knows the business."** The vault
-holds READMEs. Sherman will correctly say it does not know rather than invent, but
-until knowledge and skills land the product is a very good shell around an empty
-brain — and that is now the only thing between Sherman and being useful.
-
-That gap is Phase 2 (vault seed, parallel Codex track) and Phase 3 (skills,
-blocked on §7 Q1).
+**"It knows the business" — this gap closed in the 08-01→08-16 record gap.**
+Phase 2's vault seed and Phase 3's skills, the two clauses still open at Phase
+8 close, both landed as direct PRs rather than PAUL plans: "seed the brain"
+(PR #86) put 8 cited wiki facts into the vault and `skills/` now holds 85
+skills. The substance shipped; the loop did not record it — see "Phase 9"
+below and the record-gap note in `.paul/STATE.md`.
 
 ### Phase 1 — Launcher chassis ✅ Complete (2026-07-26, 1/1 plan)
 
@@ -237,6 +236,44 @@ Two things worth carrying forward:
   a quoted heredoc.** Two smoke checks broke this way on two different
   characters, each time with a parse error hundreds of lines from the cause.
   Literals in smoke heredocs are hex escapes now, with a comment saying why.
+
+### Phase 9 — Record gap: 2026-08-01 → 08-16 (no PAUL plans)
+
+Between Phase 8 close (`8072383`, 08-01) and 08-16, the project shipped 178
+commits and 51 merged PRs on `main` (through `b8dbc9e`, 08-14) plus 8 commits
+on `capability-hints` (08-15/16, unmerged), all as feature branches merged by
+PR — the working style that replaced the single-`main` loop. No PLAN or
+SUMMARY exists for any of it; `.paul/STATE.md` carries the theme-by-theme
+record and `CHANGES.md` is current through 08-15.
+
+What landed, grouped:
+
+- **Memory** — mnemosyne, memory index, memory on every engine, per-tool
+  approvals, `user.md`, Teamlore.
+- **Knowledge & distillation** — `distill` skill, distill autonomy, persistence
+  loop, self-direction loop (`sherman loop` verb + gates, smoke check 40),
+  session harvest + verify discipline.
+- **The brain (Phase 2 substance)** — "seed the brain": 8 cited wiki facts,
+  real goals, 4 open threads; `vault/wiki/` = 13 files.
+- **Skills (Phase 3 substance)** — `skills/` grew to 85, including `distill`,
+  `money`, `self-direction-loop`, `0-1`, `evan`, `wayfinder`, `agent-eval`.
+- **Engines** — DeepSeek (`deepseek-chat` on OpenCode), Z.AI GLM via OpenCode,
+  `/subagent --engine` routing.
+- **Streaming & speed (overturns D8)** — typewriter token streaming over
+  `codex app-server`, launch pre-warm, live tool clocks, markdown replies.
+- **Eval** — meta-eval loop ("the judge gets judged") + recommendations inbox
+  (PR #36), `agent-eval` skill, `evalstore.js`.
+- **Money** — money engine (capped float, ledger, gate) + earning skill.
+- **Robustness & infra** — update self-heals (config, divergence), one-press
+  update, `npm ci` reconcile, prod-React fix, shell OOM fix, Windows fixes, CI
+  smoke (macOS + Ubuntu), Sherman Commons (Cloudflare Workers).
+- **Surface polish** — turn tree, Hermes register, reply frame, `/pic` paste,
+  key paste + redaction, one-keypress filing, pet emotion colors, face moods.
+
+The v0.1 prototype is substantively complete; what's missing is the PAUL
+record, not the product. Whether any of this gets retro-fitted with plans is
+Evan's call — per the project's own rule, reconstructing summaries after the
+fact would invent a record rather than keep one.
 
 ## Milestone v0.2 — Installer + second admin device + Codex adapter ⚪ Not started
 

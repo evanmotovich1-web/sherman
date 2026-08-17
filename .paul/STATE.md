@@ -2,18 +2,17 @@
 
 ## Current Position
 
-Milestone: v0.1 Evan-only local prototype — 🟡 In progress
+Milestone: v0.1 Evan-only local prototype — 🟡 In progress (substance shipped)
 Phase: 8 (Connectors and method skills) — ✅ COMPLETE (3/3 plans)
 Plan: None active. Ready to plan.
-Status: Sherman can now acquire capability it does not have. MCP stopped being
-a hardcoded block and became a catalog the launcher renders for both engines,
-with keys held outside the repo and a connector omitted whole rather than
-half-wired. `0-1` is the skill that adds entries — verifying first, wiring what
-needs no person, and handing over one account-and-key checklist when one is
-required. `evan` and `wayfinder` came out of a personal `~/.claude` and into
-the product, self-contained and engine-agnostic. Smoke 23 → 26 checks, all
-green; shell tests 174/174.
-Last activity: 2026-08-01 — Phase 8 complete: commits 638f3bc, 25c7962, 210b45a
+Status: Phase 8 closed the loop. Since then a much larger body of work shipped
+as direct commits and merged PRs — 178 commits, 51 PRs, 2026-08-01 → 08-16 —
+without PAUL plans or summaries (see "Record gap" below). The two v0.1 items
+still open at Phase 8 close both landed this way: the vault was seeded (13 wiki
+facts + "seed the brain" PR #86) and `skills/` grew to 85 skills, including
+company work (distill, money, self-direction loop) and new engines (DeepSeek,
+GLM/Z.AI).
+Last activity: 2026-08-16 — on branch `capability-hints`, 8 commits ahead of main
 
 **Record gap, stated rather than papered over.** Between Phase 7 and Phase 8 a
 large body of work shipped as direct commits outside the loop — `skills/` and
@@ -24,8 +23,45 @@ green; it has no PLAN or SUMMARY. The tables below cover the loop, not the
 repo, and reconstructing summaries after the fact would invent a record rather
 than keep one.
 
+**Second record gap — 2026-08-01 → 08-16.** Phase 8 closed at `8072383`
+(08-01). The following two weeks shipped as 178 commits and 51 merged PRs on
+`main` (through `b8dbc9e`, 08-14) plus 8 more commits on `capability-hints`
+(08-15/16, not yet merged). This is the largest un-recorded stretch in the
+project, and it is committed and green, not lost. Themes (each backed by
+commits in `git log 210b45a..HEAD`):
+
+- **Memory made real:** mnemosyne long-term memory, a memory index, memory
+  riding every engine, per-tool approvals, `user.md` (every Sherman knows its
+  operator), shared Teamlore.
+- **Knowledge + distillation:** `distill` skill, distill autonomy, the
+  persistence loop (recall/remember/consolidate), the self-direction loop
+  (direction layer, `sherman loop` verb, gates — smoke check 40), session
+  harvest + verify discipline.
+- **The brain is no longer empty (R8):** "seed the brain" landed 8 cited wiki
+  facts, real goals, 4 open threads; `vault/wiki/` holds 13 files.
+- **New engines:** DeepSeek (`deepseek-chat` on OpenCode, key paste), Z.AI GLM
+  via OpenCode, `/subagent --engine` worker routing.
+- **Streaming + speed (overturns D8):** the typewriter streams chat turns
+  token-by-token over a persistent `codex app-server` (probed on 0.146.0),
+  launch pre-warm, live tool clocks, markdown replies in house inks.
+- **Money:** the money engine (capped float, ledger, gate) + `earning` skill +
+  money-setup checklist.
+- **Eval:** the meta-eval loop — "the judge gets judged" — plus a
+  recommendations inbox lane (PR #36), `agent-eval` / `agent-evaluation`
+  skills, `shell/src/evalstore.js`.
+- **Robustness:** update self-heals config and diverged checkouts, one-press
+  update, `npm ci` reconcile, corrupt-config remedy, prod-React leak fix, shell
+  OOM fix, Windows console fixes, CI smoke on macOS + Ubuntu.
+- **Sherman Commons:** a Cloudflare Workers foundation + private pilot
+  (`commons/`), browser/design/email automation, `/pic` clipboard paste +
+  git-repo install, key paste + redaction, one-keypress vault filing, the
+  desktop pet's emotion colors, activity-face moods, the Hermes register.
+
+No PLAN/SUMMARY files exist for any of this; this paragraph and `CHANGES.md`
+(which is current through 08-15) are the record.
+
 Progress:
-- Milestone v0.1: [███████░░░] 5/7 phases (command, shell, launch screen, session/turn UI, public-readiness done; vault seed and skills remain)
+- Milestone v0.1: [████████░░] 5/7 phases closed in the loop, but the remaining two (vault seed, skills) landed as direct PRs in the 08-01→08-16 record gap — substance complete, the loop never closed them.
 - Phase 1: [██████████] 100% (1/1 plan)
 - Phase 4: [██████████] 100% (2/2 plans)
 - Phase 5: [██████████] 100% (1/1 plan)
@@ -181,18 +217,28 @@ after every commit, and never commit `graphify-out/`.
 
 ## Blockers
 
-- **Phase 3 (skills) is blocked on design-doc §7 Q1** — the 3–5 tasks employees burn the most hours on. This is the one answer that unblocks the actual product.
+- ~~Phase 3 (skills) blocked on §7 Q1~~ — **superseded by shipped work.** `skills/` now holds 85 skills including company work (distill, money, self-direction loop, 0-1, evan, wayfinder). §7 Q1's specific "3–5 employee tasks" answer remains open as a seed for *employee-facing* skills at v0.2, but it no longer blocks the prototype.
 
 ## Git State
 
-Branch: `main`
+Branch: `capability-hints` (checked out), tracking `origin/capability-hints`,
+8 commits ahead of `main` (the 08-15/16 typewriter/pre-warm/clocks/composer
+batch). `main` is at `b8dbc9e` (08-14), in sync with `origin/main`.
 Remotes: `origin` → https://github.com/evanmotovich1-web/sherman.git —
 **PUBLIC since 2026-07-29**, flipped at Evan's explicit direction after the
-clean secret audit; the push (3ac5b0a..74b7c43) was likewise Evan-directed,
-so C5 held: pushing stayed his call. Because a remote exists, smoke check
-10's `sherman update` now performs a real `git pull --ff-only` and a nested
-smoke run.
-Feature branches: none — all work on `main`
+clean secret audit. All pushes remain Evan-directed (C5 held). Smoke check
+10's `sherman update` does a real `git pull --ff-only` + nested smoke run;
+PR #77 made it self-heal a diverged checkout.
+Feature branches: ~30 — the post-Phase-8 working style is one feature branch
+per PR, merged to `main` when done. Active/recent include `deepseek-engine`,
+`distill-skill`, `distill-autonomy-memory`, `persistence-loop-autonomous-skills`,
+`self-direction-loop`, `memory-on-every-engine`, `memory-actually-serves`,
+`mnemosyne-memory`, `money-engine`, `hermes-register-and-silent-exit`,
+`one-press-update`, `update-self-heals-config`, `update-self-heals-divergence`,
+`ci-smoke-workflow`, `pic-paste-and-repo-install`, `brief-and-copy`,
+`corrupt-config-remedy`, and several `face`/`activity` shell branches. Several
+(`eval-meta-loop`, `activity-face-moods`, `face-version-bump`, `user-md`,
+`brief-and-copy`) show `[gone]` — merged and their remote branch deleted.
 
 Phase 4 commits: `7a9b4dd` (04-01 plan), `1f75e0a` (engine layer), `7536aa2`,
 `c5b22a6` (04-01 close), `879240d` (04-02 plan), `fcd2b82` (shell UI),
@@ -210,14 +256,14 @@ first frame v3), `0275b24` (06-01 close), `f4b7518` (06-02 live turn UI).
 
 ## Session Continuity
 
-Last session: 2026-07-29
-Stopped at: Phase 7 complete — the repo is publishable: history audited
-clean, README under the honesty laws, registry-driven wizard, verify-then-
-claim installer, twenty-one smoke checks green
-Next action: The repo is public and pushed (Evan-directed, 2026-07-29).
-What remains is **design-doc §7 Q1** (the 3–5 tasks employees burn the most
-hours on) to unblock Phase 3 skills — still the one answer standing between
-Sherman and being useful.
+Last session: 2026-08-16 (PAUL reconciliation)
+Stopped at: two weeks of direct PRs past Phase 8 — see the record-gap note
+above. `main` at `b8dbc9e` (08-14), 178 commits / 51 PRs since Phase 8
+close; `capability-hints` carries the 08-15/16 shell-polish batch (8 commits,
+pushed, not yet merged to main).
+Next action: merge `capability-hints` to `main` (Evan's call), then decide
+whether the post-Phase-8 work gets proper PAUL plans. Reconstructing them
+after the fact would invent a record — this note and CHANGES.md stand in.
 Resume file: `.paul/ROADMAP.md`
 
 Probed for Phase 6 (recorded in the plans, headline here): Ink 7 per-side
