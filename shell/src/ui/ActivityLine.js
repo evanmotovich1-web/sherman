@@ -142,7 +142,7 @@ export function activityWords(activities = [], lifecycle = null) {
  *
  * @returns {{words:string, glyph:string, mark:string, source:'activity'|'lifecycle'|'generic'}}
  */
-export function activityDescriptor(activities = [], lifecycle = null) {
+export function activityDescriptor(activities = [], lifecycle = null, now = Date.now()) {
     const last = Array.isArray(activities) ? activities[activities.length - 1] : null;
     // `label` is the engine's own text; `line` is the trace's rendering of it and
     // carries a leading glyph. Prefer the label so the row does not show two
@@ -151,12 +151,17 @@ export function activityDescriptor(activities = [], lifecycle = null) {
         ? last.label
         : last?.line;
     if (typeof text === 'string' && text.trim() !== '') {
-        // The duration is the engine's measured elapsed time, present only once
-        // the task has actually completed -- it is never shown for running work,
-        // because a running task has no duration yet.
-        const seconds = Number.isFinite(last.durationMs)
-            ? `  ${(last.durationMs / 1000).toFixed(1)}s`
-            : '';
+        // A completed task shows the engine's own measured duration — the
+        // only number allowed to claim "this took". A RUNNING task shows how
+        // long ago it was reported, in whole seconds: a fact this process
+        // measured itself, advanced by the face timer that already re-renders
+        // this line. A task with neither stays bare.
+        let seconds = '';
+        if (Number.isFinite(last.durationMs)) {
+            seconds = `  ${(last.durationMs / 1000).toFixed(1)}s`;
+        } else if (Number.isFinite(last.startedAt)) {
+            seconds = ` · ${Math.max(0, Math.floor((now - last.startedAt) / 1000))}s`;
+        }
         return {
             words: `${text.trim()}${seconds}`,
             glyph: ACTIVITY_GLYPH[last.category] ?? '',
