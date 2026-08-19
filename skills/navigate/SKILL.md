@@ -17,6 +17,7 @@ it is how work gets done from memory instead of from evidence.
    `vault/wiki/` and `vault/memory/shared/` first, always — `vault-search`).
    A file or document → read it through `document-reading` before reasoning
    about it. Something outside the walls → `/connectors`, then `mcp`.
+       A stall on the current model → `/models`, then `recursive-learning`.
    Durable company knowledge → the Sherman vault wiki. Optional personal
    research memory → the external LLM Wiki only when explicitly requested.
 2. **Sweep before you dive.** List the directory, search for the term, skim

@@ -55,6 +55,7 @@ import {
 } from '../commands.js';
 import { describe as describeConnectors } from '../connectors.js';
 import { describeKeys, removeKey, saveKey, validKeyName } from '../keys.js';
+import { describeModels } from '../localmodels.js';
 import { engineAvailable } from '../engine/index.js';
 import { customizePet, writePetState } from '../petstate.js';
 import { composeUrl, openNotice, openPath, openUrl } from '../browser.js';
@@ -961,6 +962,12 @@ export function App({
                     // to a named message when Stripe is not set up yet.
                     const money = await moneyCommand(parsed.args);
                     commit(money.ok ? 'notice' : 'error', money.text);
+                    return;
+                }
+                if (command.name === 'models') {
+                    // Local, like /connectors and /key: PATH plus the key
+                    // store own the whole answer. Names only — never values.
+                    commit('notice', describeModels());
                     return;
                 }
                 if (command.name === 'key') {

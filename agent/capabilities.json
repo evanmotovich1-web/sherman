@@ -79,7 +79,8 @@
       "tools": [
         { "name": "web_search", "verify": "engine" },
         { "name": "connectors", "verify": "command" },
-        { "name": "key", "verify": "command" }
+        { "name": "key", "verify": "command" },
+        { "name": "models", "verify": "command" }
       ]
     },
     {

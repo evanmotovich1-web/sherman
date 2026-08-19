@@ -86,6 +86,12 @@ export const COMMANDS = Object.freeze([
         detail: 'The shell stores the key in ~/.sherman/keys.json (chmod 600, never committed, never synced, never in the vault) and injects it into the engine environment immediately — this turn and every future session simply have it. The value is redacted from the transcript and the session log before either is written; the model never handles it. Bare /key lists stored key NAMES only, never values. When a stored name matches a catalogued connector\'s missing secret, the connector wires itself on the next launch.',
     },
     {
+        name: 'models',
+        usage: '/models',
+        summary: 'show which engines and named keys this machine already has',
+        detail: 'A local read of installed engine binaries and of key NAMES in ~/.sherman/keys.json or the environment. Prints the /subagent --engine line for each ready model. Names only — never values — and it does not scan the disk for secrets. The parent session stays on its own engine; route a blocked slice to another ready model. DeepSeek also needs DEEPSEEK_API_KEY stored.',
+    },
+    {
         name: 'commons',
         usage: '/commons <subcommand>',
         summary: 'use the opt-in Sherman Commons local client',
