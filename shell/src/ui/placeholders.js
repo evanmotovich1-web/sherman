@@ -31,6 +31,7 @@ const COMMAND_HINTS = Object.freeze([
     'try /goal <focus> — pin what this session is for',
     'try @<agent> <task> — route a specialist',
     'try /subagent <task> — an isolated worker turn',
+    'try /models — engines and named keys already on this machine',
     '/learn <name> | <fact> teaches the vault',
     '/wiki captures this session for the company wiki',
     '/win shows what the last eval thought',

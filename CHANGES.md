@@ -3,6 +3,18 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-19 — Added: recursive learning and local model inventory
+
+- Sherman now has a `recursive-learning` skill and a bundled `@learner` agent:
+  recall the last lesson about a stall, inventory the engines and named keys
+  already on this machine, route the blocked slice to a ready model, bound the
+  retry at three, then offer `/learn`. It does not swap the parent engine and
+  it does not scan the disk for secrets.
+- `/models` is the local inventory behind that loop — installed engine
+  binaries, key NAMES in `~/.sherman/keys.json` or the environment, and the
+  `/subagent --engine` line each ready model unlocks. Names only. DeepSeek
+  still needs `DEEPSEEK_API_KEY` before it counts as ready.
+
 ## 2026-08-15 — Added: the composer teaches — rotating capability hints
 
 - An empty composer used to rest on one static line forever. It now

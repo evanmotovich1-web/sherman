@@ -73,7 +73,19 @@ test('OpenCode argv pins Z.AI GLM and resumes the exact session without sharing'
 });
 
 test('OpenCode permissions allow only the named vault outside the workspace', () => {
-    const normal = JSON.parse(openCodeConfigForMode(config, 'normal'));
+    // grantedWritableRoots reads ~/.sherman/sandbox.json via os.homedir().
+    // A machine with extra operator grants must not make this assertion lie.
+    const isolatedHome = mkdtempSync(join(tmpdir(), 'sherman-opencode-home-'));
+    const previousHome = process.env.HOME;
+    process.env.HOME = isolatedHome;
+    let normal;
+    try {
+        normal = JSON.parse(openCodeConfigForMode(config, 'normal'));
+    } finally {
+        if (previousHome === undefined) delete process.env.HOME;
+        else process.env.HOME = previousHome;
+        rmSync(isolatedHome, { recursive: true, force: true });
+    }
     assert.deepEqual(normal.permission.external_directory, {
         '*': 'deny',
         '/tmp/sherman-test/vault/**': 'allow',
