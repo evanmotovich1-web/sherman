@@ -11,7 +11,9 @@ shipped, verified release.
   Subscription"`), never an API-key paste and never a generic OpenRouter
   menu. Default model is `grok-4.3`; `sherman model grok-4.5` (or the
   numbered menu) writes `model` into `~/.sherman/config.json` and the
-  session reads it back.
+  session reads it back. Any `grok-*` or `xai/...` id is accepted, not
+  just the short menu — `sherman model xai/grok-4.20-0309-reasoning` is
+  a real set.
 - DeepSeek is no longer pinned to `deepseek-chat`. The same menu and
   `sherman model deepseek-reasoner` pick the model; the default stays
   `deepseek-chat` so existing machines do not jump. Z.AI remains pinned to

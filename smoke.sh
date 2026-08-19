@@ -2000,6 +2000,16 @@ if [ "$grok_switch_status" -eq 0 ] && [ "$grok_switch_model" = "grok-4.5" ] \
 else
     fail "Grok model pick failed (status=$grok_switch_status model=$grok_switch_model)"
 fi
+grok_any_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" SHERMAN_TEST_GROK_AUTH='xAI SuperGrok' \
+    ./bin/sherman model xai/grok-4.20-0309-reasoning 2>&1)
+grok_any_status=$?
+grok_any_model=$(/usr/bin/jq -r '.model // empty' "$GROKHOME/.sherman/config.json" 2>/dev/null)
+if [ "$grok_any_status" -eq 0 ] && [ "$grok_any_model" = "grok-4.20-0309-reasoning" ] \
+    && printf '%s' "$grok_any_out" | grep -q 'model: grok-4.20-0309-reasoning'; then
+    pass "any Grok id is accepted, including xai/ prefix and ids outside the short menu"
+else
+    fail "any-Grok-model pick failed (status=$grok_any_status model=$grok_any_model)"
+fi
 fi
 
 # ----------------------------------------------------------------- check 21 --

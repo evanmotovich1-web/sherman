@@ -66,6 +66,8 @@ test('Grok backend is selectable, defaults to grok-4.3, honors config.model', ()
     assert.equal(argv.includes('zai/glm-5.2'), false);
     const chosen = openCodeArgs({ ...grokConfig, model: 'grok-4.5' }, 'hello', null);
     assert.ok(chosen.includes('xai/grok-4.5'));
+    const anyId = openCodeArgs({ ...grokConfig, model: 'grok-4.20-0309-reasoning' }, 'hello', null);
+    assert.ok(anyId.includes('xai/grok-4.20-0309-reasoning'));
     const prefixed = openCodeArgs({ ...grokConfig, model: 'xai/grok-code-fast-1' }, 'hello', null);
     assert.ok(prefixed.includes('xai/grok-code-fast-1'));
     const cfg = JSON.parse(openCodeConfigForMode(

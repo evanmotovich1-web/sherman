@@ -22,19 +22,37 @@ export const MODEL_CONTEXT_WINDOWS = Object.freeze({
 });
 
 // Menus `sherman model` renders for OpenCode engines. The launcher greps
-// these same objects, so adding a row here is what makes a model pickable.
-// Image / video / TTS ids stay out: those are not coding-session backends.
+// these same objects. Any grok-* / xai/* id is still accepted when typed,
+// even if it is not in this list.
 export const GROK_MODELS = Object.freeze({
     'grok-4.3': 262144,
     'grok-4.5': 262144,
     'grok-4.20-reasoning': 262144,
     'grok-4.20-non-reasoning': 262144,
+    'grok-4.20-reasoning-beta': 262144,
+    'grok-4.20-non-reasoning-beta': 262144,
+    'grok-4.20-0309-reasoning': 262144,
+    'grok-4.20-0309-non-reasoning': 262144,
+    'grok-4.20-multi-agent': 262144,
+    'grok-4.20-multi-agent-beta': 262144,
     'grok-4.1-fast-reasoning': 262144,
     'grok-4.1-fast-non-reasoning': 262144,
+    'grok-4-fast-reasoning': 262144,
+    'grok-4-fast-non-reasoning': 262144,
+    'grok-4-1-fast-non-reasoning': 262144,
     'grok-code-fast-1': 256000,
     'grok-4': 256000,
     'grok-3': 131072,
     'grok-3-mini': 131072,
+    'grok-build-0.1': 262144,
+    'grok-imagine-image': null,
+    'grok-imagine-video': null,
+    'grok-imagine-video-1.5': null,
+    'grok-imagine-video-1.5-preview': null,
+    'grok-stt': null,
+    'grok-tts': null,
+    'grok-voice-think-fast-1.0': null,
+    'grok-voice-think-fast-2.0': null,
 });
 
 export const DEEPSEEK_MODELS = Object.freeze({

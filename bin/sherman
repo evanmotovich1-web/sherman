@@ -356,8 +356,14 @@ looks_like_model() {
 }
 
 is_grok_model() {
+    raw="$1"
     name=$(normalize_model_name "$1")
-    case "$name" in grok-*) looks_like_model "$name" ;; *) return 1 ;; esac
+    case "$raw" in
+        xai/*)
+            looks_like_model "$name" ;;
+        *)
+            case "$name" in grok*) looks_like_model "$name" ;; *) return 1 ;; esac ;;
+    esac
 }
 
 is_deepseek_model() {
@@ -2249,6 +2255,18 @@ if [ "${1:-}" = "model" ]; then
             echo "provider: OpenAI (Codex) (verified: Sherman config)"
             exit 0 ;;
     esac
+    if [ "$configured_engine" = "grok" ]; then
+        if is_grok_model "$1"; then
+            ensure_opencode || exit 1
+            ensure_grok_auth || exit 1
+            config_set model "$(normalize_model_name "$1")"
+            echo "provider: xAI Grok · model: $(config_get model) (verified: Sherman config)"
+            exit 0
+        fi
+        echo "Grok model '$1' does not look like a Grok id. Try: sherman model grok-4.5" >&2
+        echo "Any grok-* or xai/<id> name is accepted." >&2
+        exit 1
+    fi
     if is_grok_model "$1"; then
         ensure_opencode || exit 1
         ensure_grok_auth || exit 1
