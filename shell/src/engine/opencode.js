@@ -13,23 +13,51 @@ import { createInterface } from 'node:readline';
 
 import { EngineSession, ev, emptyUsage, addUsage } from './session.js';
 import { grantedWritableRoots } from './writable-roots.js';
+import { contextWindowFor, OPENCODE_DEFAULT_MODELS } from '../config.js';
 
 export const ZAI_MODEL = 'zai/glm-5.2';
 export const ZAI_CONTEXT_WINDOW = 1_000_000;
+export const GROK_DEFAULT_MODEL = 'xai/grok-4.3';
 
 // One OpenCode runtime, several providers. The engine name in the Sherman
-// config picks the pinned provider/model pair; a config from before this map
-// carries engine "zai", which is why zai is also the fallback. DeepSeek
-// authenticates through DEEPSEEK_API_KEY, which the launcher collects once
-// (pasted, hidden, stored 0600 in ~/.sherman/keys.json) and injectKeys()
-// places in the engine environment every session.
+// config picks the provider prefix; grok and deepseek then honor config.model
+// when the operator chose one. A config from before this map carries engine
+// "zai", which is why zai is also the fallback. DeepSeek authenticates
+// through DEEPSEEK_API_KEY (Sherman key store). Grok authenticates through
+// OpenCode's xAI SuperGrok OAuth — never an API-key paste in Sherman.
+export const OPENCODE_ENGINE_PREFIX = Object.freeze({
+    zai: 'zai',
+    grok: 'xai',
+    deepseek: 'deepseek',
+});
+
 export const OPENCODE_ENGINE_MODELS = Object.freeze({
     zai: ZAI_MODEL,
+    grok: GROK_DEFAULT_MODEL,
     deepseek: 'deepseek/deepseek-chat',
 });
 
-function pinnedModel(config) {
-    return OPENCODE_ENGINE_MODELS[config?.engine] ?? ZAI_MODEL;
+function shortModelName(raw) {
+    const value = String(raw ?? '').trim();
+    if (!value) return '';
+    const slash = value.lastIndexOf('/');
+    return slash === -1 ? value : value.slice(slash + 1);
+}
+
+function looksLikeModelId(name) {
+    return /^[A-Za-z0-9._-]+$/.test(name) && name.length >= 2;
+}
+
+/** Resolve the OpenCode provider/model id this session will actually run. */
+export function pinnedModel(config) {
+    const engine = config?.engine;
+    if (engine === 'zai') return ZAI_MODEL;
+    const prefix = OPENCODE_ENGINE_PREFIX[engine];
+    if (!prefix) return OPENCODE_ENGINE_MODELS[engine] ?? ZAI_MODEL;
+    const chosen = shortModelName(config?.model);
+    const fallback = OPENCODE_DEFAULT_MODELS[engine] ?? shortModelName(OPENCODE_ENGINE_MODELS[engine]);
+    const name = looksLikeModelId(chosen) ? chosen : fallback;
+    return `${prefix}/${name}`;
 }
 
 const NOT_INSTALLED =
@@ -64,6 +92,16 @@ function stallMessage(ms, engine = 'zai') {
             '  1. DeepSeek key missing or revoked — run `sherman model`, pick DeepSeek, and paste a fresh key.\n' +
             '  2. DeepSeek balance exhausted — check platform.deepseek.com and recharge.\n' +
             '  3. DeepSeek or the network is stalled — try: opencode run --model deepseek/deepseek-chat "hello"\n' +
+            '  4. An MCP server is hanging at startup.\n' +
+            'Nothing was lost; resend the prompt to retry.'
+        );
+    }
+    if (engine === 'grok') {
+        return (
+            header +
+            '  1. xAI SuperGrok OAuth missing or expired — run `sherman model`, pick Grok, and finish the xAI sign-in.\n' +
+            '  2. SuperGrok subscription lapsed — check x.com/grok or accounts.x.ai.\n' +
+            '  3. xAI or the network is stalled — try: opencode run --model xai/grok-4.3 "hello"\n' +
             '  4. An MCP server is hanging at startup.\n' +
             'Nothing was lost; resend the prompt to retry.'
         );
@@ -399,7 +437,9 @@ export class OpenCodeSession extends EngineSession {
             user: this._config.user,
             vaultPath: this._config.vaultPath,
             threadId: this._sessionId,
-            contextWindow: this._config.contextWindowTokens ?? ZAI_CONTEXT_WINDOW,
+            contextWindow: this._config.contextWindowTokens
+                ?? contextWindowFor(pinnedModel(this._config).split('/')[1])
+                ?? ZAI_CONTEXT_WINDOW,
         };
     }
 

@@ -3,6 +3,26 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-19 — Added: xAI Grok SuperGrok OAuth, and pickable Grok/DeepSeek models
+
+- `sherman model` and the first-run wizard now list **xAI Grok (SuperGrok
+  OAuth)** as a working provider. Sign-in is OpenCode's xAI-only device-code
+  flow (`opencode auth login --pure --provider xai --method "SuperGrok
+  Subscription"`), never an API-key paste and never a generic OpenRouter
+  menu. Default model is `grok-4.3`; `sherman model grok-4.5` (or the
+  numbered menu) writes `model` into `~/.sherman/config.json` and the
+  session reads it back. Any `grok-*` or `xai/...` id is accepted, not
+  just the short menu — `sherman model xai/grok-4.20-0309-reasoning` is
+  a real set.
+- DeepSeek is no longer pinned to `deepseek-chat`. The same menu and
+  `sherman model deepseek-reasoner` pick the model; the default stays
+  `deepseek-chat` so existing machines do not jump. Z.AI remains pinned to
+  `glm-5.2`.
+- `/subagent --engine grok` (alias `xai`) routes one worker onto that
+  backend. Vault pages [[available-engines]], [[machine-enrollment]], and
+  [[key-handover-procedure]] are cross-linked so the three facts stay one
+  graph.
+
 ## 2026-08-19 — Added: recursive learning and local model inventory
 
 - Sherman now has a `recursive-learning` skill and a bundled `@learner` agent:

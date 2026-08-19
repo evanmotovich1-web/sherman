@@ -21,9 +21,58 @@ export const MODEL_CONTEXT_WINDOWS = Object.freeze({
     'gpt-5.3-codex-spark': 128000,
 });
 
+// Menus `sherman model` renders for OpenCode engines. The launcher greps
+// these same objects. Any grok-* / xai/* id is still accepted when typed,
+// even if it is not in this list.
+export const GROK_MODELS = Object.freeze({
+    'grok-4.3': 262144,
+    'grok-4.5': 262144,
+    'grok-4.20-reasoning': 262144,
+    'grok-4.20-non-reasoning': 262144,
+    'grok-4.20-reasoning-beta': 262144,
+    'grok-4.20-non-reasoning-beta': 262144,
+    'grok-4.20-0309-reasoning': 262144,
+    'grok-4.20-0309-non-reasoning': 262144,
+    'grok-4.20-multi-agent': 262144,
+    'grok-4.20-multi-agent-beta': 262144,
+    'grok-4.1-fast-reasoning': 262144,
+    'grok-4.1-fast-non-reasoning': 262144,
+    'grok-4-fast-reasoning': 262144,
+    'grok-4-fast-non-reasoning': 262144,
+    'grok-4-1-fast-non-reasoning': 262144,
+    'grok-code-fast-1': 256000,
+    'grok-4': 256000,
+    'grok-3': 131072,
+    'grok-3-mini': 131072,
+    'grok-build-0.1': 262144,
+    'grok-imagine-image': null,
+    'grok-imagine-video': null,
+    'grok-imagine-video-1.5': null,
+    'grok-imagine-video-1.5-preview': null,
+    'grok-stt': null,
+    'grok-tts': null,
+    'grok-voice-think-fast-1.0': null,
+    'grok-voice-think-fast-2.0': null,
+});
+
+export const DEEPSEEK_MODELS = Object.freeze({
+    'deepseek-chat': null,
+    'deepseek-reasoner': null,
+    'deepseek-v4-pro': null,
+    'deepseek-v4-flash': null,
+    'deepseek-v3.2': null,
+    'deepseek-r1': null,
+});
+
+export const OPENCODE_DEFAULT_MODELS = Object.freeze({
+    zai: 'glm-5.2',
+    grok: 'grok-4.3',
+    deepseek: 'deepseek-chat',
+});
+
 export function contextWindowFor(model, override = null) {
     if (Number.isInteger(override) && override > 0) return override;
-    return MODEL_CONTEXT_WINDOWS[model] ?? null;
+    return MODEL_CONTEXT_WINDOWS[model] ?? GROK_MODELS[model] ?? null;
 }
 
 // Resolve $HOME live on every call, never at import time. smoke.sh overrides
@@ -36,7 +85,8 @@ function shermanHome() {
 /**
  * @typedef {Object} ShermanConfig
  * @property {number} version
- * @property {string} engine        'codex' | 'claude'
+ * @property {string} engine        'codex' | 'claude' | 'zai' | 'deepseek' | 'grok'
+ * @property {string} model         OpenCode short name when the engine is grok/deepseek; '' means the engine default
  * @property {string} user          slug, also a private-memory directory name
  * @property {string} vaultPath     company knowledge base
  * @property {string} workspacePath engine cwd; holds the assembled adapter
@@ -107,6 +157,7 @@ export function loadConfig() {
     return {
         version: parsed.version ?? 1,
         engine: parsed.engine,
+        model: typeof parsed.model === 'string' ? parsed.model : '',
         user: parsed.user,
         vaultPath: parsed.vault_path,
         workspacePath: join(home, 'workspace'),

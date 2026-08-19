@@ -14,9 +14,10 @@ const BACKENDS = {
     codex: CodexSession,
     claude: ClaudeSession,
     zai: OpenCodeSession,
-    // Same runtime as zai, different provider: the session reads its pinned
-    // provider/model pair from config.engine (see OPENCODE_ENGINE_MODELS).
+    // Same runtime as zai, different provider: the session reads its
+    // provider/model pair from config.engine + config.model.
     deepseek: OpenCodeSession,
+    grok: OpenCodeSession,
 };
 
 // What each backend actually launches. Used by engineAvailable so a worker
@@ -27,6 +28,7 @@ const BINARIES = {
     claude: 'claude',
     zai: 'opencode',
     deepseek: 'opencode',
+    grok: 'opencode',
 };
 
 /** Whether the named engine binary exists on this machine PATH. */

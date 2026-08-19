@@ -44,7 +44,7 @@ test('explicit retention payloads are redacted before transcript or session logg
 });
 
 test('registry drives suggestions and help', () => {
-    assert.equal(commandFor('subagent')?.usage, '/subagent [--engine codex|claude|zai] <task>');
+    assert.equal(commandFor('subagent')?.usage, '/subagent [--engine codex|claude|zai|deepseek|grok] <task>');
     assert.deepEqual(suggestionsFor('/p').map((c) => c.name), ['plan', 'pic']);
     assert.deepEqual(
         suggestionsFor('/').map((c) => c.name),
@@ -189,7 +189,9 @@ test('parseEngineFlag routes one worker to a named model', () => {
         { engine: null, task: 'plain task text', error: null }
     );
     // Unknown engines error with the roster instead of silently falling through.
-    assert.ok(parseEngineFlag('--engine grok do a thing').error.includes('Valid: codex, claude, zai'));
+    assert.equal(parseEngineFlag('--engine grok do a thing').engine, 'grok');
+    assert.equal(parseEngineFlag('--engine xai do a thing').engine, 'grok');
+    assert.ok(parseEngineFlag('--engine foo do a thing').error.includes('Valid: codex, claude, zai, deepseek, grok'));
     // A bare flag with no task is not a routing.
     assert.equal(parseEngineFlag('--engine claude').engine, null);
 });

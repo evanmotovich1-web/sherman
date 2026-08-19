@@ -109,13 +109,15 @@ verified there.
 
 With no `~/.sherman/config.json`, `sherman` runs setup:
 
-1. **Provider.** Choose Codex (OpenAI) or Z.AI (GLM-5.2). Sherman installs
-   OpenCode on demand for Z.AI and opens OpenCode's own private sign-in flow.
-   Anthropic remains listed as not yet available.
+1. **Provider.** Choose Codex (OpenAI), Z.AI (GLM-5.2), DeepSeek, or xAI Grok
+   (SuperGrok OAuth). Sherman installs OpenCode on demand for the OpenCode
+   engines and opens that provider's own sign-in: Z.AI key paste, DeepSeek
+   key paste into Sherman's store, or xAI SuperGrok OAuth. Anthropic remains
+   listed as not yet available.
 2. **Your name.** It becomes your private-memory directory in the vault.
-3. **Model** (optional for Codex). Enter keeps the Codex default; a name you
-   type is written to Codex's own config, backed up, and verified by reading it
-   back. Z.AI is pinned to the verified `glm-5.2` model catalogue entry.
+3. **Model** (optional for Codex, DeepSeek, and Grok). Enter keeps the default;
+   a name you type is written and verified by reading it back. Z.AI stays
+   pinned to the verified `glm-5.2` model catalogue entry.
 4. **Telegram** (optional). Paste a bot token from @BotFather to use Sherman
    from your phone, or skip and connect later.
 

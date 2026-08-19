@@ -1835,10 +1835,10 @@ echo "20. the wizard cannot sell a dead backend"
 WIZHOME="$TMPHOME/wizard-home"
 mkdir -p "$WIZHOME"
 
-# Answer 4 first (Anthropic, registered unavailable), then 1 (codex). The run
-# must refuse 4 with the reason, re-prompt, and complete on 1 -- selecting the
+# Answer 5 first (Anthropic, registered unavailable), then 1 (codex). The run
+# must refuse 5 with the reason, re-prompt, and complete on 1 -- selecting the
 # unavailable provider may never proceed and may never error after selection.
-wiz_out=$(printf '4\n1\nWiz Tester\n' \
+wiz_out=$(printf '5\n1\nWiz Tester\n' \
     | env HOME="$WIZHOME" PATH="$STUBDIR:$PATH" ./bin/sherman --raw 2>&1)
 wiz_status=$?
 
@@ -1846,9 +1846,13 @@ printf '%s' "$wiz_out" | grep -q "Z.AI (GLM-5.2)" \
     && pass "Z.AI GLM-5.2 is listed as an available provider" \
     || fail "menu does not list Z.AI GLM-5.2"
 
-printf '%s' "$wiz_out" | grep -q "DeepSeek (deepseek-chat)" \
+printf '%s' "$wiz_out" | grep -q "DeepSeek" \
     && pass "DeepSeek is listed as an available provider" \
     || fail "menu does not list DeepSeek"
+
+printf '%s' "$wiz_out" | grep -q "xAI Grok (SuperGrok OAuth)" \
+    && pass "xAI Grok SuperGrok OAuth is listed as an available provider" \
+    || fail "menu does not list xAI Grok"
 
 printf '%s' "$wiz_out" | grep -q "Anthropic (Claude Code) — not available yet" \
     && pass "Anthropic is listed, visibly unavailable" \
@@ -1888,11 +1892,12 @@ if [ "\${1:-}" = "run" ] && [ "\${2:-}" = "--help" ]; then
     exit 0
 fi
 if [ "\${1:-}" = "auth" ] && [ "\${2:-}" = "login" ] && [ "\${3:-}" = "--help" ]; then
-    echo '--pure --provider'
+    echo '--pure --provider --method'
     exit 0
 fi
 if [ "\${1:-}" = "auth" ] && [ "\${2:-}" = "list" ]; then
     echo "\${SHERMAN_TEST_ZAI_AUTH:-Z.AI}"
+    [ -n "\${SHERMAN_TEST_GROK_AUTH:-}" ] && echo "\${SHERMAN_TEST_GROK_AUTH}"
     exit 0
 fi
 printf '%s' "\${SHERMAN_MCP_CONFIG_SHA256:-}" > "$ZAI_MARKER"
@@ -1941,18 +1946,69 @@ mkdir -p "$DSHOME/.sherman"
 printf '{\n  "version": 1,\n  "keys": { "DEEPSEEK_API_KEY": "smoke-placeholder-not-a-real-key" }\n}\n' \
     > "$DSHOME/.sherman/keys.json"
 chmod 600 "$DSHOME/.sherman/keys.json"
-ds_out=$(printf '3\nDee Tester\n' \
+ds_out=$(printf '3\nDee Tester\n\n' \
     | env HOME="$DSHOME" PATH="$STUBDIR:$PATH" SHERMAN_NO_FETCH=1 ./bin/sherman --raw 2>&1)
 ds_status=$?
 ds_engine=$(/usr/bin/jq -r '.engine // empty' "$DSHOME/.sherman/config.json" 2>/dev/null)
 ds_model_out=$(env HOME="$DSHOME" PATH="$STUBDIR:$PATH" ./bin/sherman model 2>&1)
 if [ "$ds_status" -eq 0 ] && [ "$ds_engine" = "deepseek" ] \
-    && printf '%s' "$ds_model_out" | grep -q 'model: deepseek-chat (pinned by Sherman)' \
+    && printf '%s' "$ds_model_out" | grep -q 'model: deepseek-chat (from Sherman config)' \
     && ! printf '%s' "$ds_out" | grep -q 'smoke-placeholder-not-a-real-key' \
     && grep -q "deepseek/deepseek-chat" shell/src/engine/opencode.js; then
-    pass "DeepSeek selection rides the Sherman key store, pins deepseek-chat, and never echoes the key"
+    pass "DeepSeek selection rides the Sherman key store, defaults to deepseek-chat, and never echoes the key"
 else
     fail "DeepSeek wizard path failed (status=$ds_status engine=$ds_engine): $(printf '%s' "$ds_out" | tail -2)"
+fi
+ds_switch_out=$(env HOME="$DSHOME" PATH="$STUBDIR:$PATH" ./bin/sherman model deepseek-reasoner 2>&1)
+ds_switch_status=$?
+ds_switch_model=$(/usr/bin/jq -r '.model // empty' "$DSHOME/.sherman/config.json" 2>/dev/null)
+if [ "$ds_switch_status" -eq 0 ] && [ "$ds_switch_model" = "deepseek-reasoner" ] \
+    && printf '%s' "$ds_switch_out" | grep -q 'model: deepseek-reasoner'; then
+    pass "sherman model deepseek-reasoner writes the chosen DeepSeek model and reads it back"
+else
+    fail "DeepSeek model pick failed (status=$ds_switch_status model=$ds_switch_model)"
+fi
+
+# Grok end-to-end with SuperGrok OAuth already present in the stub auth list.
+# Option 4 is now xAI Grok; the wizard must open the xAI-only OAuth path,
+# default grok-4.3, assemble the OpenCode adapter, and accept a later model name.
+GROKHOME="$TMPHOME/grok-home"
+mkdir -p "$GROKHOME"
+grok_out=$(printf '4\nGrok Tester\n\n' \
+    | env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" SHERMAN_NO_FETCH=1 \
+        SHERMAN_TEST_GROK_AUTH='xAI SuperGrok' ./bin/sherman --raw 2>&1)
+grok_status=$?
+grok_engine=$(/usr/bin/jq -r '.engine // empty' "$GROKHOME/.sherman/config.json" 2>/dev/null)
+grok_cfg_model=$(/usr/bin/jq -r '.model // empty' "$GROKHOME/.sherman/config.json" 2>/dev/null)
+grok_model_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" SHERMAN_TEST_GROK_AUTH='xAI SuperGrok' ./bin/sherman model 2>&1)
+if [ "$grok_status" -eq 0 ] && [ "$grok_engine" = "grok" ] \
+    && [ "$grok_cfg_model" = "grok-4.3" ] \
+    && printf '%s' "$grok_model_out" | grep -q 'model: grok-4.3 (from Sherman config)' \
+    && grep -q 'opencode auth login --pure --provider xai --method "SuperGrok Subscription"' bin/sherman \
+    && grep -q "general OpenCode session" "$GROKHOME/.sherman/workspace/AGENTS.md" 2>/dev/null; then
+    pass "Grok selection opens SuperGrok OAuth, defaults to grok-4.3, assembles its adapter, and reaches OpenCode"
+else
+    fail "Grok wizard path failed (status=$grok_status engine=$grok_engine model=$grok_cfg_model): $(printf '%s' "$grok_out" | tail -2)"
+fi
+grok_switch_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" SHERMAN_TEST_GROK_AUTH='xAI SuperGrok' \
+    ./bin/sherman model grok-4.5 2>&1)
+grok_switch_status=$?
+grok_switch_model=$(/usr/bin/jq -r '.model // empty' "$GROKHOME/.sherman/config.json" 2>/dev/null)
+if [ "$grok_switch_status" -eq 0 ] && [ "$grok_switch_model" = "grok-4.5" ] \
+    && printf '%s' "$grok_switch_out" | grep -q 'model: grok-4.5'; then
+    pass "sherman model grok-4.5 writes the chosen Grok model and reads it back"
+else
+    fail "Grok model pick failed (status=$grok_switch_status model=$grok_switch_model)"
+fi
+grok_any_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" SHERMAN_TEST_GROK_AUTH='xAI SuperGrok' \
+    ./bin/sherman model xai/grok-4.20-0309-reasoning 2>&1)
+grok_any_status=$?
+grok_any_model=$(/usr/bin/jq -r '.model // empty' "$GROKHOME/.sherman/config.json" 2>/dev/null)
+if [ "$grok_any_status" -eq 0 ] && [ "$grok_any_model" = "grok-4.20-0309-reasoning" ] \
+    && printf '%s' "$grok_any_out" | grep -q 'model: grok-4.20-0309-reasoning'; then
+    pass "any Grok id is accepted, including xai/ prefix and ids outside the short menu"
+else
+    fail "any-Grok-model pick failed (status=$grok_any_status model=$grok_any_model)"
 fi
 fi
 

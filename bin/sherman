@@ -94,8 +94,9 @@ PLACEHOLDER
 # any field.
 PROVIDERS='codex|OpenAI (Codex)|codex|available|
 zai|Z.AI (GLM-5.2)|opencode|available|
-deepseek|DeepSeek (deepseek-chat)|opencode|available|
-claude|Anthropic (Claude Code)|claude|unavailable|the Claude Code backend is not wired into the Sherman Shell yet; Codex, Z.AI GLM, and DeepSeek are the working backends today'
+deepseek|DeepSeek|opencode|available|
+grok|xAI Grok (SuperGrok OAuth)|opencode|available|
+claude|Anthropic (Claude Code)|claude|unavailable|the Claude Code backend is not wired into the Sherman Shell yet; Codex, Z.AI GLM, DeepSeek, and xAI Grok are the working backends today'
 
 provider_count() {
     printf '%s\n' "$PROVIDERS" | grep -c .
@@ -133,6 +134,11 @@ engine_install_hint() {
             ;;
         deepseek)
             echo "OpenCode is not installed. DeepSeek uses OpenCode as its agent runtime. Install it with:"
+            echo
+            echo "    npm install -g opencode-ai"
+            ;;
+        grok)
+            echo "OpenCode is not installed. xAI Grok uses OpenCode as its agent runtime. Install it with:"
             echo
             echo "    npm install -g opencode-ai"
             ;;
@@ -196,6 +202,7 @@ opencode_is_compatible() {
     auth_help=$(opencode auth login --help 2>&1) || return 1
     case "$auth_help" in *--provider*) ;; *) return 1 ;; esac
     case "$auth_help" in *--pure*) ;; *) return 1 ;; esac
+    case "$auth_help" in *--method*) ;; *) return 1 ;; esac
     return 0
 }
 
@@ -299,6 +306,118 @@ import(pathToFileURL(process.argv[1]).href).then((keys) => {
     echo "DeepSeek key missing. Run sherman in a terminal and paste it at the prompt," >&2
     echo "or store it from inside Sherman with: /key DEEPSEEK_API_KEY <value>" >&2
     return 1
+}
+
+# xAI Grok rides OpenCode's SuperGrok OAuth — device-code sign-in, not an
+# API-key paste and not OpenRouter. Sherman opens the xAI-only method so the
+# operator never sees a generic provider menu.
+has_grok_auth() {
+    opencode auth list 2>/dev/null \
+        | grep -Ei 'xAI|xai|Grok|SuperGrok' \
+        | grep -q .
+}
+
+ensure_grok_auth() {
+    has_grok_auth && return 0
+    if [ -t 0 ]; then
+        echo
+        echo "xAI Grok uses SuperGrok OAuth — Sherman opens OpenCode's xAI-only sign-in."
+        echo "This is not an API-key paste and not OpenRouter."
+        opencode auth login --pure --provider xai --method "SuperGrok Subscription" || return 1
+        has_grok_auth && return 0
+    fi
+    echo "xAI Grok is not signed in. Run: opencode auth login --pure --provider xai --method \"SuperGrok Subscription\"" >&2
+    return 1
+}
+
+# Catalogs live in shell/src/config.js so the menu and the session share one list.
+catalog_models() {
+    sed -n "/${1} = Object.freeze/,/})/s/^[[:space:]]*'\([^']*\)':.*/\1/p" "$ROOT/shell/src/config.js"
+}
+
+default_model_for() {
+    case "$1" in
+        grok) echo grok-4.3 ;;
+        deepseek) echo deepseek-chat ;;
+        zai) echo glm-5.2 ;;
+        *) echo "" ;;
+    esac
+}
+
+normalize_model_name() {
+    printf '%s' "$1" | sed 's|^xai/||; s|^deepseek/||; s|^zai/||'
+}
+
+looks_like_model() {
+    case "$1" in
+        ''|*[!A-Za-z0-9._-]*) return 1 ;;
+    esac
+    [ "${#1}" -ge 2 ]
+}
+
+is_grok_model() {
+    raw="$1"
+    name=$(normalize_model_name "$1")
+    case "$raw" in
+        xai/*)
+            looks_like_model "$name" ;;
+        *)
+            case "$name" in grok*) looks_like_model "$name" ;; *) return 1 ;; esac ;;
+    esac
+}
+
+is_deepseek_model() {
+    name=$(normalize_model_name "$1")
+    case "$name" in deepseek-*) looks_like_model "$name" ;; *) return 1 ;; esac
+}
+
+# Sets $picked_model. Non-interactive runs keep the default and do not read,
+# so a piped wizard does not steal the Telegram answer.
+pick_catalog_model() {
+    engine_for_model="$1"
+    default=$(default_model_for "$engine_for_model")
+    current="$2"
+    [ -z "$current" ] && current="$default"
+    picked_model="$current"
+    [ -t 0 ] || return 0
+
+    catalog=""
+    case "$engine_for_model" in
+        grok) catalog=$(catalog_models GROK_MODELS) ;;
+        deepseek) catalog=$(catalog_models DEEPSEEK_MODELS) ;;
+        *) return 0 ;;
+    esac
+
+    echo
+    echo "Model [default: $current] -- the models this shell knows"
+    echo "(OpenCode accepts others too; type a name instead of a number):"
+    i=1
+    for m in $catalog; do
+        echo "  [$i] $m"
+        i=$((i + 1))
+    done
+    count=$((i - 1))
+    printf 'Choose a number, type a model name, or Enter for the default > '
+    read -r choice || choice=""
+    choice=$(printf '%s' "$choice" | tr -d '" ')
+    [ -z "$choice" ] && return 0
+    case "$choice" in
+        *[!0-9]*)
+            picked_model=$(normalize_model_name "$choice")
+            ;;
+        *)
+            if [ "$choice" -ge 1 ] && [ "$choice" -le "$count" ]; then
+                picked_model=$(printf '%s\n' $catalog | sed -n "${choice}p")
+            else
+                echo "  Enter 1-$count, a model name, or nothing."
+                return 1
+            fi
+            ;;
+    esac
+    if ! looks_like_model "$picked_model"; then
+        echo "  '$picked_model' does not look like a model name; nothing was changed."
+        return 1
+    fi
 }
 
 # Which Z.AI product the key belongs to. ASKED, never probed: the launcher
@@ -427,6 +546,7 @@ run_wizard() {
     echo
     echo "Setting up Sherman on this machine."
     echo
+    picked_model=""
 
     # 1. Provider. This IS the engine choice. Sherman performs no OAuth of its
     #    own -- the engine's native browser login fires on first launch if it
@@ -496,8 +616,10 @@ run_wizard() {
     mkdir -p "$SHERMAN_HOME"
     extra=""
     [ -n "$tg_token" ] && extra=$(printf ',"telegram_token":"%s"' "$tg_token")
-    printf '{"version":2,"engine":"%s","user":"%s","vault_path":"%s"%s}\n' \
-        "$engine" "$user" "$vault" "$extra" > "$CONFIG"
+    model_json=""
+    [ -n "$picked_model" ] && model_json=$(printf ',"model":"%s"' "$picked_model")
+    printf '{"version":2,"engine":"%s","user":"%s","vault_path":"%s"%s%s}\n' \
+        "$engine" "$user" "$vault" "$extra" "$model_json" > "$CONFIG"
 
     # Read back what was just written, both as JSON and as the engine value.
     # A config that does not parse must die HERE, deleted, where redoing setup
@@ -594,8 +716,11 @@ write_codex_model() {
     return 1
 }
 
-# Model question (codex only). Reads $engine.
+# Model question. Codex writes into Codex's own config. Grok and DeepSeek
+# store the short name in $picked_model for the Sherman config. Z.AI stays
+# pinned to glm-5.2. Reads $engine.
 ask_model() {
+    picked_model=""
     if [ "$engine" = "codex" ]; then
         current_model=$(read_codex_model)
         echo
@@ -609,6 +734,10 @@ ask_model() {
         if [ -n "$model_reply" ]; then
             write_codex_model "$model_reply" || true
         fi
+    elif [ "$engine" = "grok" ] || [ "$engine" = "deepseek" ]; then
+        # Wizard is often piped (smoke, installers). Do not read here —
+        # the interactive picker is `sherman model`. Enter-default only.
+        picked_model=$(default_model_for "$engine")
     fi
 }
 
@@ -1081,7 +1210,7 @@ assemble_adapter() {
     case "$engine" in
         claude) template="$ROOT/adapters/claude-code/CLAUDE.md"; out="$WORKSPACE/CLAUDE.md" ;;
         codex)  template="$ROOT/adapters/codex/AGENTS.md";        out="$WORKSPACE/AGENTS.md" ;;
-        zai|deepseek) template="$ROOT/adapters/opencode/AGENTS.md"; out="$WORKSPACE/AGENTS.md" ;;
+        zai|deepseek|grok) template="$ROOT/adapters/opencode/AGENTS.md"; out="$WORKSPACE/AGENTS.md" ;;
         *)
             echo "Unknown engine in config: $engine" >&2
             exit 1
@@ -1975,8 +2104,22 @@ run_model_picker() {
         ensure_opencode || exit 1
         ensure_deepseek_auth || exit 1
         config_set engine deepseek
+        pick_catalog_model deepseek "$(config_get model)" || exit 1
+        config_set model "$picked_model"
         echo "  provider: DeepSeek"
-        echo "  model: deepseek-chat (via OpenCode)"
+        echo "  model: $picked_model (via OpenCode)"
+        echo "  saved and verified. Run sherman to start."
+        exit 0
+    fi
+
+    if [ "$picked" = "grok" ]; then
+        ensure_opencode || exit 1
+        ensure_grok_auth || exit 1
+        config_set engine grok
+        pick_catalog_model grok "$(config_get model)" || exit 1
+        config_set model "$picked_model"
+        echo "  provider: xAI Grok"
+        echo "  model: $picked_model (via OpenCode SuperGrok OAuth)"
         echo "  saved and verified. Run sherman to start."
         exit 0
     fi
@@ -2048,9 +2191,19 @@ if [ "${1:-}" = "model" ]; then
             exit 0
         fi
         if [ "$configured_engine" = "deepseek" ]; then
+            current=$(config_get model)
+            [ -z "$current" ] && current=$(default_model_for deepseek)
             echo "provider: DeepSeek"
-            echo "model: deepseek-chat (pinned by Sherman)"
-            echo "change provider interactively with: sherman model"
+            echo "model: $current (from Sherman config)"
+            echo "change it with: sherman model <name>   (e.g. sherman model deepseek-reasoner)"
+            exit 0
+        fi
+        if [ "$configured_engine" = "grok" ]; then
+            current=$(config_get model)
+            [ -z "$current" ] && current=$(default_model_for grok)
+            echo "provider: xAI Grok"
+            echo "model: $current (from Sherman config)"
+            echo "change it with: sherman model <name>   (e.g. sherman model grok-4.5)"
             exit 0
         fi
         current=$(read_codex_model)
@@ -2074,7 +2227,27 @@ if [ "${1:-}" = "model" ]; then
             ensure_opencode || exit 1
             ensure_deepseek_auth || exit 1
             config_set engine deepseek
-            echo "provider: DeepSeek · model: deepseek-chat (verified: Sherman config)"
+            if [ -z "$(config_get model)" ]; then
+                config_set model "$(default_model_for deepseek)"
+            fi
+            if [ -t 0 ]; then
+                pick_catalog_model deepseek "$(config_get model)" || exit 1
+                config_set model "$picked_model"
+            fi
+            echo "provider: DeepSeek · model: $(config_get model) (verified: Sherman config)"
+            exit 0 ;;
+        grok|xai)
+            ensure_opencode || exit 1
+            ensure_grok_auth || exit 1
+            config_set engine grok
+            if [ -z "$(config_get model)" ]; then
+                config_set model "$(default_model_for grok)"
+            fi
+            if [ -t 0 ]; then
+                pick_catalog_model grok "$(config_get model)" || exit 1
+                config_set model "$picked_model"
+            fi
+            echo "provider: xAI Grok · model: $(config_get model) (verified: Sherman config)"
             exit 0 ;;
         codex)
             ensure_linux_codex || exit 1
@@ -2082,20 +2255,40 @@ if [ "${1:-}" = "model" ]; then
             echo "provider: OpenAI (Codex) (verified: Sherman config)"
             exit 0 ;;
     esac
+    if [ "$configured_engine" = "grok" ]; then
+        if is_grok_model "$1"; then
+            ensure_opencode || exit 1
+            ensure_grok_auth || exit 1
+            config_set model "$(normalize_model_name "$1")"
+            echo "provider: xAI Grok · model: $(config_get model) (verified: Sherman config)"
+            exit 0
+        fi
+        echo "Grok model '$1' does not look like a Grok id. Try: sherman model grok-4.5" >&2
+        echo "Any grok-* or xai/<id> name is accepted." >&2
+        exit 1
+    fi
+    if is_grok_model "$1"; then
+        ensure_opencode || exit 1
+        ensure_grok_auth || exit 1
+        config_set engine grok
+        config_set model "$(normalize_model_name "$1")"
+        echo "provider: xAI Grok · model: $(config_get model) (verified: Sherman config)"
+        exit 0
+    fi
+    if is_deepseek_model "$1"; then
+        ensure_opencode || exit 1
+        ensure_deepseek_auth || exit 1
+        config_set engine deepseek
+        config_set model "$(normalize_model_name "$1")"
+        echo "provider: DeepSeek · model: $(config_get model) (verified: Sherman config)"
+        exit 0
+    fi
     if [ "$configured_engine" = "zai" ]; then
         if [ "$1" = "glm-5.2" ]; then
             echo "model: glm-5.2 (already pinned by Sherman)"
             exit 0
         fi
         echo "Z.AI is pinned to glm-5.2. Run 'sherman model' to switch providers." >&2
-        exit 1
-    fi
-    if [ "$configured_engine" = "deepseek" ]; then
-        if [ "$1" = "deepseek-chat" ]; then
-            echo "model: deepseek-chat (already pinned by Sherman)"
-            exit 0
-        fi
-        echo "DeepSeek is pinned to deepseek-chat. Run 'sherman model' to switch providers." >&2
         exit 1
     fi
     if write_codex_model "$1"; then exit 0; else exit 1; fi
@@ -2204,6 +2397,9 @@ if [ "$ENGINE" = "zai" ]; then
 fi
 if [ "$ENGINE" = "deepseek" ]; then
     ensure_deepseek_auth || exit 1
+fi
+if [ "$ENGINE" = "grok" ]; then
+    ensure_grok_auth || exit 1
 fi
 
 # Freshen the remote-tracking refs in the background, so the launch panel's

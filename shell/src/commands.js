@@ -27,9 +27,9 @@ export const COMMANDS = Object.freeze([
     },
     {
         name: 'subagent',
-        usage: '/subagent [--engine codex|claude|zai] <task>',
+        usage: '/subagent [--engine codex|claude|zai|deepseek|grok] <task>',
         summary: 'run an isolated read-only worker, on a chosen model if named',
-        detail: 'Starts a fresh engine session with the same Sherman identity and safety boundary. The worker sees only the explicit task and active goal. --engine routes that one worker to a specific installed engine (glm and opencode are aliases for zai) while this session stays on its own; the same flag works after an @-mention. The engine must be installed and signed in on this machine.',
+        detail: 'Starts a fresh engine session with the same Sherman identity and safety boundary. The worker sees only the explicit task and active goal. --engine routes that one worker to a specific installed engine (glm and opencode alias zai; xai aliases grok) while this session stays on its own; the same flag works after an @-mention. The engine must be installed and signed in on this machine.',
     },
     {
         name: 'agents',
@@ -778,6 +778,8 @@ export const WORKER_ENGINES = Object.freeze({
     glm: 'zai',
     opencode: 'zai',
     deepseek: 'deepseek',
+    grok: 'grok',
+    xai: 'grok',
 });
 
 /**
@@ -797,7 +799,7 @@ export function parseEngineFlag(text) {
         return {
             engine: null,
             task: match[2].trim(),
-            error: `Unknown engine "${match[1]}". Valid: codex, claude, zai, deepseek (aliases: glm, opencode).`,
+            error: `Unknown engine "${match[1]}". Valid: codex, claude, zai, deepseek, grok (aliases: glm, opencode, xai).`,
         };
     }
     return { engine, task: match[2].trim(), error: null };

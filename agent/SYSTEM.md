@@ -259,7 +259,7 @@ of one at a time. Serial calls are for chains where one result feeds the next.
 Use your agents. The roster in `agent/agents.json` — plus any you have forged
 into `~/.sherman/agents/` — is reachable as `@name task` in the shell, and a
 worker can run on a DIFFERENT model than you when the task profits from it:
-`/subagent --engine codex|claude|zai <task>` (glm and opencode alias zai) and
+`/subagent --engine codex|claude|zai|deepseek|grok <task>` (glm/opencode alias zai; xai aliases grok) and
 `@name --engine <engine> <task>` route that one worker to the named installed
 engine while you stay on your own. Pick the model for the work — one engine's
 strength on code, another's on prose or price — and say which engine a routed

@@ -54,6 +54,34 @@ test('DeepSeek backend is selectable, pinned to deepseek-chat, on the same runti
     assert.ok(zaiCfg.provider?.zai, 'zai coding plan must keep its endpoint override');
 });
 
+test('Grok backend is selectable, defaults to grok-4.3, honors config.model', () => {
+    const grokConfig = { ...config, engine: 'grok' };
+    const selected = selectBackend(grokConfig);
+    assert.equal(selected instanceof OpenCodeSession, true);
+    assert.equal(selected.info.engine, 'grok');
+    assert.equal(selected.info.model, 'grok-4.3');
+    assert.equal(selected.info.contextWindow, 262144);
+    const argv = openCodeArgs(grokConfig, 'hello', null);
+    assert.ok(argv.includes('xai/grok-4.3'), 'argv must pin the default Grok model');
+    assert.equal(argv.includes('zai/glm-5.2'), false);
+    const chosen = openCodeArgs({ ...grokConfig, model: 'grok-4.5' }, 'hello', null);
+    assert.ok(chosen.includes('xai/grok-4.5'));
+    const anyId = openCodeArgs({ ...grokConfig, model: 'grok-4.20-0309-reasoning' }, 'hello', null);
+    assert.ok(anyId.includes('xai/grok-4.20-0309-reasoning'));
+    const prefixed = openCodeArgs({ ...grokConfig, model: 'xai/grok-code-fast-1' }, 'hello', null);
+    assert.ok(prefixed.includes('xai/grok-code-fast-1'));
+    const cfg = JSON.parse(openCodeConfigForMode(
+        { ...grokConfig, zaiPlan: 'coding' }, 'normal'
+    ));
+    assert.equal(cfg.provider, undefined, 'Grok must not carry the zai coding baseURL');
+});
+
+test('DeepSeek honors a chosen model instead of the old pin', () => {
+    const argv = openCodeArgs({ ...config, engine: 'deepseek', model: 'deepseek-reasoner' }, 'hello', null);
+    assert.ok(argv.includes('deepseek/deepseek-reasoner'));
+    assert.equal(argv.includes('deepseek/deepseek-chat'), false);
+});
+
 test('OpenCode argv pins Z.AI GLM and resumes the exact session without sharing', () => {
     const fresh = openCodeArgs(config, 'hello', null);
     assert.deepEqual(fresh, [
