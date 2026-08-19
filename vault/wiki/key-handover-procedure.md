@@ -10,7 +10,12 @@ session log, and injects it into the engine environment immediately — this
 turn and every future session simply have it. A key matching a catalogued
 connector's missing secret wires that connector on the next launch.
 
+DeepSeek is this path (`DEEPSEEK_API_KEY`). xAI Grok is not — it signs in
+through SuperGrok OAuth on the [[available-engines]] grok seat. Do not paste
+an xAI key into `/key` expecting that to become the Grok engine.
+
 Never echo a stored value back, never write one into a file, commit, or vault
 page; check presence with `[ -n "$NAME" ]`, never by printing.
 
-Source: `agent/SYSTEM.md` (key handling contract), `shell/src/keys.js`.
+Source: `agent/SYSTEM.md` (key handling contract), `shell/src/keys.js`,
+[[machine-enrollment]].

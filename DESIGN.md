@@ -22,11 +22,14 @@ carried in this document and in the decisions table below.
 - The launcher detects configuration, renders the banner, and starts the shell.
 - The wizard's provider choice is the engine choice: Anthropic means Claude
   Code; OpenAI means Codex; Z.AI means GLM through OpenCode; DeepSeek means
-  deepseek-chat through OpenCode. Authentication
+  a chosen DeepSeek model (default deepseek-chat) through OpenCode; xAI Grok
+  means SuperGrok OAuth through OpenCode. Authentication
   remains the engine's native credential flow — except DeepSeek, whose key
   comes straight from platform.deepseek.com and is pasted into Sherman's own
   key store (`~/.sherman/keys.json`, the /key contract: 0600, never synced,
-  injected as DEEPSEEK_API_KEY into the engine environment).
+  injected as DEEPSEEK_API_KEY into the engine environment). Grok uses
+  OpenCode's xAI-only SuperGrok OAuth (`opencode auth login --pure --provider
+  xai --method "SuperGrok Subscription"`), never an API-key paste.
 - `agent/SYSTEM.md` is the shared persona. Engine adapters are thin templates;
   the launcher generates the selected workspace adapter on every run.
 - Sherman Shell owns the screen: streaming chat, status, and later the Board.

@@ -50,6 +50,15 @@ export const MODEL_ENGINES = Object.freeze([
         requiresKey: true,
         repair: 'npm install -g opencode-ai, then /key DEEPSEEK_API_KEY <value>',
     },
+    {
+        engine: 'grok',
+        binary: 'opencode',
+        label: 'xAI Grok',
+        model: 'xai/grok-4.3 via OpenCode (SuperGrok OAuth)',
+        keys: ['XAI_API_KEY'],
+        requiresKey: false,
+        repair: 'npm install -g opencode-ai, then `sherman model` and pick Grok (SuperGrok OAuth)',
+    },
 ]);
 
 // Named keys that do not unlock a first-party engine but may already live
