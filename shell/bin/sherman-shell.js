@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../src/config.js';
 import { injectKeys } from '../src/keys.js';
+import { injectGrokOAuth } from '../src/grokoauth.js';
 import { selectBackend } from '../src/engine/index.js';
 import { emptyUsage } from '../src/engine/session.js';
 
@@ -96,6 +97,7 @@ async function probe(prompts) {
     // probe's engine too, or --probe would debug a different machine than the
     // one the shell runs on.
     injectKeys();
+    injectGrokOAuth();
     const session = selectBackend(config);
     const info = session.info;
 
@@ -217,6 +219,7 @@ async function startShell() {
         // (injectKeys never clobbers), and a corrupt store degrades to a
         // launch without keys rather than no launch — /key will name the fix.
         injectKeys();
+        injectGrokOAuth();
 
         loadIn.step('preparing engine…');
         session = selectBackend(config);

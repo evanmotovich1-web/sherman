@@ -24,7 +24,8 @@ export const GROK_DEFAULT_MODEL = 'xai/grok-4.3';
 // when the operator chose one. A config from before this map carries engine
 // "zai", which is why zai is also the fallback. DeepSeek authenticates
 // through DEEPSEEK_API_KEY (Sherman key store). Grok authenticates through
-// OpenCode's xAI SuperGrok OAuth — never an API-key paste in Sherman.
+// Sherman's own SuperGrok device-code OAuth (~/.sherman/grok-oauth.json);
+// the access token is injected as XAI_API_KEY. OpenCode never owns the login.
 export const OPENCODE_ENGINE_PREFIX = Object.freeze({
     zai: 'zai',
     grok: 'xai',
@@ -99,9 +100,9 @@ function stallMessage(ms, engine = 'zai') {
     if (engine === 'grok') {
         return (
             header +
-            '  1. xAI SuperGrok OAuth missing or expired — run `sherman model`, pick Grok, and finish the xAI sign-in.\n' +
+            '  1. xAI SuperGrok OAuth missing or expired — run `sherman model grok` and finish Sherman\'s xAI sign-in.\n' +
             '  2. SuperGrok subscription lapsed — check x.com/grok or accounts.x.ai.\n' +
-            '  3. xAI or the network is stalled — try: opencode run --model xai/grok-4.3 "hello"\n' +
+            '  3. xAI or the network is stalled.\n' +
             '  4. An MCP server is hanging at startup.\n' +
             'Nothing was lost; resend the prompt to retry.'
         );

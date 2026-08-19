@@ -16,10 +16,10 @@ Grok and DeepSeek is stored as `model` in `~/.sherman/config.json`.
   the same OpenCode runtime; the key is pasted into Sherman's key store
   per [[key-handover-procedure]], never an OpenCode login. Pick another
   with `sherman model deepseek-reasoner` (or the interactive menu).
-- **grok** — xAI Grok through OpenCode SuperGrok OAuth
-  (`opencode auth login --pure --provider xai --method "SuperGrok Subscription"`).
-  Not an API-key paste and not OpenRouter. Default `grok-4.3`; pick another
-  with `sherman model grok-4.5`. Local inventory is [[local-ml-inventory-2026-08-16]].
+- **grok** — xAI Grok through Sherman's own SuperGrok OAuth
+  (device code at accounts.x.ai; token in `~/.sherman/grok-oauth.json`).
+  Not OpenCode login, not an API-key paste. Default `grok-4.3`; pick another
+  with `sherman model grok-4.5`. Runtime is still OpenCode.
 
 OpenCode engines have no filesystem sandbox — Sherman confines them with a
 permission allowlist instead, and the vault stays writable only through the
