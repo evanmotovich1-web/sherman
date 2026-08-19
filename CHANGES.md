@@ -13,7 +13,8 @@ shipped, verified release.
   numbered menu) writes `model` into `~/.sherman/config.json` and the
   session reads it back. Any `grok-*` or `xai/...` id is accepted, not
   just the short menu — `sherman model xai/grok-4.20-0309-reasoning` is
-  a real set.
+  a real set. Sign-in is Sherman's own SuperGrok device-code OAuth
+  (`~/.sherman/grok-oauth.json`); OpenCode never runs `auth login` for Grok.
 - DeepSeek is no longer pinned to `deepseek-chat`. The same menu and
   `sherman model deepseek-reasoner` pick the model; the default stays
   `deepseek-chat` so existing machines do not jump. Z.AI remains pinned to

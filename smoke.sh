@@ -1850,8 +1850,8 @@ printf '%s' "$wiz_out" | grep -q "DeepSeek" \
     && pass "DeepSeek is listed as an available provider" \
     || fail "menu does not list DeepSeek"
 
-printf '%s' "$wiz_out" | grep -q "xAI Grok (SuperGrok OAuth)" \
-    && pass "xAI Grok SuperGrok OAuth is listed as an available provider" \
+printf '%s' "$wiz_out" | grep -q "xAI Grok (OAuth)" \
+    && pass "xAI Grok OAuth is listed as an available provider" \
     || fail "menu does not list xAI Grok"
 
 printf '%s' "$wiz_out" | grep -q "Anthropic (Claude Code) — not available yet" \
@@ -1969,28 +1969,31 @@ else
     fail "DeepSeek model pick failed (status=$ds_switch_status model=$ds_switch_model)"
 fi
 
-# Grok end-to-end with SuperGrok OAuth already present in the stub auth list.
-# Option 4 is now xAI Grok; the wizard must open the xAI-only OAuth path,
-# default grok-4.3, assemble the OpenCode adapter, and accept a later model name.
+# Grok end-to-end with Sherman-owned OAuth already stored. OpenCode is never
+# asked to log in. Option 4 is xAI Grok (OAuth).
 GROKHOME="$TMPHOME/grok-home"
-mkdir -p "$GROKHOME"
+mkdir -p "$GROKHOME/.sherman"
+printf '{\n  "version": 1,\n  "access_token": "smoke-access",\n  "refresh_token": "smoke-refresh",\n  "expires_at": 9999999999999\n}\n' \
+    > "$GROKHOME/.sherman/grok-oauth.json"
+chmod 600 "$GROKHOME/.sherman/grok-oauth.json"
 grok_out=$(printf '4\nGrok Tester\n\n' \
-    | env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" SHERMAN_NO_FETCH=1 \
-        SHERMAN_TEST_GROK_AUTH='xAI SuperGrok' ./bin/sherman --raw 2>&1)
+    | env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" SHERMAN_NO_FETCH=1 ./bin/sherman --raw 2>&1)
 grok_status=$?
 grok_engine=$(/usr/bin/jq -r '.engine // empty' "$GROKHOME/.sherman/config.json" 2>/dev/null)
 grok_cfg_model=$(/usr/bin/jq -r '.model // empty' "$GROKHOME/.sherman/config.json" 2>/dev/null)
-grok_model_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" SHERMAN_TEST_GROK_AUTH='xAI SuperGrok' ./bin/sherman model 2>&1)
+grok_model_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" ./bin/sherman model 2>&1)
 if [ "$grok_status" -eq 0 ] && [ "$grok_engine" = "grok" ] \
     && [ "$grok_cfg_model" = "grok-4.3" ] \
     && printf '%s' "$grok_model_out" | grep -q 'model: grok-4.3 (from Sherman config)' \
-    && grep -q 'opencode auth login --pure --provider xai --method "SuperGrok Subscription"' bin/sherman \
+    && grep -q 'Sherman Grok OAuth' bin/sherman \
+    && ! grep -q 'opencode auth login --pure --provider xai' bin/sherman \
+    && grep -q 'shell/src/grokoauth.js' bin/sherman \
     && grep -q "general OpenCode session" "$GROKHOME/.sherman/workspace/AGENTS.md" 2>/dev/null; then
-    pass "Grok selection opens SuperGrok OAuth, defaults to grok-4.3, assembles its adapter, and reaches OpenCode"
+    pass "Grok selection uses Sherman OAuth (not OpenCode login), defaults to grok-4.3, and reaches the runtime"
 else
     fail "Grok wizard path failed (status=$grok_status engine=$grok_engine model=$grok_cfg_model): $(printf '%s' "$grok_out" | tail -2)"
 fi
-grok_switch_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" SHERMAN_TEST_GROK_AUTH='xAI SuperGrok' \
+grok_switch_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" \
     ./bin/sherman model grok-4.5 2>&1)
 grok_switch_status=$?
 grok_switch_model=$(/usr/bin/jq -r '.model // empty' "$GROKHOME/.sherman/config.json" 2>/dev/null)
@@ -2000,7 +2003,7 @@ if [ "$grok_switch_status" -eq 0 ] && [ "$grok_switch_model" = "grok-4.5" ] \
 else
     fail "Grok model pick failed (status=$grok_switch_status model=$grok_switch_model)"
 fi
-grok_any_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" SHERMAN_TEST_GROK_AUTH='xAI SuperGrok' \
+grok_any_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" \
     ./bin/sherman model xai/grok-4.20-0309-reasoning 2>&1)
 grok_any_status=$?
 grok_any_model=$(/usr/bin/jq -r '.model // empty' "$GROKHOME/.sherman/config.json" 2>/dev/null)

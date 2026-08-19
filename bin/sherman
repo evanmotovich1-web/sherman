@@ -95,7 +95,7 @@ PLACEHOLDER
 PROVIDERS='codex|OpenAI (Codex)|codex|available|
 zai|Z.AI (GLM-5.2)|opencode|available|
 deepseek|DeepSeek|opencode|available|
-grok|xAI Grok (SuperGrok OAuth)|opencode|available|
+grok|xAI Grok (OAuth)|opencode|available|
 claude|Anthropic (Claude Code)|claude|unavailable|the Claude Code backend is not wired into the Sherman Shell yet; Codex, Z.AI GLM, DeepSeek, and xAI Grok are the working backends today'
 
 provider_count() {
@@ -308,26 +308,33 @@ import(pathToFileURL(process.argv[1]).href).then((keys) => {
     return 1
 }
 
-# xAI Grok rides OpenCode's SuperGrok OAuth — device-code sign-in, not an
-# API-key paste and not OpenRouter. Sherman opens the xAI-only method so the
-# operator never sees a generic provider menu.
+# xAI Grok OAuth is Sherman's own SuperGrok device-code sign-in. OpenCode
+# is only the coding runtime — it never owns this credential and we never
+# run `opencode auth login` for Grok.
 has_grok_auth() {
-    opencode auth list 2>/dev/null \
-        | grep -Ei 'xAI|xai|Grok|SuperGrok' \
-        | grep -q .
+    [ -f "$HOME/.sherman/grok-oauth.json" ] \
+        && grep -q '"refresh_token"' "$HOME/.sherman/grok-oauth.json" 2>/dev/null
 }
 
 ensure_grok_auth() {
-    has_grok_auth && return 0
+    if has_grok_auth; then
+        node "$ROOT/shell/src/grokoauth.js" --refresh >/dev/null 2>&1 || true
+        return 0
+    fi
     if [ -t 0 ]; then
         echo
-        echo "xAI Grok uses SuperGrok OAuth — Sherman opens OpenCode's xAI-only sign-in."
-        echo "This is not an API-key paste and not OpenRouter."
-        opencode auth login --pure --provider xai --method "SuperGrok Subscription" || return 1
+        echo "xAI Grok uses Sherman's SuperGrok OAuth — not OpenCode's login, not an API-key paste."
+        node "$ROOT/shell/src/grokoauth.js" --login || return 1
         has_grok_auth && return 0
     fi
-    echo "xAI Grok is not signed in. Run: opencode auth login --pure --provider xai --method \"SuperGrok Subscription\"" >&2
+    echo "Grok is not signed in. Run sherman in a terminal: sherman model grok" >&2
     return 1
+}
+
+inject_grok_runtime_token() {
+    [ "$ENGINE" = "grok" ] || return 0
+    grok_access=$(node "$ROOT/shell/src/grokoauth.js" --access) || return 1
+    export XAI_API_KEY="$grok_access"
 }
 
 # Catalogs live in shell/src/config.js so the menu and the session share one list.
@@ -2119,7 +2126,7 @@ run_model_picker() {
         pick_catalog_model grok "$(config_get model)" || exit 1
         config_set model "$picked_model"
         echo "  provider: xAI Grok"
-        echo "  model: $picked_model (via OpenCode SuperGrok OAuth)"
+        echo "  model: $picked_model (Sherman Grok OAuth)"
         echo "  saved and verified. Run sherman to start."
         exit 0
     fi
@@ -2430,6 +2437,8 @@ assemble_adapter "$ENGINE" "$USER_SLUG" "$VAULT" "$SESSION_ID" "$SESSION_DATE"
 # Either handoff runs from the workspace, so the engine's cwd is identical in
 # both modes -- that is what makes it pick up the adapter we just assembled.
 cd "$WORKSPACE"
+
+inject_grok_runtime_token || exit 1
 
 if [ "$RAW" -eq 1 ]; then
     exec "$(engine_binary "$ENGINE")" "$@"
