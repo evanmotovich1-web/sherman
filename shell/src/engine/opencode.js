@@ -17,7 +17,7 @@ import { contextWindowFor, OPENCODE_DEFAULT_MODELS } from '../config.js';
 
 export const ZAI_MODEL = 'zai/glm-5.2';
 export const ZAI_CONTEXT_WINDOW = 1_000_000;
-export const GROK_DEFAULT_MODEL = 'xai/grok-4.3';
+export const GROK_DEFAULT_MODEL = 'xai/grok-4.6';
 
 // One OpenCode runtime, several providers. The engine name in the Sherman
 // config picks the provider prefix; grok and deepseek then honor config.model

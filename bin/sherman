@@ -344,7 +344,7 @@ catalog_models() {
 
 default_model_for() {
     case "$1" in
-        grok) echo grok-4.3 ;;
+        grok) echo grok-4.6 ;;
         deepseek) echo deepseek-chat ;;
         zai) echo glm-5.2 ;;
         *) echo "" ;;

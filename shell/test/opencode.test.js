@@ -54,15 +54,15 @@ test('DeepSeek backend is selectable, pinned to deepseek-chat, on the same runti
     assert.ok(zaiCfg.provider?.zai, 'zai coding plan must keep its endpoint override');
 });
 
-test('Grok backend is selectable, defaults to grok-4.3, honors config.model', () => {
+test('Grok backend is selectable, defaults to grok-4.6, honors config.model', () => {
     const grokConfig = { ...config, engine: 'grok' };
     const selected = selectBackend(grokConfig);
     assert.equal(selected instanceof OpenCodeSession, true);
     assert.equal(selected.info.engine, 'grok');
-    assert.equal(selected.info.model, 'grok-4.3');
-    assert.equal(selected.info.contextWindow, 262144);
+    assert.equal(selected.info.model, 'grok-4.6');
+    assert.equal(selected.info.contextWindow, 500000);
     const argv = openCodeArgs(grokConfig, 'hello', null);
-    assert.ok(argv.includes('xai/grok-4.3'), 'argv must pin the default Grok model');
+    assert.ok(argv.includes('xai/grok-4.6'), 'argv must pin the default Grok model');
     assert.equal(argv.includes('zai/glm-5.2'), false);
     const chosen = openCodeArgs({ ...grokConfig, model: 'grok-4.5' }, 'hello', null);
     assert.ok(chosen.includes('xai/grok-4.5'));
