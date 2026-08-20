@@ -1,8 +1,8 @@
 ---
 name: recursive-learning
 category: agent
-summary: finish the task by recalling, retrying on another local model, and writing the lesson
-description: Keep going until the task is done — recall prior lessons, inventory the models and keys already on this machine, route a blocked slice to another engine, and offer a /learn when the loop taught something. Use when work stalls on the current model, a missing API, or a failure that a second attempt could fix.
+summary: finish the task by searching the llm wiki, retrying on another local model, and filing the lesson back
+description: Keep going until the task is done — search the second-brain LLM wiki before retrying, inventory the models and keys already on this machine, route a blocked slice to another engine, then file a durable answer back and offer /learn. Use when work stalls on the current model, a missing API, or a failure that a second attempt could fix.
 ---
 
 # Finish it — recall, reroute, retry
@@ -32,10 +32,18 @@ swap the parent session's engine. The wizard already chose that engine.
 Bound it. Three attempts at the same blocked slice, then report what
 remains and stop. A fourth try without new evidence is a hang.
 
-1. **Recall.** Before retrying, search shared memory and the last eval for
-   this stall. `session-harvest` if the same failure has shown up in more
-   than one local session. A lesson that already names the fix is the
-   first move, not a re-derivation.
+1. **Recall from the compiled wiki, not from chat.** Before retrying, search
+   the second-brain LLM wiki through the wired `llmwiki` connector:
+   `mode="search"`, `knowledge_base="second-brain"`, two to four distinctive
+   keywords — never a sentence (AND-FTS; a natural-language question returns
+   a fake empty wiki). Start with `wiki/sherman` and the stall's rare words.
+   Then check shared memory and the last eval. `session-harvest` only if the
+   same failure showed up in more than one local session. A compiled page
+   that already names the fix is the first move, not a re-derivation.
+   If the connector is aimed at `~/.sherman/research` (three documents) or
+   the search ignores the query and dumps a list, **say wiki miss** and
+   proceed — do not pretend you recalled. That mis-aim is the measured
+   adoption failure; treating a scratch workspace as the vault repeats it.
 2. **Inventory this machine.** Run `/models` (or read what it would print).
    That is a local, names-only snapshot: which engine binaries are on
    PATH, which key NAMES are in `~/.sherman/keys.json` or the environment,
@@ -57,9 +65,14 @@ remains and stop. A fourth try without new evidence is a hang.
    different engine, a newly stored key, or a lesson just recalled. If
    the slice still fails, name the failure and go to the next attempt
    or stop at the bound.
-6. **Write the lesson.** When the loop taught a durable behavior, offer
-   one complete `/learn <name> | <lesson>` command. A new company fact
-   is `/wiki`. Do not write the vault yourself.
+6. **File the answer back, then offer the company command.** Chat is not
+   the copy. A durable research finding or stall-fix goes onto an existing
+   second-brain page (`wiki/sherman` or `inventory/QUERY-*`) through the
+   llmwiki tools — fold in, do not spawn a new `wiki/` page. Company
+   procedures and conduct still go through one complete `/wiki` or `/learn`
+   command; do not write the company vault yourself. This file-back is a
+   compile pass, not a verifier-gated optimizer: there is no automated
+   keep-or-discard scorer here, and claiming one would be a lie.
 
 ## What "done" means
 
