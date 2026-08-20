@@ -25,8 +25,9 @@ export const MODEL_CONTEXT_WINDOWS = Object.freeze({
 // these same objects. Any grok-* / xai/* id is still accepted when typed,
 // even if it is not in this list.
 export const GROK_MODELS = Object.freeze({
-    'grok-4.3': 262144,
+    'grok-4.6': 500000,
     'grok-4.5': 262144,
+    'grok-4.3': 262144,
     'grok-4.20-reasoning': 262144,
     'grok-4.20-non-reasoning': 262144,
     'grok-4.20-reasoning-beta': 262144,
@@ -66,7 +67,7 @@ export const DEEPSEEK_MODELS = Object.freeze({
 
 export const OPENCODE_DEFAULT_MODELS = Object.freeze({
     zai: 'glm-5.2',
-    grok: 'grok-4.3',
+    grok: 'grok-4.6',
     deepseek: 'deepseek-chat',
 });
 

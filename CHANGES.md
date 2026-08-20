@@ -3,6 +3,11 @@
 Newest entries appear first. “Building” means active work that is not yet a
 shipped, verified release.
 
+## 2026-08-19 — Added: grok-4.6 in the Grok menu (and as the default)
+
+- `grok-4.6` is now first in the `sherman model` Grok list. New Grok seats
+  default to it (500K context). Older ids stay pickable.
+
 ## 2026-08-19 — Added: xAI Grok SuperGrok OAuth, and pickable Grok/DeepSeek models
 
 - `sherman model` and the first-run wizard now list **xAI Grok (SuperGrok

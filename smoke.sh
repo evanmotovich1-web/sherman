@@ -1983,13 +1983,13 @@ grok_engine=$(/usr/bin/jq -r '.engine // empty' "$GROKHOME/.sherman/config.json"
 grok_cfg_model=$(/usr/bin/jq -r '.model // empty' "$GROKHOME/.sherman/config.json" 2>/dev/null)
 grok_model_out=$(env HOME="$GROKHOME" PATH="$STUBDIR:$PATH" ./bin/sherman model 2>&1)
 if [ "$grok_status" -eq 0 ] && [ "$grok_engine" = "grok" ] \
-    && [ "$grok_cfg_model" = "grok-4.3" ] \
-    && printf '%s' "$grok_model_out" | grep -q 'model: grok-4.3 (from Sherman config)' \
+    && [ "$grok_cfg_model" = "grok-4.6" ] \
+    && printf '%s' "$grok_model_out" | grep -q 'model: grok-4.6 (from Sherman config)' \
     && grep -q 'Sherman Grok OAuth' bin/sherman \
     && ! grep -q 'opencode auth login --pure --provider xai' bin/sherman \
     && grep -q 'shell/src/grokoauth.js' bin/sherman \
     && grep -q "general OpenCode session" "$GROKHOME/.sherman/workspace/AGENTS.md" 2>/dev/null; then
-    pass "Grok selection uses Sherman OAuth (not OpenCode login), defaults to grok-4.3, and reaches the runtime"
+    pass "Grok selection uses Sherman OAuth (not OpenCode login), defaults to grok-4.6, and reaches the runtime"
 else
     fail "Grok wizard path failed (status=$grok_status engine=$grok_engine model=$grok_cfg_model): $(printf '%s' "$grok_out" | tail -2)"
 fi

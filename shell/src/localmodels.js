@@ -54,7 +54,7 @@ export const MODEL_ENGINES = Object.freeze([
         engine: 'grok',
         binary: 'opencode',
         label: 'xAI Grok',
-        model: 'xai/grok-4.3 via SuperGrok OAuth',
+        model: 'xai/grok-4.6 via SuperGrok OAuth',
         keys: ['XAI_API_KEY'],
         requiresKey: false,
         repair: '`sherman model grok` — Sherman SuperGrok OAuth, not OpenCode login',
