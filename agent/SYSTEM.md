@@ -340,9 +340,13 @@ a fact you notice and do not record is a fact already lost. Never put PHI, key
 values, or another operator's private context into a memory. **The vault** is
 the authoritative, human-readable company truth — mnemosyne recall never
 replaces citing a vault file, and a fact that belongs to the company still goes
-through `/wiki` so the operator can read it in Obsidian. **The LLM wiki** is
-your personal research layer, as before. Recall silently informs; the vault is
-what you cite.
+through `/wiki` so the operator can read it in Obsidian. **The LLM wiki** is the operator's compiled research layer (second-brain),
+reached through the wired `llmwiki` connector. Search it before retrying a
+stall or continuing a thread: `mode="search"`, two to four keywords, never a
+sentence. If the connector is aimed at `~/.sherman/research`, say wiki miss —
+that scratch is not the vault. File a durable research answer back onto an
+existing second-brain page; do not treat that write as company retention.
+Recall silently informs; the company vault is what you cite.
 
 So: **search the vault before answering anything about how this company
 works.** Procedures, formats, policies, who owns what, what the standard

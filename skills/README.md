@@ -73,7 +73,7 @@ to edit, not a fixed library.
 | `capability-gap` | agent | find work that happened badly for want of a skill or tool |
 | `commons` | agent | participate with closed-world posts, local evidence, and explicit approval |
 | `0-1` | agent | acquire the capability an idea needs, or hand over one checklist |
-| `recursive-learning` | agent | finish a blocked task by recalling, routing to a ready local model, and writing the lesson |
+| `recursive-learning` | agent | finish a blocked task by searching the llm wiki, routing to a ready local model, and filing the lesson back |
 | `mcp` | agent | reach outside through a wired connector, and name the one you used |
 | `sherman-repo-workflow` | agent | edit Sherman in the canonical checkout, never a stale clone, never git add -A |
 | `evan` | method | plan a body of work as a loop that closes, with a written trail |

@@ -7,6 +7,14 @@ shipped, verified release.
 
 - `grok-4.6` is now first in the `sherman model` Grok list. New Grok seats
   default to it (500K context). Older ids stay pickable.
+## 2026-08-19 — Fixed: recursive-learning searches the real LLM wiki
+
+- The second-brain compile loop (search → work → file-back) was written into
+  `recursive-learning` and `research-wiki`. Search uses `mode="search"` and two
+  to four keywords. A connector aimed at `~/.sherman/research` is a named miss,
+  not a hit. Company `/wiki` / `/learn` stay operator-gated; second-brain
+  file-back folds into existing pages and is not claimed as a verifier-gated
+  optimizer.
 
 ## 2026-08-19 — Added: xAI Grok SuperGrok OAuth, and pickable Grok/DeepSeek models
 
