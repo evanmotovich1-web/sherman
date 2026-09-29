@@ -513,7 +513,6 @@ shipped, verified release.
   retries. Only the window before the first line is policed; once the
   stream is talking, a long silence is a slow tool call, not a stall.
   `SHERMAN_OPENCODE_STALL_MS` overrides the window for tests and slow links.
-
 ## 2026-08-11 — Added: Sherman can edit its own source
 
 - New `self-edit` skill (category `agent`): when asked to fix, improve, or
