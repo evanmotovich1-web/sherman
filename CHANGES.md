@@ -181,7 +181,6 @@ shipped, verified release.
   to `~/.sherman/evals/recovered-vault-inbox/` — moved, never deleted — and
   the heal names itself once. Tested: quarantine, lane removal, idempotent
   re-run.
-
 ## 2026-08-12 — Added: user.md — every Sherman knows its own operator
 
 - The third file of the trio (SYSTEM.md is the soul, the vault is the
@@ -196,6 +195,7 @@ shipped, verified release.
   the file when the operator states something durable about themselves, and
   never to copy another person's profile in. Check 3 asserts the template,
   the splice, and the never-sync teaching.
+
 ## 2026-08-12 — Added: the money engine — capped float, ledger, gate, and the earning skill
 
 - Sherman can now earn inside a fence: a $500 pre-funded Stripe float, hard
